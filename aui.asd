@@ -14,7 +14,8 @@
     :components
     ((:file "package")
      (:file "theme")
-     (:file "transcript"))))
+     (:file "transcript")
+     (:file "events"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests
@@ -27,7 +28,8 @@
     :components
     ((:file "suite")
      (:file "theme-tests")
-     (:file "transcript-tests"))))
+     (:file "transcript-tests")
+     (:file "events-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call '#:aui '#:run-tests)

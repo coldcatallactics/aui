@@ -26,7 +26,7 @@
 
 (defclass workbench ()
   ((window              :reader workbench-window)
-   (backend             :initarg :backend :reader workbench-backend :type backend)
+   (backend             :initarg :backend :accessor workbench-backend :type backend)
    (transcript          :initform (make-transcript) :reader workbench-transcript :type transcript)
    (transcript-view     :reader workbench-transcript-view)
    (folder-label        :reader workbench--folder-label)
@@ -82,6 +82,9 @@
 
 (defvar *workbenches* nil
   "Every open workbench, so events can be routed by backend id.")
+
+(defvar *stopped-backends* nil
+  "Backends told to stop whose processes the application still has to wait for.")
 
 (-> find-workbench (t) (or null workbench))
 (defun find-workbench (backend-id)
@@ -465,14 +468,18 @@ backend so the first events have somewhere to land."
 
 (-> workbench-restart (workbench) null)
 (defun workbench-restart (workbench)
-  "Start the backend again after it exited and reopen the current conversation.
-Events from the old connection are dropped by the generation check."
-  (let ((backend (workbench-backend workbench)))
-    (incf (backend-generation backend))
-    (setf (workbench-connection-state workbench) ':starting)
+  "Replace the exited backend with a fresh one for the same folder and reopen
+the current conversation. Events from the old backend no longer find this
+workbench and are dropped."
+  (let* ((old (workbench-backend workbench))
+         (new (make-backend (backend-directory old) (backend-queue old))))
+    (backend-stop old)
+    (push old *stopped-backends*)
+    (setf (workbench-backend workbench) new
+          (workbench-connection-state workbench) ':starting)
     (workbench--refresh-status workbench)
-    (backend-start backend)
-    (backend-open-conversation backend :conversation-id (workbench-conversation-id workbench)))
+    (backend-start new)
+    (backend-open-conversation new :conversation-id (workbench-conversation-id workbench)))
   nil)
 
 (-> workbench-close (workbench) null)
@@ -481,8 +488,21 @@ Events from the old connection are dropped by the generation check."
   (unless (workbench-closed-p workbench)
     (setf (workbench-closed-p workbench) t)
     (setf *workbenches* (remove workbench *workbenches*))
+    (push (workbench-backend workbench) *stopped-backends*)
     (backend-stop (workbench-backend workbench)))
   nil)
+
+(-> workbench-title-for (workbench (or null string) (or null string)) string)
+(defun workbench-title-for (workbench conversation-id title)
+  "Return the title to show for CONVERSATION-ID: TITLE when given, else the
+catalog's title, else the id, else a name for a fresh conversation."
+  (or title
+      (let ((entry (and conversation-id
+                        (find conversation-id (workbench-conversations workbench)
+                              :key #'conversation-entry-id :test #'equal))))
+        (and entry (conversation-entry-title entry)))
+      conversation-id
+      "New conversation"))
 
 
 ;;; Drafts
@@ -658,7 +678,8 @@ Events from the old connection are dropped by the generation check."
      (transcript-reset (workbench-transcript workbench))
      (transcript-begin-replay (workbench-transcript workbench))
      (setf (lightfast:label (workbench--title-label workbench))
-           (or (session-event-title event) "Loading")))
+           (workbench-title-for workbench (session-event-conversation-id event)
+                                (session-event-title event))))
     (:ready
      (transcript-end-replay (workbench-transcript workbench))
      (transcript-view-jump-to-end (workbench-transcript-view workbench))
@@ -666,7 +687,8 @@ Events from the old connection are dropped by the generation check."
      (workbench--restore-draft workbench)
      (workbench-focus-composer workbench)
      (setf (lightfast:label (workbench--title-label workbench))
-           (or (session-event-title event) "New conversation")))
+           (workbench-title-for workbench (session-event-conversation-id event)
+                                (session-event-title event))))
     (:closed
      (workbench--save-draft workbench)
      (setf (workbench-conversation-id workbench) nil)))

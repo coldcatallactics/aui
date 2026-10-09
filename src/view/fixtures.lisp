@@ -212,6 +212,13 @@
   (scripted--post backend 'connection-event :state ':exited :detail "demo closed")
   nil)
 
+(defmethod backend-join ((backend scripted-backend) &key (timeout 5))
+  (let ((thread (scripted--thread backend)))
+    (when (and thread (bordeaux-threads:thread-alive-p thread))
+      (handler-case (bordeaux-threads:join-thread thread :timeout timeout)
+        (error () nil)))
+    (not (and thread (bordeaux-threads:thread-alive-p thread)))))
+
 (defmethod backend-open-conversation ((backend scripted-backend) &key conversation-id)
   (scripted--post backend 'session-event :state ':loading :conversation-id conversation-id
                                          :title (if conversation-id "Flat theme for lightfast" nil))

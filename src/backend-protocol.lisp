@@ -33,6 +33,11 @@
   (:documentation "Close the session and connection and end the process. The final
 CONNECTION-EVENT has state :EXITED."))
 
+(defgeneric backend-join (backend &key timeout)
+  (:documentation "Wait until a stopped BACKEND has released its process and threads, at most
+TIMEOUT seconds, and return T when it has. Called by the application before it
+exits so no Autolith process is orphaned."))
+
 (defgeneric backend-open-conversation (backend &key conversation-id)
   (:documentation "Open a session: a new conversation, or CONVERSATION-ID loaded with its
 history. Any open session is closed first. SESSION-EVENTs report progress and

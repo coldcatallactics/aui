@@ -27,6 +27,20 @@ show the workbench and return it."
     (backend-open-conversation backend :conversation-id conversation-id)
     workbench))
 
+(defparameter *backend-stop-timeout* 5
+  "Seconds to wait for each backend to release its Autolith process at exit.")
+
+(-> stop-all-backends () null)
+(defun stop-all-backends ()
+  "Stop every backend still open and wait for all of them, so that no owned
+Autolith process outlives the application."
+  (dolist (workbench *workbenches*)
+    (workbench-close workbench))
+  (dolist (backend *stopped-backends*)
+    (backend-join backend :timeout *backend-stop-timeout*))
+  (setf *stopped-backends* nil)
+  nil)
+
 (-> show-welcome () welcome)
 (defun show-welcome ()
   "Show the welcome window; choosing there opens a workspace and closes it."
@@ -108,5 +122,6 @@ that view, and --shot PATH captures the window and exits."
          (show-welcome)))
       (when shot-path
         (screenshot-after (if demo-prompt 4.5 2.0) shot-path))
-      (lightfast:run-with-idle #'drain-ui-queue)))
+      (lightfast:run-with-idle #'drain-ui-queue)
+      (stop-all-backends)))
   nil)

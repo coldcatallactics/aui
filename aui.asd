@@ -13,7 +13,8 @@
     :serial t
     :components
     ((:file "package")
-     (:file "theme"))))
+     (:file "theme")
+     (:file "transcript"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests
@@ -25,7 +26,8 @@
     :serial t
     :components
     ((:file "suite")
-     (:file "theme-tests"))))
+     (:file "theme-tests")
+     (:file "transcript-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call '#:aui '#:run-tests)

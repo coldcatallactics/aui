@@ -324,9 +324,6 @@ backend so the first events have somewhere to land."
         ((eql key *key-escape*)
          (lightfast:consume-event)
          (workbench-stop workbench))
-        ((and control-p (<= (char-code #\1) key (char-code #\9)))
-         (lightfast:consume-event)
-         (workbench-decide workbench (- key (char-code #\0))))
         ((workbench--global-key workbench key control-p)
          (lightfast:consume-event)))))
   nil)
@@ -335,6 +332,9 @@ backend so the first events have somewhere to land."
 (defun workbench--global-key (workbench key control-p)
   "Act on a shortcut that works anywhere in the window and return T when it did."
   (cond
+    ((and control-p (<= (char-code #\1) key (char-code #\9)))
+     (workbench-decide workbench (- key (char-code #\0)))
+     t)
     ((and control-p (eql key (char-code #\k)))
      (workbench-show-palette workbench)
      t)
@@ -632,6 +632,12 @@ backend so the first events have somewhere to land."
      (transcript-notice (workbench-transcript workbench) :text "Connected" :key ':connection)))
   (workbench--refresh-status workbench))
 
+(-> workbench-focus-composer (workbench) null)
+(defun workbench-focus-composer (workbench)
+  "Give the composer the keyboard focus."
+  (lightfast:take-focus (workbench-composer workbench))
+  nil)
+
 (defmethod apply-ui-event ((event session-event) (workbench workbench))
   (setf (workbench-session-state workbench) (session-event-state event))
   (ecase (session-event-state event)
@@ -646,6 +652,7 @@ backend so the first events have somewhere to land."
      (transcript-view-jump-to-end (workbench-transcript-view workbench))
      (setf (workbench-conversation-id workbench) (session-event-conversation-id event))
      (workbench--restore-draft workbench)
+     (workbench-focus-composer workbench)
      (setf (lightfast:label (workbench--title-label workbench))
            (or (session-event-title event) "New conversation")))
     (:closed

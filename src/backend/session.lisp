@@ -35,6 +35,7 @@
                            attached-p t))
                    (agentcomms:acp-client-connect client channel :request-timeout 30)))
                (agentcomms:client-initialize (acp-backend--client backend))
+               (acp-backend--probe-extensions backend)
                (bordeaux-threads:with-lock-held ((acp-backend--lock backend))
                  (when (eq (acp-backend--state backend) ':starting)
                    (setf (acp-backend--state backend) ':ready)
@@ -173,7 +174,9 @@
           (unless opened-p
             (setf (acp-backend--session backend) nil))
           (acp-backend--session-event backend (if opened-p ':ready ':closed)))))
-    (acp-backend--publish-state backend))
+    (acp-backend--publish-state backend)
+    (when opened-p
+      (acp-backend--extension-bootstrap backend)))
   nil)
 
 (defmethod backend-open-conversation ((backend acp-backend) &key conversation-id)
@@ -341,45 +344,51 @@
       (acp-backend--result backend request ':busy :report "Change permission mode in an open idle session."))
     request))
 
-(-> acp-backend--unsupported (acp-backend string) string)
-(defun acp-backend--unsupported (backend operation)
-  "Report a feature unavailable on the standard ACP transport."
-  (let ((request (acp-backend--identifier backend)))
-    (acp-backend--result backend request ':unsupported
-                         :report (format nil "~A requires Autolith extension support." operation))
-    request))
-
 (defmethod backend-refresh ((backend acp-backend) kind)
-  "Return confirmed ACP state or report an unavailable runtime catalog."
-  (case kind
-    (:state
-     (let ((request (acp-backend--identifier backend)))
+  "Fetch KIND through an extension when the server provides it, else return
+confirmed ACP state or report an unavailable runtime catalog."
+  (let ((request (acp-backend--identifier backend)))
+    (cond
+      ((acp-backend--extension-refresh backend request kind)
+       request)
+      ((eq kind ':state)
        (acp-backend--publish-state backend)
        (acp-backend--result backend request ':ok)
-       request))
-    (:conversations
-     (let ((request (acp-backend--identifier backend)))
+       request)
+      ((eq kind ':conversations)
        (acp-backend--enqueue backend request
                             (lambda ()
                               (acp-backend--post backend 'catalog-event :kind ':conversations
                                                  :items (recent-conversations))
                               (acp-backend--result backend request ':ok)))
-       request))
-    (otherwise (acp-backend--unsupported backend (string-downcase (symbol-name kind))))))
+       request)
+      (t
+       (acp-backend--result backend request ':unsupported
+                            :report (format nil "~(~A~) requires Autolith extension support." kind))
+       request))))
 
 (defmethod backend-set-setting ((backend acp-backend) name value)
-  "Report that standard ACP has no Autolith setting mutation method."
-  (declare (ignore name value))
-  (acp-backend--unsupported backend "Settings"))
+  "Change a setting through the extension, or report that plain ACP cannot."
+  (let ((request (acp-backend--identifier backend)))
+    (unless (acp-backend--extension-set-setting backend request name value)
+      (acp-backend--result backend request ':unsupported
+                           :report "Settings require Autolith extension support."))
+    request))
 
 (defmethod backend-invoke ((backend acp-backend) operation arguments)
-  "Report that standard ACP does not invoke local application operations."
-  (declare (ignore operation arguments))
-  (acp-backend--unsupported backend "Operation invocation"))
+  "Invoke an operation through the extension, or report that plain ACP cannot."
+  (let ((request (acp-backend--identifier backend)))
+    (unless (acp-backend--extension-invoke backend request operation arguments)
+      (acp-backend--result backend request ':unsupported
+                           :report "Operation invocation requires Autolith extension support."))
+    request))
 
 (defmethod backend-job-action ((backend acp-backend) job-id action &key text)
-  "Report that standard ACP has no native job control methods."
-  (declare (ignore job-id action text))
-  (acp-backend--unsupported backend "Job control"))
+  "Act on a job through the extension, or report that plain ACP cannot."
+  (let ((request (acp-backend--identifier backend)))
+    (unless (acp-backend--extension-job-action backend request job-id action text)
+      (acp-backend--result backend request ':unsupported
+                           :report "Job control requires Autolith extension support."))
+    request))
 
 (setf *backend-factory* #'make-acp-backend)

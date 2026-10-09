@@ -47,7 +47,9 @@
    (model :initarg :model :reader acp-backend-model :documentation "The requested model for new conversations.")
    (effort :initarg :effort :reader acp-backend-effort :documentation "The requested reasoning effort.")
    (loaded-p :initform nil :accessor acp-backend--loaded-p
-             :documentation "Whether durable model choices may differ from launch defaults."))
+             :documentation "Whether durable model choices may differ from launch defaults.")
+   (extension-methods :initform nil :accessor acp-backend--extension-methods
+                      :documentation "The _autolith/* methods the connected Autolith advertised."))
   (:documentation "One pristine Autolith process with an independent cancellation path."))
 
 (defparameter *acp-event-generation* nil

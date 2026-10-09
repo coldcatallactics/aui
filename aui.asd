@@ -21,7 +21,10 @@
      (:module "backend"
       :serial t
       :components
-      ((:file "recent")))
+      ((:file "recent")
+       (:file "process")
+       (:file "client")
+       (:file "session")))
      (:module "view"
       :serial t
       :components
@@ -54,7 +57,8 @@
      (:file "document-tests")
      (:file "palette-tests")
      (:file "scripted-backend-tests")
-     (:file "recent-tests"))))
+     (:file "recent-tests")
+     (:file "backend-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call '#:aui '#:run-tests)

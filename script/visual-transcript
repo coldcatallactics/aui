@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Show a sample transcript in the AUI look. Pass --shot to save a screen capture
+# to /tmp/aui-transcript.png with grim and exit.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+exec sbcl --noinform --non-interactive \
+  --eval "(asdf:load-system :aui)" \
+  --eval "(aui::visual-transcript ${1:+t})"

@@ -22,7 +22,9 @@
       :serial t
       :components
       ((:file "markdown")
-       (:file "document"))))))
+       (:file "document")
+       (:file "transcript-view")
+       (:file "fixtures"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests

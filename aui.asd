@@ -16,7 +16,12 @@
      (:file "theme")
      (:file "transcript")
      (:file "events")
-     (:file "catalog"))))
+     (:file "catalog")
+     (:file "backend-protocol")
+     (:module "view"
+      :serial t
+      :components
+      ((:file "markdown"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests
@@ -31,7 +36,8 @@
      (:file "theme-tests")
      (:file "transcript-tests")
      (:file "events-tests")
-     (:file "catalog-tests"))))
+     (:file "catalog-tests")
+     (:file "markdown-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call '#:aui '#:run-tests)

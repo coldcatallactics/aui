@@ -67,7 +67,7 @@ Autolith process outlives the application."
 (-> parse-arguments (list) list)
 (defun parse-arguments (arguments)
   "Return a plist from command line ARGUMENTS: :DIRECTORY, :CONVERSATION-ID,
-:DEMO-P, :SHOT-PATH, :DEMO-PROMPT and :OPEN-VIEW."
+:DEMO-P, :SHOT-PATH, :SHOT-AFTER, :DEMO-PROMPT and :OPEN-VIEW."
   (let ((result nil))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -75,6 +75,8 @@ Autolith process outlives the application."
                  ((string= argument "--demo") (setf (getf result ':demo-p) t))
                  ((string= argument "--conversation") (setf (getf result ':conversation-id) (pop arguments)))
                  ((string= argument "--shot") (setf (getf result ':shot-path) (pop arguments)))
+                 ((string= argument "--shot-after")
+                  (setf (getf result ':shot-after) (parse-integer (pop arguments))))
                  ((string= argument "--demo-prompt") (setf (getf result ':demo-prompt) (pop arguments)))
                  ((string= argument "--open") (setf (getf result ':open-view) (intern (string-upcase (pop arguments)) :keyword)))
                  ((and (plusp (length argument)) (char= #\- (char argument 0)))
@@ -99,8 +101,9 @@ Autolith process outlives the application."
   "Run AUI. With a directory argument, open a workspace there at once;
 otherwise show the welcome window. --conversation ID resumes a conversation,
 --demo uses the scripted backend, --open settings, palette or inspector opens
-that view, and --shot PATH captures the window and exits."
-  (destructuring-bind (&key directory conversation-id demo-p shot-path demo-prompt open-view)
+that view, --demo-prompt TEXT sends TEXT once the session is ready, and
+--shot PATH captures the window and exits after --shot-after SECONDS."
+  (destructuring-bind (&key directory conversation-id demo-p shot-path shot-after demo-prompt open-view)
       (parse-arguments arguments)
     (lightfast:load-library)
     (lightfast:enable-thread-wakeups)
@@ -113,15 +116,13 @@ that view, and --shot PATH captures the window and exits."
          (let ((workbench (open-workspace (namestring (uiop:ensure-directory-pathname directory))
                                           :conversation-id conversation-id)))
            (when demo-prompt
-             (lightfast:add-timeout 1.0 (lambda ()
-                                          (setf (lightfast:value (workbench-composer workbench)) demo-prompt)
-                                          (workbench-send workbench))))
+             (setf (workbench-queued-prompt workbench) demo-prompt))
            (when open-view
              (lightfast:add-timeout 0.5 (lambda () (open-view workbench open-view))))))
         (t
          (show-welcome)))
       (when shot-path
-        (screenshot-after (if demo-prompt 4.5 2.0) shot-path))
+        (screenshot-after (or shot-after (if demo-prompt 5 2)) shot-path))
       (lightfast:run-with-idle #'drain-ui-queue)
       (stop-all-backends)))
   nil)

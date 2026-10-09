@@ -222,10 +222,13 @@
 (defmethod backend-open-conversation ((backend scripted-backend) &key conversation-id)
   (scripted--post backend 'session-event :state ':loading :conversation-id conversation-id
                                          :title (if conversation-id "Flat theme for lightfast" nil))
+  (scripted--post backend 'transcript-event :operation ':reset)
+  (scripted--post backend 'transcript-event :operation ':begin-replay)
   (when conversation-id
     (dolist (block (coerce (transcript-blocks (sample-transcript)) 'list))
       (unless (typep block 'approval)
         (scripted--append-block backend block))))
+  (scripted--post backend 'transcript-event :operation ':end-replay)
   (scripted--post backend 'session-event :state ':ready :conversation-id (or conversation-id "demo-new")
                                          :title (if conversation-id "Flat theme for lightfast" "New conversation"))
   nil)

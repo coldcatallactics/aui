@@ -66,6 +66,8 @@
                         :documentation "The JOB-ENTRYs shown in the rail, in list order.")
    (pending-approval    :initform nil :accessor workbench-pending-approval
                         :documentation "The APPROVAL block awaiting the user, or NIL.")
+   (queued-prompt       :initform nil :accessor workbench-queued-prompt
+                        :documentation "Text to send as soon as the session is ready and idle, or NIL.")
    (conversation-id     :initform nil :accessor workbench-conversation-id
                         :documentation "The open conversation's id, or NIL before one is ready.")
    (drafts              :initform (make-hash-table :test 'equal) :reader workbench--drafts
@@ -293,6 +295,18 @@ backend so the first events have somewhere to land."
                (eq (workbench-session-state workbench) ':ready))
       (backend-prompt (workbench-backend workbench) text)
       (setf (lightfast:value (workbench-composer workbench)) "")))
+  nil)
+
+(-> workbench--send-queued-prompt (workbench) null)
+(defun workbench--send-queued-prompt (workbench)
+  "Send the queued prompt when the session is ready and idle."
+  (let ((text (workbench-queued-prompt workbench)))
+    (when (and text
+               (eq (workbench-session-state workbench) ':ready)
+               (eq (workbench-turn-state workbench) ':idle))
+      (setf (workbench-queued-prompt workbench) nil)
+      (setf (lightfast:value (workbench-composer workbench)) text)
+      (workbench-send workbench)))
   nil)
 
 (-> workbench-stop (workbench) null)
@@ -674,18 +688,17 @@ catalog's title, else the id, else a name for a fresh conversation."
   (setf (workbench-session-state workbench) (session-event-state event))
   (ecase (session-event-state event)
     (:loading
+     ;; The backend owns the transcript reset and replay brackets.
      (workbench--save-draft workbench)
-     (transcript-reset (workbench-transcript workbench))
-     (transcript-begin-replay (workbench-transcript workbench))
      (setf (lightfast:label (workbench--title-label workbench))
            (workbench-title-for workbench (session-event-conversation-id event)
                                 (session-event-title event))))
     (:ready
-     (transcript-end-replay (workbench-transcript workbench))
      (transcript-view-jump-to-end (workbench-transcript-view workbench))
      (setf (workbench-conversation-id workbench) (session-event-conversation-id event))
      (workbench--restore-draft workbench)
      (workbench-focus-composer workbench)
+     (workbench--send-queued-prompt workbench)
      (setf (lightfast:label (workbench--title-label workbench))
            (workbench-title-for workbench (session-event-conversation-id event)
                                 (session-event-title event))))

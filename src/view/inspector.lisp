@@ -15,6 +15,7 @@
                    :documentation "A mono text display with the object's full text.")
    (first-button   :reader inspector--first-button)
    (second-button  :reader inspector--second-button)
+   (third-button   :reader inspector--third-button)
    (subject        :initform nil :accessor inspector-subject
                    :documentation "The TOOL-CALL block or JOB-ENTRY shown, or NIL."))
   (:documentation "The inspector pane of one workbench."))
@@ -35,18 +36,24 @@
           (second-button (lightfast:make-button :parent group :label "" :height *control-height*
                                                 :callback (lambda (widget event value)
                                                             (declare (ignore widget event value))
-                                                            (inspector--second-action inspector)))))
+                                                            (inspector--second-action inspector))))
+          (third-button (lightfast:make-button :parent group :label "" :height *control-height*
+                                               :callback (lambda (widget event value)
+                                                           (declare (ignore widget event value))
+                                                           (inspector--third-action inspector)))))
       (setf (slot-value inspector 'title-label) title
             (slot-value inspector 'subtitle-label) subtitle
             (slot-value inspector 'body) body
             (slot-value inspector 'first-button) first-button
-            (slot-value inspector 'second-button) second-button)
+            (slot-value inspector 'second-button) second-button
+            (slot-value inspector 'third-button) third-button)
       (lightfast:set-label-align subtitle ':left ':inside ':wrap ':top)
       (lightfast:set-text-font body (font ':code))
       (lightfast:set-text-size body *code-size*)
       (lightfast:text-set-wrap body ':bounds)
       (lightfast:hide first-button)
-      (lightfast:hide second-button))
+      (lightfast:hide second-button)
+      (lightfast:hide third-button))
     (lightfast:hide group)
     inspector))
 
@@ -61,7 +68,8 @@
                    (lightfast:make-layout-row
                     :basis *control-height* :shrink 0 :gap (spacing 3)
                     :children (list (lightfast:make-layout-item (inspector--first-button inspector) :basis 0 :grow 1)
-                                    (lightfast:make-layout-item (inspector--second-button inspector) :basis 0 :grow 1))))))
+                                    (lightfast:make-layout-item (inspector--second-button inspector) :basis 0 :grow 1)
+                                    (lightfast:make-layout-item (inspector--third-button inspector) :basis 0 :grow 1))))))
 
 (-> inspector--set-text (inspector string) null)
 (defun inspector--set-text (inspector text)
@@ -70,8 +78,8 @@
     (lightfast:text-replace-styled body 0 (lightfast:text-length body) (list (cons text 0))))
   nil)
 
-(-> inspector--buttons (inspector (or null string) (or null string)) null)
-(defun inspector--buttons (inspector first-label second-label)
+(-> inspector--buttons (inspector (or null string) (or null string) &optional (or null string)) null)
+(defun inspector--buttons (inspector first-label second-label &optional third-label)
   "Label and show the action buttons, hiding those without a label."
   (flet ((set-button (button label)
            (cond
@@ -81,7 +89,8 @@
              (t
               (lightfast:hide button)))))
     (set-button (inspector--first-button inspector) first-label)
-    (set-button (inspector--second-button inspector) second-label))
+    (set-button (inspector--second-button inspector) second-label)
+    (set-button (inspector--third-button inspector) third-label))
   nil)
 
 (-> inspector-show-tool-call (inspector tool-call) null)
@@ -114,8 +123,32 @@
                        (format nil "~@[Latest activity~%~%~A~%~%~]~@[Usage~%~%~S~%~%~]~@[Artifacts~%~%~{~A~%~}~]"
                                (job-entry-activity job) (job-entry-usage job) (job-entry-artifacts job)))
   (if (member (job-entry-state job) '(:running :pending :waiting))
-      (inspector--buttons inspector "Send a message" "Cancel job")
-      (inspector--buttons inspector nil nil))
+      (inspector--buttons inspector "Send a message" "Cancel job" "Show transcript")
+      (inspector--buttons inspector nil nil "Show transcript"))
+  nil)
+
+(-> inspector-show-job-transcript (inspector list) null)
+(defun inspector-show-job-transcript (inspector transcript)
+  "Show TRANSCRIPT, a plist from the job transcript request, when the inspector
+still shows that job."
+  (let ((subject (inspector-subject inspector)))
+    (when (and (typep subject 'job-entry)
+               (equal (job-entry-id subject) (getf transcript ':job-id)))
+      (inspector--set-text inspector
+                           (format nil "~A~@[~%~%~D more characters follow~]"
+                                   (getf transcript ':content)
+                                   (and (not (getf transcript ':complete-p))
+                                        (getf transcript ':total)
+                                        (getf transcript ':next-offset)
+                                        (- (getf transcript ':total) (getf transcript ':next-offset)))))))
+  nil)
+
+(-> inspector--third-action (inspector) null)
+(defun inspector--third-action (inspector)
+  "Ask for the shown job's transcript."
+  (let ((subject (inspector-subject inspector)))
+    (when (typep subject 'job-entry)
+      (backend-job-action (workbench-backend (inspector-workbench inspector)) (job-entry-id subject) ':inspect)))
   nil)
 
 (-> inspector--first-action (inspector) null)

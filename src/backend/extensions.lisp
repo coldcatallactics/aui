@@ -331,9 +331,23 @@ control path, send on the serialized path."
                                                  (list "jobId" job-id "offset" 0 "limit" 20000)))
               (when (and (eq outcome ':ok) (eq action ':cancel))
                 (acp-backend--extension-refresh backend (acp-backend--identifier backend) ':jobs))
-              (acp-backend--result backend request outcome :value (json-plain-value value)
-                                                           :report report :condition-type condition-type))))
+              (acp-backend--result backend request outcome
+                                   :value (if (and (eq outcome ':ok) (eq action ':inspect))
+                                              (json->job-transcript job-id value)
+                                              (json-plain-value value))
+                                   :report report :condition-type condition-type))))
          t)))))
+
+(-> json->job-transcript (string t) list)
+(defun json->job-transcript (job-id value)
+  "Decode a _autolith/job-transcript value into a plist for the inspector:
+:JOB-ID, :CONTENT, :OFFSET, :NEXT-OFFSET, :TOTAL and :COMPLETE-P."
+  (list ':job-id job-id
+        ':content (or (json-string value "content") "")
+        ':offset (json-integer value "offset")
+        ':next-offset (json-integer value "nextOffset")
+        ':total (json-integer value "total")
+        ':complete-p (json-boolean value "complete")))
 
 
 ;;; Server events

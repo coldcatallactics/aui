@@ -250,4 +250,10 @@ catalog bootstrap that follows session readiness."
     (fiveam:is (eq ':string (setting-entry-type setting)))
     (fiveam:is (eq ':running (job-entry-state job)))
     (fiveam:is (string= "/w/" (state-snapshot-workspace snapshot)))
-    (fiveam:is (null (state-snapshot-context-fraction snapshot)))))
+    (fiveam:is (null (state-snapshot-context-fraction snapshot)))
+    (let ((transcript (json->job-transcript "j" (acp:json-object "content" "hello" "offset" 0
+                                                                   "nextOffset" 5 "total" 50
+                                                                   "complete" (argo:json-false)))))
+      (fiveam:is (string= "hello" (getf transcript ':content)))
+      (fiveam:is (= 50 (getf transcript ':total)))
+      (fiveam:is (not (getf transcript ':complete-p))))))

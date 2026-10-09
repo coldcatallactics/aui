@@ -785,6 +785,10 @@ catalog's title, else the id, else a name for a fresh conversation."
 
 (defmethod apply-ui-event ((event result-event) (workbench workbench))
   (case (result-event-outcome event)
+    (:ok
+     (let ((value (result-event-value event)))
+       (when (and (consp value) (getf value ':job-id) (getf value ':content))
+         (inspector-show-job-transcript (workbench-inspector workbench) value))))
     (:condition
      (transcript-notice (workbench-transcript workbench) :severity ':failure
                         :text (format nil "~@[~A: ~]~A" (result-event-condition-type event)

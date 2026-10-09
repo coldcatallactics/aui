@@ -42,10 +42,10 @@
 (-> conversation-entry-line (conversation-entry integer) string)
 (defun conversation-entry-line (entry now)
   "Return the welcome list line for ENTRY."
-  (format nil "~A    ~A    ~@[~A    ~]~A"
-          (or (conversation-entry-title entry) (conversation-entry-id entry))
-          (conversation-entry-directory entry)
-          (conversation-entry-model entry)
+  (format nil "~A~C~A~C~@[~A~]~C~A"
+          (or (conversation-entry-title entry) (conversation-entry-id entry)) #\Tab
+          (conversation-entry-directory entry) #\Tab
+          (conversation-entry-model entry) #\Tab
           (age-text (conversation-entry-activity-key entry) now)))
 
 (-> make-welcome (&key (:entries list) (:on-open function) (:width integer) (:height integer)) welcome)
@@ -72,13 +72,15 @@
                                                      (declare (ignore widget event value))
                                                      (welcome--start welcome))))
            (conversations-heading (welcome--heading window "Recent conversations"))
-           (conversations-list (lightfast:make-browser :parent window :height 200))
+           (conversations-list (lightfast:make-browser :parent window :height 200
+                                                       :column-widths '(420 300 200 0)))
            (resume (lightfast:make-button :parent window :label "Resume" :height *control-height*
                                           :callback (lambda (widget event value)
                                                       (declare (ignore widget event value))
                                                       (welcome--resume welcome))))
            (folders-heading (welcome--heading window "Recent folders"))
-           (folders-list (lightfast:make-browser :parent window :height 120)))
+           (folders-list (lightfast:make-browser :parent window :height 120
+                                                 :column-widths '(720 0))))
       (setf (slot-value welcome 'path-input) path-input
             (slot-value welcome 'conversations-list) conversations-list
             (slot-value welcome 'folders-list) folders-list)
@@ -100,7 +102,7 @@
       (dolist (entry entries)
         (lightfast:add-item conversations-list (conversation-entry-line entry now)))
       (dolist (pair (welcome-folders welcome))
-        (lightfast:add-item folders-list (format nil "~A    ~A" (first pair) (age-text (rest pair) now))))
+        (lightfast:add-item folders-list (format nil "~A~C~A" (first pair) #\Tab (age-text (rest pair) now))))
       (when entries
         (lightfast:browser-select conversations-list 0))
       (lightfast:on folders-list (lambda (widget event value)

@@ -7,7 +7,7 @@
 
 (defstruct (palette-item (:constructor make-palette-item (kind label detail object)))
   "One thing the palette can find."
-  (kind ':operation :type (member :operation :conversation :setting :model :mode))
+  (kind ':operation :type (member :action :operation :conversation :setting :model :mode))
   (label "" :type string)
   (detail "" :type string)
   (object nil))
@@ -50,10 +50,32 @@ and matches at word starts score more."
     ("full-access" "Full access" "allow commands and external tools without approval"))
   "The ACP permission modes Autolith offers: id, label and description.")
 
+(-> workbench-actions (workbench) list)
+(defun workbench-actions (workbench)
+  "Return the application actions the palette offers for WORKBENCH as
+(LABEL DETAIL FUNCTION) lists, only those that apply right now."
+  (append
+   (list (list "New conversation here" "start a fresh conversation in this folder"
+               (lambda () (backend-open-conversation (workbench-backend workbench))))
+         (list "Jump to latest" "follow the end of the transcript again"
+               (lambda () (transcript-view-jump-to-end (workbench-transcript-view workbench))))
+         (list (if (workbench-inspector-visible-p workbench) "Hide inspector" "Show inspector")
+               "the pane for tool calls and jobs, Ctrl+I"
+               (lambda () (workbench-toggle-inspector workbench)))
+         (list "Settings" "the settings sheet, Ctrl+,"
+               (lambda () (workbench-show-settings workbench))))
+   (when (member (workbench-connection-state workbench) '(:lost :exited))
+     (list (list "Restart Autolith" "start the process again and reopen this conversation"
+                 (lambda () (workbench-restart workbench)))))))
+
 (-> palette-items (workbench) list)
 (defun palette-items (workbench)
   "Return everything the palette can offer for WORKBENCH."
-  (append (mapcar (lambda (mode)
+  (append (mapcar (lambda (action)
+                    (destructuring-bind (label detail function) action
+                      (make-palette-item ':action label detail function)))
+                  (workbench-actions workbench))
+          (mapcar (lambda (mode)
                     (destructuring-bind (id label description) mode
                       (make-palette-item ':mode (format nil "Permissions: ~A" label)
                                          (format nil "permission mode ~A, ~A" id description) id)))
@@ -167,6 +189,8 @@ An empty QUERY returns the first LIMIT items unsorted."
     (when item
       (lightfast:hide (palette-window palette))
       (ecase (palette-item-kind item)
+        (:action
+         (funcall (palette-item-object item)))
         (:operation
          (workbench-invoke workbench (palette-item-object item)))
         (:conversation

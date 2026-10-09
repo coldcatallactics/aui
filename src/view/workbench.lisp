@@ -463,6 +463,18 @@ backend so the first events have somewhere to land."
                                  :conversation-id (conversation-entry-id entry))))
   nil)
 
+(-> workbench-restart (workbench) null)
+(defun workbench-restart (workbench)
+  "Start the backend again after it exited and reopen the current conversation.
+Events from the old connection are dropped by the generation check."
+  (let ((backend (workbench-backend workbench)))
+    (incf (backend-generation backend))
+    (setf (workbench-connection-state workbench) ':starting)
+    (workbench--refresh-status workbench)
+    (backend-start backend)
+    (backend-open-conversation backend :conversation-id (workbench-conversation-id workbench)))
+  nil)
+
 (-> workbench-close (workbench) null)
 (defun workbench-close (workbench)
   "Stop the backend and forget the workbench; the window closes with it."

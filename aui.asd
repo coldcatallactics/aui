@@ -24,7 +24,10 @@
       ((:file "markdown")
        (:file "document")
        (:file "transcript-view")
-       (:file "fixtures"))))))
+       (:file "workbench")
+       (:file "welcome")
+       (:file "fixtures")))
+     (:file "main"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests

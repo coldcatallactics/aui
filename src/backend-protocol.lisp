@@ -66,6 +66,34 @@ The answer is a STATE-EVENT, JOBS-EVENT or CATALOG-EVENT."))
 (defgeneric backend-job-action (backend job-id action &key text)
   (:documentation "Perform ACTION, a JOB-ACTION, on JOB-ID; :SEND delivers TEXT. Returns a request id."))
 
+(defvar *backend-factory* nil
+  "A function of DIRECTORY and QUEUE returning a started-capable BACKEND, installed
+by the backend module when it loads. NIL means no live backend is available.")
+
+(defvar *recent-conversations-function* nil
+  "A function of no arguments returning CONVERSATION-ENTRYs for the welcome
+screen, installed by the backend module. NIL means none can be listed.")
+
+(define-condition no-backend-available (error)
+  ()
+  (:report "No Autolith backend is installed in this build; only the demo can run.")
+  (:documentation "MAKE-BACKEND was called without a backend module loaded."))
+
+(-> make-backend (string ui-queue) backend)
+(defun make-backend (directory queue)
+  "Return a backend for DIRECTORY posting to QUEUE through *BACKEND-FACTORY*."
+  (unless *backend-factory*
+    (error 'no-backend-available))
+  (funcall *backend-factory* directory queue))
+
+(-> recent-conversations () list)
+(defun recent-conversations ()
+  "Return the conversations the welcome screen lists, most recent first, or
+nothing when no backend module supplies them."
+  (if *recent-conversations-function*
+      (conversations-by-recency (funcall *recent-conversations-function*))
+      nil))
+
 (defvar *request-counter* 0
   "The last request id handed out by MAKE-REQUEST-ID.")
 

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Capture the visible AUI window to PATH, using niri's window geometry and grim.
+# Usage: script/shot PATH
+
+set -euo pipefail
+path=${1:?usage: script/shot PATH}
+window=$(niri msg --json windows \
+  | jq -c '[.[] | select(.app_id == "aui" and .layout.tile_pos_in_workspace_view != null)][0]')
+if [[ -z "$window" || "$window" == "null" ]]; then
+  echo "no visible aui window" >&2
+  exit 1
+fi
+workspace=$(jq -r '.workspace_id' <<<"$window")
+output=$(niri msg --json workspaces | jq -r ".[] | select(.id == $workspace) | .output")
+read -r origin_x origin_y < <(niri msg --json outputs \
+  | jq -r ".[] | select(.name == \"$output\") | \"\(.logical.x) \(.logical.y)\"")
+read -r x y width height < <(jq -r '"\(.layout.tile_pos_in_workspace_view[0] | floor) \(.layout.tile_pos_in_workspace_view[1] | floor) \(.layout.tile_size[0] | floor) \(.layout.tile_size[1] | floor)"' <<<"$window")
+grim -g "$((origin_x + x)),$((origin_y + y)) ${width}x${height}" "$path"

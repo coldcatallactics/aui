@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Start AUI. Usage: script/run [DIRECTORY] [--conversation ID] [--demo] [--shot PATH]
+# [--demo-prompt TEXT]. Builds Lightfast's native bridge first when it is stale.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+lightfast=$(CDPATH= cd -P "$root/../lightfast" && pwd)
+make -s -C "$lightfast" native
+cd "$root"
+exec sbcl --noinform --non-interactive \
+  --eval "(asdf:load-system :aui)" \
+  --eval "(aui:main)" \
+  --end-toplevel-options "$@"

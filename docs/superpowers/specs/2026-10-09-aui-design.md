@@ -253,17 +253,29 @@ atomically.
 
 ```
 aui.asd                 systems aui, aui/tests
-script/run [DIR]        launch; builds Lightfast's bridge if stale
-script/check            FiveAM in one SBCL process, no display or credentials
+script/run [DIR] [--conversation ID] [--demo] [--open settings|palette]
+                        [--demo-prompt TEXT] [--shot PATH]
+                        launch; builds Lightfast's bridge if stale; --demo uses
+                        the scripted backend; --shot captures the window and exits
+script/shot PATH        capture the newest visible AUI window through niri and grim
+script/visual-transcript [--shot]  the sample transcript alone
+script/check [--suite S] FiveAM in one SBCL process, no display or credentials
 src/package.lisp        one package #:aui, :use #:cl only
 src/theme.lisp  src/transcript.lisp  src/events.lisp  src/catalog.lisp
+src/backend-protocol.lisp  the generics the views call; *backend-factory* and
+                        *recent-conversations-function* are installed by the
+                        backend module
 src/backend/{process,client,extensions,session,recent}.lisp      (AL)
-src/view/{welcome,workbench,transcript-view,composer,rail,
-          inspector,status,settings-sheet,palette,approvals}.lisp (Fable)
+src/view/{markdown,document,transcript-view,workbench,settings-sheet,
+          palette,welcome,fixtures}.lisp                          (Fable)
 src/main.lisp
 tests/*.lisp            same package
 docs/superpowers/specs/ this document
 ```
+
+The scripted backend in `src/view/fixtures.lisp` is the executable statement of
+the event contract: it plays connection, session, replay, turn, approval and
+catalog events in the order the views expect, and it drives the demo.
 
 Conventions are frob's `AGENTS.md`: one package, `->` type declarations,
 documented definitions, keyword arguments at four or more parameters,

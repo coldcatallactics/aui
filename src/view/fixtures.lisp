@@ -319,9 +319,14 @@
   nil)
 
 (defmethod backend-set-mode ((backend scripted-backend) mode-id)
-  (declare (ignore mode-id))
   (let ((request-id (make-request-id)))
-    (scripted--post backend 'result-event :request-id request-id :outcome ':unsupported)
+    (scripted--post backend 'state-event
+                    :snapshot (make-instance 'state-snapshot :workspace (backend-directory backend)
+                                                             :title "Flat theme for lightfast"
+                                                             :model "gpt-5.6-luna" :effort "low"
+                                                             :permission-mode (intern (string-upcase mode-id) :keyword)
+                                                             :turn-state ':idle))
+    (scripted--post backend 'result-event :request-id request-id :outcome ':ok)
     request-id))
 
 (defmethod backend-refresh ((backend scripted-backend) kind)

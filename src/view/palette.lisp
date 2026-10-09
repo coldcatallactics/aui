@@ -7,7 +7,7 @@
 
 (defstruct (palette-item (:constructor make-palette-item (kind label detail object)))
   "One thing the palette can find."
-  (kind ':operation :type (member :operation :conversation :setting :model))
+  (kind ':operation :type (member :operation :conversation :setting :model :mode))
   (label "" :type string)
   (detail "" :type string)
   (object nil))
@@ -43,10 +43,22 @@ and matches at word starts score more."
                      position (1+ found))))
     (- score (floor (length text) 16))))
 
+(defparameter *permission-modes*
+  '(("ask" "Ask before commands" "approve commands and external tools here")
+    ("auto" "Auto" "classify commands with the configured policy")
+    ("sandboxed" "Sandboxed" "run commands in the workspace sandbox")
+    ("full-access" "Full access" "allow commands and external tools without approval"))
+  "The ACP permission modes Autolith offers: id, label and description.")
+
 (-> palette-items (workbench) list)
 (defun palette-items (workbench)
   "Return everything the palette can offer for WORKBENCH."
-  (append (mapcar (lambda (operation)
+  (append (mapcar (lambda (mode)
+                    (destructuring-bind (id label description) mode
+                      (make-palette-item ':mode (format nil "Permissions: ~A" label)
+                                         (format nil "permission mode ~A, ~A" id description) id)))
+                  *permission-modes*)
+          (mapcar (lambda (operation)
                     (make-palette-item ':operation (operation-entry-name operation)
                                        (format nil "~A~A" (operation-entry-description operation)
                                                (cond
@@ -164,5 +176,7 @@ An empty QUERY returns the first LIMIT items unsorted."
          (workbench-show-settings workbench (palette-item-object item)))
         (:model
          (backend-set-setting (workbench-backend workbench) ':model
-                              (model-entry-id (palette-item-object item)))))))
+                              (model-entry-id (palette-item-object item))))
+        (:mode
+         (backend-set-mode (workbench-backend workbench) (palette-item-object item))))))
   nil)

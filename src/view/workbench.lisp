@@ -111,7 +111,7 @@ backend so the first events have somewhere to land."
                  approval-row approval-label composer send-button stop-button status-label
                  transcript-view)
         workbench
-      (setf folder-label (workbench--make-label window (backend-directory backend) ':prose-bold)
+      (setf folder-label (workbench--make-label window (backend-directory backend) ':prose-italic)
             title-label (workbench--make-label window "New conversation" ':prose)
             model-label (workbench--make-label window "" ':prose-italic)
             permission-label (workbench--make-label window "" ':prose-italic)
@@ -172,7 +172,9 @@ backend so the first events have somewhere to land."
                                                            (declare (ignore widget event value))
                                                            (workbench-stop workbench))))
       (setf status-label (workbench--make-label window "" ':prose-italic))
-      (lightfast:set-label-size status-label (- *prose-size* 1)))
+      (lightfast:set-label-size status-label (- *prose-size* 1))
+      (lightfast:set-label-size folder-label (- *prose-size* 1))
+      (lightfast:set-label-align status-label ':right ':inside ':clip))
     (lightfast:on window (lambda (widget event value)
                            (declare (ignore widget event value))
                            (workbench-close workbench))
@@ -205,18 +207,21 @@ backend so the first events have somewhere to land."
          (approval-row (workbench--approval-row workbench)))
     (if rail-p (lightfast:show rail) (lightfast:hide rail))
     (if approval-p (lightfast:show approval-row) (lightfast:hide approval-row))
+    (dolist (chip (list (workbench--model-label workbench) (workbench--permission-label workbench)))
+      (if (>= width *rail-breakpoint*) (lightfast:show chip) (lightfast:hide chip)))
     (if inspector-p
         (lightfast:show (inspector-group (workbench-inspector workbench)))
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
     (let* ((header (lightfast:make-layout-row
                     :basis *header-height* :shrink 0 :gap (spacing 4)
-                    :children (list (lightfast:make-layout-item (workbench--folder-label workbench) :basis 300 :shrink 1)
-                                    (lightfast:make-layout-item (workbench--title-label workbench) :basis 0 :grow 1)
-                                    (lightfast:make-layout-item (workbench--model-label workbench) :basis 220 :shrink 1)
-                                    (lightfast:make-layout-item (workbench--permission-label workbench) :basis 120 :shrink 1)
-                                    (lightfast:make-layout-item (workbench--state-label workbench) :basis 110 :shrink 0)
-                                    (lightfast:make-layout-item (workbench--commands-button workbench) :basis 110 :shrink 0)
-                                    (lightfast:make-layout-item (workbench--settings-button workbench) :basis 100 :shrink 0))))
+                    :children (append
+                               (list (lightfast:make-layout-item (workbench--title-label workbench) :basis 0 :grow 1 :min-width 200))
+                               (when (>= width *rail-breakpoint*)
+                                 (list (lightfast:make-layout-item (workbench--model-label workbench) :basis 200 :shrink 1)
+                                       (lightfast:make-layout-item (workbench--permission-label workbench) :basis 90 :shrink 1)))
+                               (list (lightfast:make-layout-item (workbench--state-label workbench) :basis 110 :shrink 0)
+                                     (lightfast:make-layout-item (workbench--commands-button workbench) :basis 110 :shrink 0)
+                                     (lightfast:make-layout-item (workbench--settings-button workbench) :basis 100 :shrink 0)))))
            (rail-layout (lightfast:make-layout-column
                          :target rail :basis 240 :shrink 0 :gap gap
                          :children (list (lightfast:make-layout-item (workbench--conversations-label workbench)
@@ -258,8 +263,12 @@ backend so the first events have somewhere to land."
            (layout (lightfast:make-layout-column
                     :padding (list margin (spacing 3) margin (spacing 3)) :gap gap
                     :children (list header body
-                                    (lightfast:make-layout-item (workbench--status-label workbench)
-                                                                :basis *status-height* :shrink 0)))))
+                                    (lightfast:make-layout-row
+                                     :basis *status-height* :shrink 0 :gap (spacing 4)
+                                     :children (list (lightfast:make-layout-item (workbench--folder-label workbench)
+                                                                                 :basis 0 :grow 1)
+                                                     (lightfast:make-layout-item (workbench--status-label workbench)
+                                                                                 :basis 0 :grow 2)))))))
       (lightfast:apply-layout layout (lightfast:make-rect :width width :height height) :parent window)))
   nil)
 

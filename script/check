@@ -13,6 +13,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 cd "$root"
+# UIOP from the Quicklisp dist is newer than the one SBCL bundles; loading it
+# first and quietly keeps hundreds of redefinition notes out of the output.
 exec sbcl --noinform --non-interactive \
+  --eval "(handler-bind ((warning (function muffle-warning))) (asdf:load-system :uiop))" \
   --eval "(asdf:load-system :aui/tests)" \
   --eval "(uiop:quit (if (aui:run-tests :suite (intern (string-upcase \"$suite\") :aui)) 0 1))"

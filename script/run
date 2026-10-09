@@ -7,7 +7,10 @@ root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lightfast=$(CDPATH= cd -P "$root/../lightfast" && pwd)
 make -s -C "$lightfast" native
 cd "$root"
+# UIOP from the Quicklisp dist is newer than the one SBCL bundles; loading it
+# first and quietly keeps hundreds of redefinition notes out of the output.
 exec sbcl --noinform --non-interactive \
+  --eval "(handler-bind ((warning (function muffle-warning))) (asdf:load-system :uiop))" \
   --eval "(asdf:load-system :aui)" \
   --eval "(aui:main)" \
   --end-toplevel-options "$@"

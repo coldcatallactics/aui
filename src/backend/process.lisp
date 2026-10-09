@@ -128,13 +128,26 @@
            (error (condition) (acp-backend--failure backend (first request) condition)))))
   nil)
 
+(defparameter *autolith-command* "autolith"
+  "The Autolith launcher the backend starts, found on the path unless it is an
+absolute pathname. The AUI_AUTOLITH environment variable overrides it, which is
+how a development build of Autolith is tested.")
+
+(-> autolith-command () string)
+(defun autolith-command ()
+  "Return the launcher to start, honoring AUI_AUTOLITH when it is set."
+  (let ((override (uiop:getenv "AUI_AUTOLITH")))
+    (if (and override (plusp (length override)))
+        override
+        *autolith-command*)))
+
 (-> acp-backend--launch (acp-backend) agentcomms:acp-channel)
 (defun acp-backend--launch (backend)
   "Launch only the requested pristine process, preserving the inherited environment."
   (agentcomms:acp-launch-agent
    "env" :arguments (list (format nil "AUTOLITH_MODEL=~A" (acp-backend-model backend))
                            (format nil "AUTOLITH_REASONING_EFFORT=~A" (acp-backend-effort backend))
-                           "autolith" "--pristine" "acp")
+                           (autolith-command) "--pristine" "acp")
    :directory (backend-directory backend)))
 
 (-> make-acp-backend (string ui-queue &key (:model string) (:effort string) (:launcher function)) acp-backend)

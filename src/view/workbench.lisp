@@ -563,9 +563,15 @@ backend so the first events have somewhere to land."
 
 (-> workbench--show-conversations (workbench list) null)
 (defun workbench--show-conversations (workbench entries)
-  "List ENTRIES in the rail, most recent first."
-  (let ((list (workbench--conversations-list workbench))
-        (sorted (conversations-by-recency entries)))
+  "List the ENTRIES belonging to this workspace in the rail, most recent first."
+  (let* ((list (workbench--conversations-list workbench))
+         (directory (namestring (uiop:ensure-directory-pathname (backend-directory (workbench-backend workbench)))))
+         (here (remove-if-not (lambda (entry)
+                                (string= directory
+                                         (namestring (uiop:ensure-directory-pathname
+                                                      (conversation-entry-directory entry)))))
+                              entries))
+         (sorted (conversations-by-recency here)))
     (setf (workbench-conversations workbench) sorted)
     (lightfast:clear list)
     (dolist (entry sorted)

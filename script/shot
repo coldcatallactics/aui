@@ -5,7 +5,7 @@
 set -euo pipefail
 path=${1:?usage: script/shot PATH}
 window=$(niri msg --json windows \
-  | jq -c '[.[] | select(.app_id == "aui" and .layout.tile_pos_in_workspace_view != null)][0]')
+  | jq -c '[.[] | select(.app_id == "aui" and .layout.tile_pos_in_workspace_view != null)] | sort_by(.id) | last')
 if [[ -z "$window" || "$window" == "null" ]]; then
   echo "no visible aui window" >&2
   exit 1

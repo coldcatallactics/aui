@@ -43,6 +43,18 @@
    (send-button         :reader workbench--send-button)
    (stop-button         :reader workbench--stop-button)
    (status-label        :reader workbench--status-label)
+   (commands-button     :reader workbench--commands-button)
+   (settings-button     :reader workbench--settings-button)
+   (sheet               :initform nil :accessor workbench--sheet
+                        :documentation "The SETTINGS-SHEET once opened, or NIL.")
+   (palette             :initform nil :accessor workbench--palette
+                        :documentation "The PALETTE once opened, or NIL.")
+   (settings            :initform nil :accessor workbench-settings
+                        :documentation "The SETTING-ENTRYs of the latest settings catalog.")
+   (models              :initform nil :accessor workbench-models
+                        :documentation "The MODEL-ENTRYs of the latest models catalog.")
+   (operations          :initform nil :accessor workbench-operations
+                        :documentation "The OPERATION-ENTRYs of the latest operations catalog.")
    (conversations       :initform nil :accessor workbench-conversations
                         :documentation "The CONVERSATION-ENTRYs shown in the rail, in list order.")
    (jobs                :initform nil :accessor workbench-jobs
@@ -101,6 +113,18 @@ backend so the first events have somewhere to land."
             state-label (workbench--make-label window "starting" ':prose-italic))
       (lightfast:set-label-align title-label ':left ':inside ':clip)
       (lightfast:set-label-align state-label ':right ':inside)
+      (setf (slot-value workbench 'commands-button)
+            (lightfast:make-button :parent window :label "Commands" :height *control-height*
+                                   :callback (lambda (widget event value)
+                                               (declare (ignore widget event value))
+                                               (workbench-show-palette workbench)))
+            (slot-value workbench 'settings-button)
+            (lightfast:make-button :parent window :label "Settings" :height *control-height*
+                                   :callback (lambda (widget event value)
+                                               (declare (ignore widget event value))
+                                               (workbench-show-settings workbench))))
+      (lightfast:set-tooltip (slot-value workbench 'commands-button) "Ctrl+K")
+      (lightfast:set-tooltip (slot-value workbench 'settings-button) "Ctrl+,")
       (setf rail (lightfast:make-group :parent window :width 240 :height 400))
       (setf conversations-label (workbench--make-label rail "Conversations here" ':prose-bold)
             conversations-list (lightfast:make-browser :parent rail :width 240 :height 200)
@@ -140,6 +164,10 @@ backend so the first events have somewhere to land."
                            (declare (ignore widget event value))
                            (workbench-close workbench))
                   :event lightfast:+event-close+)
+    (lightfast:on window (lambda (widget event value)
+                           (declare (ignore widget event))
+                           (workbench--window-key workbench value))
+                  :event lightfast:+event-key+)
     (lightfast:on-resize window (lambda (widget)
                                   (declare (ignore widget))
                                   (workbench--relayout workbench)))
@@ -168,7 +196,9 @@ backend so the first events have somewhere to land."
                                     (lightfast:make-layout-item (workbench--title-label workbench) :basis 0 :grow 1)
                                     (lightfast:make-layout-item (workbench--model-label workbench) :basis 220 :shrink 1)
                                     (lightfast:make-layout-item (workbench--permission-label workbench) :basis 120 :shrink 1)
-                                    (lightfast:make-layout-item (workbench--state-label workbench) :basis 120 :shrink 0))))
+                                    (lightfast:make-layout-item (workbench--state-label workbench) :basis 110 :shrink 0)
+                                    (lightfast:make-layout-item (workbench--commands-button workbench) :basis 110 :shrink 0)
+                                    (lightfast:make-layout-item (workbench--settings-button workbench) :basis 100 :shrink 0))))
            (rail-layout (lightfast:make-layout-column
                          :target rail :basis 240 :shrink 0 :gap gap
                          :children (list (lightfast:make-layout-item (workbench--conversations-label workbench)
@@ -261,7 +291,69 @@ backend so the first events have somewhere to land."
          (workbench-stop workbench))
         ((and control-p (<= (char-code #\1) key (char-code #\9)))
          (lightfast:consume-event)
-         (workbench-decide workbench (- key (char-code #\0)))))))
+         (workbench-decide workbench (- key (char-code #\0))))
+        ((workbench--global-key workbench key control-p)
+         (lightfast:consume-event)))))
+  nil)
+
+(-> workbench--global-key (workbench integer boolean) boolean)
+(defun workbench--global-key (workbench key control-p)
+  "Act on a shortcut that works anywhere in the window and return T when it did."
+  (cond
+    ((and control-p (eql key (char-code #\k)))
+     (workbench-show-palette workbench)
+     t)
+    ((and control-p (eql key (char-code #\,)))
+     (workbench-show-settings workbench)
+     t)
+    (t
+     nil)))
+
+(-> workbench--window-key (workbench string) null)
+(defun workbench--window-key (workbench value)
+  "Handle a key that no focused widget claimed."
+  (destructuring-bind (key state &rest rest) (parse-integers value)
+    (declare (ignore rest))
+    (when (workbench--global-key workbench key (logtest state *state-control*))
+      (lightfast:consume-event)))
+  nil)
+
+(-> workbench-show-settings (workbench &optional (or null setting-entry)) null)
+(defun workbench-show-settings (workbench &optional entry)
+  "Open the settings sheet, on ENTRY when given."
+  (let ((sheet (or (workbench--sheet workbench)
+                   (setf (workbench--sheet workbench) (make-settings-sheet workbench)))))
+    (settings-sheet-refresh sheet)
+    (when entry
+      (settings-sheet--show-entry sheet entry))
+    (lightfast:show (settings-sheet-window sheet)))
+  nil)
+
+(-> workbench-show-palette (workbench) null)
+(defun workbench-show-palette (workbench)
+  "Open the command palette."
+  (let ((palette (or (workbench--palette workbench)
+                     (setf (workbench--palette workbench) (make-palette workbench)))))
+    (palette-open palette))
+  nil)
+
+(-> workbench-invoke (workbench operation-entry) null)
+(defun workbench-invoke (workbench operation)
+  "Run OPERATION through the backend, asking for arguments when it takes any."
+  (cond
+    ((operation-entry-terminal-owning-p operation)
+     (transcript-notice (workbench-transcript workbench) :severity ':warning
+                        :text (format nil "~A needs a terminal and cannot run from here yet."
+                                      (operation-entry-name operation))))
+    ((not (operation-entry-admitted-p operation))
+     (transcript-notice (workbench-transcript workbench) :severity ':warning
+                        :text (format nil "~A cannot run while Autolith is busy." (operation-entry-name operation))))
+    (t
+     (let ((arguments (if (operation-entry-argument-schema operation)
+                          (lightfast:input-dialog (format nil "Arguments for ~A" (operation-entry-name operation)))
+                          "")))
+       (when arguments
+         (backend-invoke (workbench-backend workbench) (operation-entry-name operation) arguments)))))
   nil)
 
 (-> workbench-decide (workbench integer) null)
@@ -491,8 +583,17 @@ backend so the first events have somewhere to land."
   (workbench--show-jobs workbench))
 
 (defmethod apply-ui-event ((event catalog-event) (workbench workbench))
-  (when (eq (catalog-event-kind event) ':conversations)
-    (workbench--show-conversations workbench (catalog-event-items event))))
+  (ecase (catalog-event-kind event)
+    (:conversations
+     (workbench--show-conversations workbench (catalog-event-items event)))
+    (:settings
+     (setf (workbench-settings workbench) (catalog-event-items event))
+     (when (workbench--sheet workbench)
+       (settings-sheet-refresh (workbench--sheet workbench))))
+    (:models
+     (setf (workbench-models workbench) (catalog-event-items event)))
+    (:operations
+     (setf (workbench-operations workbench) (catalog-event-items event)))))
 
 (defmethod apply-ui-event ((event result-event) (workbench workbench))
   (case (result-event-outcome event)

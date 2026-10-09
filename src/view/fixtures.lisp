@@ -91,8 +91,62 @@
                                              :created-at (- now 200000) :last-activity-at (- now 190000)
                                              :user-turn-count 5))))
 
+(-> sample-settings () list)
+(defun sample-settings ()
+  "Return setting entries for the demo settings sheet."
+  (list (make-instance 'setting-entry :name ':model :label "Model" :group "Model"
+                                      :documentation "The model that answers prompts in this session."
+                                      :type ':choice :options '("gpt-5.6-luna" "gpt-6-astra" "claude-haiku-4-5")
+                                      :value "gpt-5.6-luna" :source ':override :scope ':durable :adjustable-p t)
+        (make-instance 'setting-entry :name ':reasoning-effort :label "Reasoning effort" :group "Model"
+                                      :documentation "How long the model may think before answering."
+                                      :type ':choice :options '("low" "medium" "high" "max")
+                                      :value "low" :source ':environment :scope ':durable :adjustable-p t)
+        (make-instance 'setting-entry :name ':reasoning-traces-p :label "Show reasoning" :group "Transcript"
+                                      :documentation "Whether visible reasoning is streamed into the transcript."
+                                      :type ':boolean :value t :source ':default :scope ':durable :adjustable-p t)
+        (make-instance 'setting-entry :name ':compaction-threshold-percent :label "Compaction threshold" :group "Context"
+                                      :documentation "Context occupancy, in percent, at which compaction runs."
+                                      :type ':integer :value 80 :source ':default :scope ':durable :adjustable-p t)
+        (make-instance 'setting-entry :name ':permission-mode :label "Permission mode" :group "Permissions"
+                                      :documentation "How commands and external tools are authorized."
+                                      :type ':choice :options '("ask" "auto" "sandbox" "full")
+                                      :value "ask" :source ':override :scope ':durable :adjustable-p t)
+        (make-instance 'setting-entry :name ':immutable-p :label "Immutable" :group "Process"
+                                      :documentation "Whether source and configuration mutation is disabled."
+                                      :type ':boolean :value nil :source ':default :scope ':process
+                                      :adjustable-p nil :reason "fixed for the life of the process")))
+
+(-> sample-operations () list)
+(defun sample-operations ()
+  "Return operation entries for the demo palette."
+  (list (make-instance 'operation-entry :name "/compact" :kind ':command :description "compact the conversation now"
+                                        :admitted-p t)
+        (make-instance 'operation-entry :name "/new" :kind ':command :description "start a new conversation here"
+                                        :admitted-p t)
+        (make-instance 'operation-entry :name "/tasks" :kind ':command :description "list owned live and durable work"
+                                        :admitted-p t)
+        (make-instance 'operation-entry :name "/settings" :kind ':command :description "open the settings picker"
+                                        :admitted-p t :terminal-owning-p t)
+        (make-instance 'operation-entry :name "plan.list" :kind ':tool :description "show the workspace plan"
+                                        :admitted-p t)
+        (make-instance 'operation-entry :name "lisp.paren-check" :kind ':tool :description "check delimiters in a source tree"
+                                        :argument-schema '(:path :string) :admitted-p t)
+        (make-instance 'operation-entry :name "self.status" :kind ':tool :description "report live mutation state"
+                                        :admitted-p nil)))
+
+(-> sample-models () list)
+(defun sample-models ()
+  "Return model entries for the demo."
+  (list (make-instance 'model-entry :id "gpt-5.6-luna" :provider "chatgpt" :credential-p t :verified-p t
+                                    :context-window 400000)
+        (make-instance 'model-entry :id "gpt-6-astra" :provider "chatgpt" :credential-p t :verified-p t
+                                    :context-window 1000000)
+        (make-instance 'model-entry :id "claude-haiku-4-5" :provider "anthropic" :credential-p nil)))
+
 (defclass scripted-backend (backend)
-  ((lock      :initform (bordeaux-threads:make-lock "scripted backend") :reader scripted--lock)
+  ((settings  :initform (sample-settings) :accessor scripted--settings)
+   (lock      :initform (bordeaux-threads:make-lock "scripted backend") :reader scripted--lock)
    (waiter    :initform (bordeaux-threads:make-condition-variable) :reader scripted--waiter)
    (decision  :initform nil :accessor scripted--decision)
    (cancel-p  :initform nil :accessor scripted--cancel-p)
@@ -137,6 +191,9 @@
   (scripted--post backend 'connection-event :state ':starting)
   (scripted--post backend 'connection-event :state ':ready)
   (scripted--post backend 'catalog-event :kind ':conversations :items (sample-conversations))
+  (scripted--post backend 'catalog-event :kind ':settings :items (scripted--settings backend))
+  (scripted--post backend 'catalog-event :kind ':operations :items (sample-operations))
+  (scripted--post backend 'catalog-event :kind ':models :items (sample-models))
   (scripted--post backend 'jobs-event :kind ':snapshot
                                       :jobs (list (make-instance 'job-entry :id "job-1" :role "reviewer"
                                                                             :state ':running :elapsed-seconds 42)))
@@ -274,15 +331,36 @@
     request-id))
 
 (defmethod backend-set-setting ((backend scripted-backend) name value)
-  (declare (ignore name value))
-  (let ((request-id (make-request-id)))
-    (scripted--post backend 'result-event :request-id request-id :outcome ':unsupported)
+  (let ((request-id (make-request-id))
+        (entry (find name (scripted--settings backend) :key #'setting-entry-name)))
+    (cond
+      ((and entry (setting-entry-adjustable-p entry))
+       (setf (scripted--settings backend)
+             (substitute (make-instance 'setting-entry
+                                        :name name :label (setting-entry-label entry)
+                                        :documentation (setting-entry-documentation entry)
+                                        :group (setting-entry-group entry) :type (setting-entry-type entry)
+                                        :options (setting-entry-options entry)
+                                        :value (case (setting-entry-type entry)
+                                                 (:boolean (string= value "on"))
+                                                 (:integer (or (parse-integer value :junk-allowed t) 0))
+                                                 (t value))
+                                        :source ':session :scope (setting-entry-scope entry) :adjustable-p t)
+                         entry (scripted--settings backend)))
+       (scripted--post backend 'catalog-event :kind ':settings :items (scripted--settings backend))
+       (scripted--post backend 'result-event :request-id request-id :outcome ':ok))
+      (t
+       (scripted--post backend 'result-event :request-id request-id :outcome ':condition
+                                             :condition-type "configuration-error"
+                                             :report (format nil "~(~A~) cannot be changed here." name))))
     request-id))
 
 (defmethod backend-invoke ((backend scripted-backend) operation arguments)
-  (declare (ignore operation arguments))
   (let ((request-id (make-request-id)))
-    (scripted--post backend 'result-event :request-id request-id :outcome ':unsupported)
+    (scripted--post backend 'transcript-event :operation ':notice
+                                              :arguments (list ':text (format nil "Ran ~A~@[ with ~A~]" operation
+                                                                              (and (plusp (length arguments)) arguments))))
+    (scripted--post backend 'result-event :request-id request-id :outcome ':ok)
     request-id))
 
 (defmethod backend-job-action ((backend scripted-backend) job-id action &key text)

@@ -53,7 +53,7 @@ show the workbench and return it."
 (-> parse-arguments (list) list)
 (defun parse-arguments (arguments)
   "Return a plist from command line ARGUMENTS: :DIRECTORY, :CONVERSATION-ID,
-:DEMO-P, :SHOT-PATH and :DEMO-PROMPT."
+:DEMO-P, :SHOT-PATH, :DEMO-PROMPT and :OPEN-VIEW."
   (let ((result nil))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -62,6 +62,7 @@ show the workbench and return it."
                  ((string= argument "--conversation") (setf (getf result ':conversation-id) (pop arguments)))
                  ((string= argument "--shot") (setf (getf result ':shot-path) (pop arguments)))
                  ((string= argument "--demo-prompt") (setf (getf result ':demo-prompt) (pop arguments)))
+                 ((string= argument "--open") (setf (getf result ':open-view) (intern (string-upcase (pop arguments)) :keyword)))
                  ((and (plusp (length argument)) (char= #\- (char argument 0)))
                   (error "Unknown option ~A." argument))
                  (t (setf (getf result ':directory) argument)))))
@@ -71,8 +72,9 @@ show the workbench and return it."
 (defun main (&key (arguments (uiop:command-line-arguments)))
   "Run AUI. With a directory argument, open a workspace there at once;
 otherwise show the welcome window. --conversation ID resumes a conversation,
---demo uses the scripted backend, --shot PATH captures the screen and exits."
-  (destructuring-bind (&key directory conversation-id demo-p shot-path demo-prompt)
+--demo uses the scripted backend, --open settings or --open palette opens that
+view, and --shot PATH captures the window and exits."
+  (destructuring-bind (&key directory conversation-id demo-p shot-path demo-prompt open-view)
       (parse-arguments arguments)
     (lightfast:load-library)
     (lightfast:enable-thread-wakeups)
@@ -87,7 +89,12 @@ otherwise show the welcome window. --conversation ID resumes a conversation,
            (when demo-prompt
              (lightfast:add-timeout 1.0 (lambda ()
                                           (setf (lightfast:value (workbench-composer workbench)) demo-prompt)
-                                          (workbench-send workbench))))))
+                                          (workbench-send workbench))))
+           (when open-view
+             (lightfast:add-timeout 0.5 (lambda ()
+                                          (ecase open-view
+                                            (:settings (workbench-show-settings workbench))
+                                            (:palette (workbench-show-palette workbench))))))))
         (t
          (show-welcome)))
       (when shot-path

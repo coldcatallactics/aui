@@ -21,7 +21,8 @@
      (:module "view"
       :serial t
       :components
-      ((:file "markdown"))))))
+      ((:file "markdown")
+       (:file "document"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests
@@ -37,7 +38,8 @@
      (:file "transcript-tests")
      (:file "events-tests")
      (:file "catalog-tests")
-     (:file "markdown-tests"))))
+     (:file "markdown-tests")
+     (:file "document-tests"))))
   :perform (asdf:test-op (operation component)
              (declare (ignore operation component))
              (unless (uiop:symbol-call '#:aui '#:run-tests)

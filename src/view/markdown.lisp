@@ -6,14 +6,14 @@
 ;;; of text with a style name. The transcript view turns the style names into
 ;;; style table indices. Pure functions; no widgets.
 
-(deftype run-style ()
-  "The typographic roles a run can take."
+(deftype markdown-style ()
+  "The typographic roles Markdown itself produces; the document adds more."
   '(member :body :bold :italic :bold-italic :code :code-block :heading :link :bullet))
 
 (defstruct (run (:constructor make-run (text style &optional url)))
-  "One stretch of text in one style; URL is set for links."
+  "One stretch of text in one style named by a keyword; URL is set for links."
   (text "" :type string)
-  (style ':body :type run-style)
+  (style ':body :type keyword)
   (url nil))
 
 (-> markdown-fence-p (string) boolean)
@@ -70,7 +70,7 @@ value is NIL when LINE is not a list item."
             (push (make-run (run-text run) (run-style run) (run-url run)) merged))))
     (nreverse merged)))
 
-(-> markdown--emphasis-style (integer (member :body :heading)) run-style)
+(-> markdown--emphasis-style (integer (member :body :heading)) markdown-style)
 (defun markdown--emphasis-style (asterisks base)
   "Return the style for text inside ASTERISKS markers, one or two, on BASE."
   (if (eq base ':heading)

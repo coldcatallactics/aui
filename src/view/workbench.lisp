@@ -66,6 +66,12 @@
                         :documentation "The JOB-ENTRYs shown in the rail, in list order.")
    (pending-approval    :initform nil :accessor workbench-pending-approval
                         :documentation "The APPROVAL block awaiting the user, or NIL.")
+   (conversation-id     :initform nil :accessor workbench-conversation-id
+                        :documentation "The open conversation's id, or NIL before one is ready.")
+   (drafts              :initform (make-hash-table :test 'equal) :reader workbench--drafts
+                        :documentation "Composer text kept per conversation id across switches.")
+   (countdown-timer     :initform nil :accessor workbench--countdown-timer
+                        :documentation "The repeating timeout refreshing the approval countdown, or NIL.")
    (connection-state    :initform ':starting :accessor workbench-connection-state)
    (session-state       :initform ':closed :accessor workbench-session-state)
    (turn-state          :initform ':idle :accessor workbench-turn-state)
@@ -467,6 +473,24 @@ backend so the first events have somewhere to land."
   nil)
 
 
+;;; Drafts
+
+(-> workbench--save-draft (workbench) null)
+(defun workbench--save-draft (workbench)
+  "Keep the composer text for the open conversation."
+  (let ((id (workbench-conversation-id workbench)))
+    (when id
+      (setf (gethash id (workbench--drafts workbench)) (lightfast:value (workbench-composer workbench)))))
+  nil)
+
+(-> workbench--restore-draft (workbench) null)
+(defun workbench--restore-draft (workbench)
+  "Put back the draft kept for the open conversation, or clear the composer."
+  (setf (lightfast:value (workbench-composer workbench))
+        (or (gethash (workbench-conversation-id workbench) (workbench--drafts workbench)) ""))
+  nil)
+
+
 ;;; Presenting state
 
 (-> workbench--refresh-status (workbench) null)
@@ -474,12 +498,16 @@ backend so the first events have somewhere to land."
   "Rewrite the status line and the header state word from current state."
   (let* ((snapshot (workbench-snapshot workbench))
          (fraction (and snapshot (state-snapshot-context-fraction snapshot)))
-         (approvals (length (transcript-pending-approvals (workbench-transcript workbench))))
+         (pending (workbench-pending-approval workbench))
+         (remaining (and pending (approval-deadline pending)
+                         (max 0 (- (approval-deadline pending) (get-universal-time)))))
          (connection (string-downcase (symbol-name (workbench-connection-state workbench))))
          (turn (string-downcase (symbol-name (workbench-turn-state workbench)))))
     (setf (lightfast:label (workbench--status-label workbench))
-          (format nil "~A · ~A~@[ · context ~D percent~]~[~; · 1 approval waiting~:; · ~:*~D approvals waiting~]"
-                  connection turn (and fraction (round (* 100 fraction))) approvals))
+          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]~:[~; · scrolled up, End follows~]"
+                  connection turn (and fraction (round (* 100 fraction)))
+                  pending remaining
+                  (not (transcript-view-follow-p (workbench-transcript-view workbench)))))
     (setf (lightfast:label (workbench--state-label workbench))
           (cond
             ((member (workbench-connection-state workbench) '(:lost :exited)) connection)
@@ -514,6 +542,9 @@ backend so the first events have somewhere to land."
         (format nil "Approval needed: ~A" (approval-title approval)))
   (workbench--relayout workbench)
   (workbench--refresh-status workbench)
+  (unless (workbench--countdown-timer workbench)
+    (setf (workbench--countdown-timer workbench)
+          (lightfast:add-timeout 1.0 (lambda () (workbench--refresh-status workbench)) :repeat t)))
   nil)
 
 (-> workbench--clear-approval (workbench) null)
@@ -523,6 +554,9 @@ backend so the first events have somewhere to land."
   (dolist (button (workbench--approval-buttons workbench))
     (lightfast:destroy button))
   (setf (workbench--approval-buttons workbench) nil)
+  (when (workbench--countdown-timer workbench)
+    (lightfast:remove-timeout (workbench--countdown-timer workbench))
+    (setf (workbench--countdown-timer workbench) nil))
   (workbench--relayout workbench)
   (workbench--refresh-status workbench)
   nil)
@@ -596,6 +630,7 @@ backend so the first events have somewhere to land."
   (setf (workbench-session-state workbench) (session-event-state event))
   (ecase (session-event-state event)
     (:loading
+     (workbench--save-draft workbench)
      (transcript-reset (workbench-transcript workbench))
      (transcript-begin-replay (workbench-transcript workbench))
      (setf (lightfast:label (workbench--title-label workbench))
@@ -603,10 +638,13 @@ backend so the first events have somewhere to land."
     (:ready
      (transcript-end-replay (workbench-transcript workbench))
      (transcript-view-jump-to-end (workbench-transcript-view workbench))
+     (setf (workbench-conversation-id workbench) (session-event-conversation-id event))
+     (workbench--restore-draft workbench)
      (setf (lightfast:label (workbench--title-label workbench))
            (or (session-event-title event) "New conversation")))
     (:closed
-     nil))
+     (workbench--save-draft workbench)
+     (setf (workbench-conversation-id workbench) nil)))
   (workbench--refresh-status workbench))
 
 (defmethod apply-ui-event ((event turn-event) (workbench workbench))

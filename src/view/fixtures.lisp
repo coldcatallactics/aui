@@ -277,6 +277,7 @@
       (scripted--post backend 'approval-event :request-id (format nil "approval-~D" turn) :call-id call-id
                                               :title "shell.run" :arguments "./script/check"
                                               :directory (backend-directory backend)
+                                              :deadline (+ (get-universal-time) 120)
                                               :options '(("once" "Allow once" :allow-once)
                                                          ("session" "Allow exact operation this session" :allow-always)
                                                          ("deny" "Reject" :reject-once)))

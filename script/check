@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Run the AUI test suite in one SBCL process. Pass --suite NAME to select a suite.
+
+set -euo pipefail
+
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+suite=aui
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --suite) suite=$2; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 64 ;;
+  esac
+done
+
+cd "$root"
+exec sbcl --noinform --non-interactive \
+  --eval "(asdf:load-system :aui/tests)" \
+  --eval "(uiop:quit (if (aui:run-tests :suite (intern (string-upcase \"$suite\") :aui)) 0 1))"

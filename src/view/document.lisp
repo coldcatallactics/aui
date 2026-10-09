@@ -222,11 +222,25 @@ its style index in the display's style table.")
 
 ;;; Spans
 
-(defstruct (block-span (:constructor make-block-span (block-id start end)))
-  "The byte range a block occupies in the display."
+(defstruct (block-span (:constructor make-block-span (block-id start end &optional links)))
+  "The byte range a block occupies in the display, and the links inside it
+as (START END URL) byte ranges."
   (block-id "" :type string)
   (start 0 :type integer)
-  (end 0 :type integer))
+  (end 0 :type integer)
+  (links nil :type list))
+
+(-> runs-links (list integer) list)
+(defun runs-links (runs start)
+  "Return (START END URL) byte ranges for the link runs in RUNS placed at START."
+  (let ((position start)
+        (links nil))
+    (dolist (run runs)
+      (let ((length (lightfast:string-byte-length (run-text run))))
+        (when (run-url run)
+          (push (list position (+ position length) (run-url run)) links))
+        (incf position length)))
+    (nreverse links)))
 
 (-> runs-byte-length (list) integer)
 (defun runs-byte-length (runs)
@@ -257,7 +271,8 @@ its style index in the display's style table.")
   (let* ((runs (block-runs block))
          (start (document-length document)))
     (vector-push-extend (make-block-span (transcript-block-id block) start
-                                         (+ start (runs-byte-length runs)))
+                                         (+ start (runs-byte-length runs))
+                                         (runs-links runs start))
                         (document-spans document))
     runs))
 
@@ -281,12 +296,25 @@ and END to replace. Later spans shift by the change in length."
            (runs (block-runs block))
            (new-end (+ start (runs-byte-length runs)))
            (shift (- new-end old-end)))
-      (setf (block-span-end span) new-end)
+      (setf (block-span-end span) new-end
+            (block-span-links span) (runs-links runs start))
       (loop for index from (1+ position) below (length spans)
             for later = (aref spans index)
             do (incf (block-span-start later) shift)
-               (incf (block-span-end later) shift))
+               (incf (block-span-end later) shift)
+               (setf (block-span-links later)
+                     (mapcar (lambda (link)
+                               (list (+ (first link) shift) (+ (second link) shift) (third link)))
+                             (block-span-links later))))
       (values runs start old-end))))
+
+(-> document-link-at (document integer) (or null string))
+(defun document-link-at (document byte-position)
+  "Return the url of the link under BYTE-POSITION, or NIL."
+  (loop for span across (document-spans document)
+        do (loop for (start end url) in (block-span-links span)
+                 when (and (<= start byte-position) (< byte-position end))
+                   do (return-from document-link-at url))))
 
 (-> document-block-at (document integer) (or null string))
 (defun document-block-at (document byte-position)

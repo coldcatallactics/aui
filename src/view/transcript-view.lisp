@@ -127,6 +127,8 @@
          (funcall (transcript-view-on-context view) block-id))
         ((/= button 1)
          nil)
+        ((and position (document-link-at document position))
+         (open-url (document-link-at document position)))
         ((and block-id
               (= (lightfast:text-line-of-position display position)
                  (lightfast:text-line-of-position
@@ -147,6 +149,12 @@
 
 (defparameter *key-end* #xff57
   "FLTK's key number for End.")
+
+(-> open-url (string) null)
+(defun open-url (url)
+  "Open URL with the desktop's handler, without waiting for it."
+  (uiop:launch-program (list "xdg-open" url) :output nil :error-output nil)
+  nil)
 
 (-> transcript-view--key (transcript-view string) null)
 (defun transcript-view--key (view value)

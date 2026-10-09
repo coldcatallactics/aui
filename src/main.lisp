@@ -68,12 +68,24 @@ show the workbench and return it."
                  (t (setf (getf result ':directory) argument)))))
     result))
 
+(-> open-view (workbench keyword) null)
+(defun open-view (workbench view)
+  "Open VIEW, one of :SETTINGS, :PALETTE or :INSPECTOR, on WORKBENCH."
+  (ecase view
+    (:settings (workbench-show-settings workbench))
+    (:palette (workbench-show-palette workbench))
+    (:inspector
+     (let ((block (transcript-last-block (workbench-transcript workbench) 'tool-call)))
+       (when block
+         (workbench-inspect-block workbench (transcript-block-id block))))))
+  nil)
+
 (-> main (&key (:arguments list)) null)
 (defun main (&key (arguments (uiop:command-line-arguments)))
   "Run AUI. With a directory argument, open a workspace there at once;
 otherwise show the welcome window. --conversation ID resumes a conversation,
---demo uses the scripted backend, --open settings or --open palette opens that
-view, and --shot PATH captures the window and exits."
+--demo uses the scripted backend, --open settings, palette or inspector opens
+that view, and --shot PATH captures the window and exits."
   (destructuring-bind (&key directory conversation-id demo-p shot-path demo-prompt open-view)
       (parse-arguments arguments)
     (lightfast:load-library)
@@ -91,10 +103,7 @@ view, and --shot PATH captures the window and exits."
                                           (setf (lightfast:value (workbench-composer workbench)) demo-prompt)
                                           (workbench-send workbench))))
            (when open-view
-             (lightfast:add-timeout 0.5 (lambda ()
-                                          (ecase open-view
-                                            (:settings (workbench-show-settings workbench))
-                                            (:palette (workbench-show-palette workbench))))))))
+             (lightfast:add-timeout 0.5 (lambda () (open-view workbench open-view))))))
         (t
          (show-welcome)))
       (when shot-path

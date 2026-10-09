@@ -9,6 +9,9 @@
 (defparameter *rail-breakpoint* 1100
   "Window width in pixels below which the rail is hidden.")
 
+(defparameter *inspector-breakpoint* 1500
+  "Window width in pixels below which an open inspector replaces the rail.")
+
 (defparameter *header-height* 36
   "Height of the header row in pixels.")
 
@@ -45,6 +48,8 @@
    (status-label        :reader workbench--status-label)
    (commands-button     :reader workbench--commands-button)
    (settings-button     :reader workbench--settings-button)
+   (inspector           :reader workbench-inspector)
+   (inspector-visible-p :initform nil :accessor workbench-inspector-visible-p :type boolean)
    (sheet               :initform nil :accessor workbench--sheet
                         :documentation "The SETTINGS-SHEET once opened, or NIL.")
    (palette             :initform nil :accessor workbench--palette
@@ -137,8 +142,16 @@ backend so the first events have somewhere to land."
                       (declare (ignore widget event value))
                       (workbench--conversation-chosen workbench))
                     :event lightfast:+event-change+)
+      (lightfast:on jobs-list
+                    (lambda (widget event value)
+                      (declare (ignore widget event value))
+                      (workbench--job-chosen workbench))
+                    :event lightfast:+event-change+)
       (setf transcript-view (make-transcript-view (workbench-transcript workbench)
                                                   :parent window :width 600 :height 400))
+      (setf (transcript-view-on-context transcript-view)
+            (lambda (block-id) (workbench--block-menu workbench block-id)))
+      (setf (slot-value workbench 'inspector) (make-inspector workbench window))
       (setf approval-row (lightfast:make-group :parent window :width 600 :height *control-height*))
       (setf approval-label (workbench--make-label approval-row "" ':prose-bold))
       (setf composer (lightfast:make-text-editor :parent window :width 600 :height *composer-height*))
@@ -182,7 +195,9 @@ backend so the first events have somewhere to land."
   (let* ((window (workbench-window workbench))
          (width (progn (lightfast:refresh-geometry window) (lightfast:widget-width window)))
          (height (lightfast:widget-height window))
-         (rail-p (>= width *rail-breakpoint*))
+         (inspector-p (workbench-inspector-visible-p workbench))
+         (rail-p (and (>= width *rail-breakpoint*)
+                      (or (not inspector-p) (>= width *inspector-breakpoint*))))
          (approval-p (and (workbench-pending-approval workbench) t))
          (gap (spacing 3))
          (margin (spacing 5))
@@ -190,6 +205,9 @@ backend so the first events have somewhere to land."
          (approval-row (workbench--approval-row workbench)))
     (if rail-p (lightfast:show rail) (lightfast:hide rail))
     (if approval-p (lightfast:show approval-row) (lightfast:hide approval-row))
+    (if inspector-p
+        (lightfast:show (inspector-group (workbench-inspector workbench)))
+        (lightfast:hide (inspector-group (workbench-inspector workbench))))
     (let* ((header (lightfast:make-layout-row
                     :basis *header-height* :shrink 0 :gap (spacing 4)
                     :children (list (lightfast:make-layout-item (workbench--folder-label workbench) :basis 300 :shrink 1)
@@ -234,7 +252,9 @@ backend so the first events have somewhere to land."
                                       (list composer-row))))
            (body (lightfast:make-layout-row
                   :basis 0 :grow 1 :gap (spacing 5)
-                  :children (if rail-p (list rail-layout center) (list center))))
+                  :children (append (when rail-p (list rail-layout))
+                                    (list center)
+                                    (when inspector-p (list (inspector-layout (workbench-inspector workbench)))))))
            (layout (lightfast:make-layout-column
                     :padding (list margin (spacing 3) margin (spacing 3)) :gap gap
                     :children (list header body
@@ -306,8 +326,59 @@ backend so the first events have somewhere to land."
     ((and control-p (eql key (char-code #\,)))
      (workbench-show-settings workbench)
      t)
+    ((and control-p (eql key (char-code #\i)))
+     (workbench-toggle-inspector workbench)
+     t)
     (t
      nil)))
+
+(-> workbench-toggle-inspector (workbench) null)
+(defun workbench-toggle-inspector (workbench)
+  "Show or hide the inspector pane."
+  (setf (workbench-inspector-visible-p workbench) (not (workbench-inspector-visible-p workbench)))
+  (workbench--relayout workbench)
+  nil)
+
+(-> workbench-inspect-block (workbench string) null)
+(defun workbench-inspect-block (workbench block-id)
+  "Open the inspector on the tool call BLOCK-ID."
+  (let ((block (transcript-find (workbench-transcript workbench) block-id)))
+    (when (typep block 'tool-call)
+      (inspector-show-tool-call (workbench-inspector workbench) block)
+      (setf (workbench-inspector-visible-p workbench) t)
+      (workbench--relayout workbench)))
+  nil)
+
+(-> workbench--block-menu (workbench string) null)
+(defun workbench--block-menu (workbench block-id)
+  "Offer the actions for the block BLOCK-ID under the pointer."
+  (let* ((block (transcript-find (workbench-transcript workbench) block-id))
+         (view (workbench-transcript-view workbench))
+         (items (append (list (if (transcript-block-collapsed-p block) "Expand" "Collapse"))
+                        (when (typep block 'tool-call) (list "Inspect"))
+                        (list "Copy text")))
+         (choice (lightfast:popup-menu items)))
+    (when choice
+      (let ((item (nth choice items)))
+        (cond
+          ((member item '("Expand" "Collapse") :test #'string=)
+           (transcript-view-toggle view block-id))
+          ((string= item "Inspect")
+           (workbench-inspect-block workbench block-id))
+          ((string= item "Copy text")
+           (lightfast:copy-text (transcript-view-block-text view block-id)))))))
+  nil)
+
+(-> workbench--job-chosen (workbench) null)
+(defun workbench--job-chosen (workbench)
+  "Open the inspector on the job selected in the rail."
+  (let* ((index (first (lightfast:browser-selected-indices (workbench--jobs-list workbench))))
+         (job (and index (nth index (workbench-jobs workbench)))))
+    (when job
+      (inspector-show-job (workbench-inspector workbench) job)
+      (setf (workbench-inspector-visible-p workbench) t)
+      (workbench--relayout workbench)))
+  nil)
 
 (-> workbench--window-key (workbench string) null)
 (defun workbench--window-key (workbench value)
@@ -544,6 +615,11 @@ backend so the first events have somewhere to land."
 
 (defmethod apply-ui-event ((event transcript-event) (workbench workbench))
   (transcript-event-apply event (workbench-transcript workbench))
+  (let ((subject (inspector-subject (workbench-inspector workbench))))
+    (when (and (typep subject 'tool-call)
+               (eq (transcript-event-operation event) ':update-tool-call)
+               (equal (tool-call-call-id subject) (getf (transcript-event-arguments event) ':call-id)))
+      (inspector-show-tool-call (workbench-inspector workbench) subject)))
   (when (eq (transcript-event-operation event) ':decide-approval)
     (let ((pending (workbench-pending-approval workbench)))
       (when (and pending
@@ -580,7 +656,12 @@ backend so the first events have somewhere to land."
                                         :key #'job-entry-id :test #'equal)))
                             (workbench-jobs workbench))))
        (setf (workbench-jobs workbench) (append jobs (jobs-event-jobs event))))))
-  (workbench--show-jobs workbench))
+  (workbench--show-jobs workbench)
+  (let ((subject (inspector-subject (workbench-inspector workbench))))
+    (when (typep subject 'job-entry)
+      (let ((current (find (job-entry-id subject) (workbench-jobs workbench) :key #'job-entry-id :test #'equal)))
+        (when (and current (not (eq current subject)))
+          (inspector-show-job (workbench-inspector workbench) current))))))
 
 (defmethod apply-ui-event ((event catalog-event) (workbench workbench))
   (ecase (catalog-event-kind event)

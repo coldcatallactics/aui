@@ -13,7 +13,9 @@
    (display    :initarg :display :reader transcript-view-display
                :documentation "The Lightfast text display widget.")
    (follow-p   :initform t :accessor transcript-view-follow-p :type boolean
-               :documentation "Whether appends scroll the end into view."))
+               :documentation "Whether appends scroll the end into view.")
+   (on-context :initform nil :accessor transcript-view-on-context
+               :documentation "Called with the block id under a right click, or NIL to ignore them."))
   (:documentation "A transcript rendered into one text display."))
 
 (-> document-style-table () list)
@@ -116,21 +118,32 @@
   "Handle a mouse press described by VALUE, Lightfast's x y button dx dy state."
   (destructuring-bind (x y button &rest rest) (parse-integers value)
     (declare (ignore rest))
-    (when (= button 1)
-      (let* ((display (transcript-view-display view))
-             (position (lightfast:text-position-at display x y))
-             (document (transcript-view-document view))
-             (block-id (and position (document-block-at document position))))
-        (cond
-          ((and block-id
-                (= (lightfast:text-line-of-position display position)
-                   (lightfast:text-line-of-position
-                    display (block-span-start (document-span document block-id)))))
-           (transcript-view-toggle view block-id))
-          (t
-           ;; A click into the body means the reader is here, not at the end.
-           (setf (transcript-view-follow-p view) nil))))))
+    (let* ((display (transcript-view-display view))
+           (position (lightfast:text-position-at display x y))
+           (document (transcript-view-document view))
+           (block-id (and position (document-block-at document position))))
+      (cond
+        ((and (= button 3) block-id (transcript-view-on-context view))
+         (funcall (transcript-view-on-context view) block-id))
+        ((/= button 1)
+         nil)
+        ((and block-id
+              (= (lightfast:text-line-of-position display position)
+                 (lightfast:text-line-of-position
+                  display (block-span-start (document-span document block-id)))))
+         (transcript-view-toggle view block-id))
+        (t
+         ;; A click into the body means the reader is here, not at the end.
+         (setf (transcript-view-follow-p view) nil)))))
   nil)
+
+(-> transcript-view-block-text (transcript-view string) string)
+(defun transcript-view-block-text (view block-id)
+  "Return the rendered text of the block BLOCK-ID."
+  (let ((span (document-span (transcript-view-document view) block-id)))
+    (if span
+        (lightfast:text-range (transcript-view-display view) (block-span-start span) (block-span-end span))
+        "")))
 
 (defparameter *key-end* #xff57
   "FLTK's key number for End.")

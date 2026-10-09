@@ -25,6 +25,7 @@
        (:file "document")
        (:file "transcript-view")
        (:file "workbench")
+       (:file "inspector")
        (:file "settings-sheet")
        (:file "palette")
        (:file "welcome")

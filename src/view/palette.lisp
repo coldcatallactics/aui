@@ -7,7 +7,7 @@
 
 (defstruct (palette-item (:constructor make-palette-item (kind label detail object)))
   "One thing the palette can find."
-  (kind ':operation :type (member :operation :conversation :setting))
+  (kind ':operation :type (member :operation :conversation :setting :model))
   (label "" :type string)
   (detail "" :type string)
   (object nil))
@@ -65,7 +65,16 @@ and matches at word starts score more."
                     (make-palette-item ':setting (setting-entry-label entry)
                                        (format nil "setting, now ~A" (setting-entry-value-text entry))
                                        entry))
-                  (workbench-settings workbench))))
+                  (workbench-settings workbench))
+          (mapcar (lambda (model)
+                    (make-palette-item ':model (model-entry-id model)
+                                       (format nil "model~@[ via ~A~]~A" (model-entry-provider model)
+                                               (cond
+                                                 ((model-entry-verified-p model) ", verified")
+                                                 ((model-entry-credential-p model) ", credential stored")
+                                                 (t ", no credential")))
+                                       model))
+                  (workbench-models workbench))))
 
 (-> palette-search (list string &key (:limit integer)) list)
 (defun palette-search (items query &key (limit 40))
@@ -152,5 +161,8 @@ An empty QUERY returns the first LIMIT items unsorted."
          (backend-open-conversation (workbench-backend workbench)
                                     :conversation-id (conversation-entry-id (palette-item-object item))))
         (:setting
-         (workbench-show-settings workbench (palette-item-object item))))))
+         (workbench-show-settings workbench (palette-item-object item)))
+        (:model
+         (backend-set-setting (workbench-backend workbench) ':model
+                              (model-entry-id (palette-item-object item)))))))
   nil)

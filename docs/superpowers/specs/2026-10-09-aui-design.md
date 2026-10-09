@@ -168,6 +168,30 @@ AL's; these are the requirements.
 The plain ACP path works when no extension is available; the UI then reports
 those features as unavailable.
 
+Wire shapes agreed on 2026-10-10: every response is an object with `outcome`
+(`ok`, `condition`, `busy`, `unsupported`, `cancelled`), `value` on success,
+`report` and optional `conditionType` on failure. `_autolith/capabilities`
+returns `schemaVersion`, `methods` (exact implemented names) and `features`;
+a method-not-found error means plain ACP. Every other call carries
+`sessionId`; catalogs return `items` plus optional `nextCursor`. State
+carries `workspace`, `title`, `model`, `effort`, `permissionMode`,
+`turnState`, `usage` (`input`, `output`, `cached`, `contextUsed`,
+`contextLimit`, `contextMeasured`), `liveJobCount`, `planPresent`, `health`.
+`set-setting` returns the updated settings item; `invoke` returns `text` and
+optional `data`; `job-transcript` returns `content`, `offset`, `nextOffset`,
+`total`, `complete`. `_autolith/event` notifications carry `sessionId`,
+`sequence`, `kind` (`jobs`, `state`, `compaction`, `decision`, `overflow`)
+and `data`.
+
+Client side (`src/backend/extensions.lisp`, owned by Fable): the backend
+probes capabilities right after `initialize`, fetches every provided catalog
+once a session is ready, runs reads on their own control threads so they
+never wait behind a prompt, sends mutations through the serialized operation
+queue so they respect idle admission, and turns `jobs` and `state` events
+into refreshes and `compaction` into a notice. Server side (frob, owned by
+AL): the `_autolith/*` methods themselves, advertised only once implemented
+and tested.
+
 ### 3.5 Welcome discovery, two phases
 
 Before any Autolith process exists, `backend/recent.lisp` combines AUI's own
@@ -298,6 +322,13 @@ Then: screenshots at narrow, ordinary and wide widths with prose, code, a
 long path, running and failed tools, an approval, a child job, selected text,
 and focused and disabled controls; test selection and copy, keyboard
 traversal, scrolling during streaming, and resizing while streaming.
+
+Status on 2026-10-10 01:40: gates 1, 2 and cancellation pass through the
+real GUI on `gpt-5.6-luna`; gate 5 replays but two replay defects are open
+on the Autolith side (replayed tool statuses, internal messages replayed as
+prompts). Screenshots were taken at the 1131 by 2114 tile niri gives the
+window; niri's by-id resize actions did not move this window, so other
+widths are still to be inspected by hand.
 
 ## 9. Slices
 

@@ -82,9 +82,10 @@ its style index in the display's style table.")
 
 (-> first-line (string &key (:limit integer)) string)
 (defun first-line (text &key (limit 96))
-  "Return the first line of TEXT, cut to LIMIT characters with an ellipsis."
+  "Return the first line of TEXT as plain words, Markdown markers removed,
+cut to LIMIT characters with an ellipsis."
   (let* ((end (or (position #\Newline text) (length text)))
-         (line (string-trim " " (subseq text 0 end))))
+         (line (string-trim " " (runs-text (markdown-inline-runs (subseq text 0 end))))))
     (if (> (length line) limit)
         (concatenate 'string (subseq line 0 (1- limit)) "…")
         line)))
@@ -127,8 +128,12 @@ its style index in the display's style table.")
               (make-run (format nil "  ~A~%~%" (first-line text)) ':meta))
         (append (list (make-run (disclosure-marker block) ':reasoning-head))
                 (header-runs "Reasoning" ':reasoning-head block)
-                (list (make-run text ':italic)
-                      (make-run (format nil "~%~%") ':body))))))
+                (mapcar (lambda (run)
+                          (if (member (run-style run) '(:body :bullet))
+                              (make-run (run-text run) ':italic (run-url run))
+                              run))
+                        (markdown-runs text))
+                (list (make-run (string #\Newline) ':body))))))
 
 (-> tool-status-text (tool-call) (values string keyword))
 (defun tool-status-text (block)

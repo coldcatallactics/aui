@@ -339,9 +339,12 @@ resume with accurate replay; settings, models and operations catalogs
 with and without an approval; a detached child job listed in the rail,
 inspected with its transcript, and its completion driving an automatic
 continuation turn. No owned process survived any run. Screenshots were taken
-at the 1131 by 2114 tile niri gives the window; niri's by-id resize actions
-did not move this window, so narrower and wider layouts remain to be
-inspected by hand.
+at the 1131 by 2114 tile niri gives the window. The narrow layout was
+captured by laying the workbench out for a pinned 800 by 1000 region
+(`--size`); the wide layout at 1900 by 1100 could not be captured whole in
+this tile, so it is evidenced by the exact widget geometry printed from the
+live layout (every control inside the margin, no overlaps). Captures and the
+geometry listing live under the gitignored `screenshots/` directory.
 
 ## 9. Slices
 

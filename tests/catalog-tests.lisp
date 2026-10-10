@@ -31,3 +31,9 @@
                      (make-instance 'state-snapshot :usage '(:context-used 25 :context-limit 100)))))
   (fiveam:is (null (state-snapshot-context-fraction
                     (make-instance 'state-snapshot :usage '(:context-used 25 :context-limit 0))))))
+
+(fiveam:test key-events-parse-defensively
+  (fiveam:is (equal '(65307 0) (multiple-value-list (key-event-parts "65307 0 "))))
+  (fiveam:is (equal '(72 262144) (multiple-value-list (key-event-parts "72 262144 H"))))
+  (fiveam:is (equal '(nil 0) (multiple-value-list (key-event-parts "H"))))
+  (fiveam:is (equal '(nil 0) (multiple-value-list (key-event-parts "")))))

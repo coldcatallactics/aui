@@ -333,11 +333,19 @@ backend so the first events have somewhere to land."
 (defparameter *state-control* #x40000
   "FLTK's state bit for Ctrl.")
 
+(-> key-event-parts (string) (values (or null integer) integer))
+(defun key-event-parts (value)
+  "Return the key number and modifier state from Lightfast's key event VALUE,
+or NIL and 0 when VALUE is not a key event."
+  (let ((parts (parse-integers value)))
+    (if (and (integerp (first parts)) (integerp (second parts)))
+        (values (first parts) (second parts))
+        (values nil 0))))
+
 (-> workbench--composer-key (workbench string) null)
 (defun workbench--composer-key (workbench value)
   "Send on Ctrl+Enter, stop on Escape, decide approvals on Ctrl+1 to Ctrl+9."
-  (destructuring-bind (key state &rest rest) (parse-integers value)
-    (declare (ignore rest))
+  (multiple-value-bind (key state) (key-event-parts value)
     (let ((control-p (logtest state *state-control*)))
       (cond
         ((and control-p (or (eql key *key-enter*) (eql key *key-keypad-enter*)))
@@ -354,6 +362,8 @@ backend so the first events have somewhere to land."
 (defun workbench--global-key (workbench key control-p)
   "Act on a shortcut that works anywhere in the window and return T when it did."
   (cond
+    ((null key)
+     nil)
     ((and control-p (<= (char-code #\1) key (char-code #\9)))
      (workbench-decide workbench (- key (char-code #\0)))
      t)
@@ -420,9 +430,8 @@ backend so the first events have somewhere to land."
 (-> workbench--window-key (workbench string) null)
 (defun workbench--window-key (workbench value)
   "Handle a key that no focused widget claimed."
-  (destructuring-bind (key state &rest rest) (parse-integers value)
-    (declare (ignore rest))
-    (when (workbench--global-key workbench key (logtest state *state-control*))
+  (multiple-value-bind (key state) (key-event-parts value)
+    (when (and key (workbench--global-key workbench key (logtest state *state-control*)))
       (lightfast:consume-event)))
   nil)
 

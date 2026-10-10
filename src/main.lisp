@@ -93,8 +93,8 @@ Autolith process outlives the application."
 
 (-> fix-window-size (t integer integer) null)
 (defun fix-window-size (window width height)
-  "Pin WINDOW to WIDTH by HEIGHT. A tiling compositor keeps a window with equal
-minimum and maximum sizes at that size, which is how other widths are inspected."
+  "Ask for WINDOW to be WIDTH by HEIGHT. A compositor may still impose its own
+size; the workbench then lays itself out for the requested size inside it."
   (lightfast:set-size-range window :min-width width :min-height height
                                    :max-width width :max-height height)
   (lightfast:resize-widget window :width width :height height)
@@ -133,7 +133,9 @@ captures the window and exits after --shot-after SECONDS."
          (let ((workbench (open-workspace (namestring (uiop:ensure-directory-pathname directory))
                                           :conversation-id conversation-id)))
            (when size
-             (fix-window-size (workbench-window workbench) (first size) (second size)))
+             (setf (workbench-layout-size workbench) size)
+             (fix-window-size (workbench-window workbench) (first size) (second size))
+             (workbench--relayout workbench))
            (when demo-prompt
              (setf (workbench-queued-prompt workbench) demo-prompt))
            (when open-view

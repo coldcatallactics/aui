@@ -79,6 +79,9 @@
    (turn-state          :initform ':idle :accessor workbench-turn-state)
    (snapshot            :initform nil :accessor workbench-snapshot
                         :documentation "The latest STATE-SNAPSHOT, or NIL.")
+   (layout-size         :initform nil :accessor workbench-layout-size
+                        :documentation "A (WIDTH HEIGHT) to lay the window out for instead of its real
+size, used to inspect other layouts under a tiling compositor; NIL normally.")
    (closed-p            :initform nil :accessor workbench-closed-p))
   (:documentation "One workspace window bound to one backend."))
 
@@ -206,8 +209,10 @@ backend so the first events have somewhere to land."
 (defun workbench--relayout (workbench)
   "Lay the window out for its current size, hiding the rail when narrow."
   (let* ((window (workbench-window workbench))
-         (width (progn (lightfast:refresh-geometry window) (lightfast:widget-width window)))
-         (height (lightfast:widget-height window))
+         (pinned (workbench-layout-size workbench))
+         (width (or (first pinned)
+                    (progn (lightfast:refresh-geometry window) (lightfast:widget-width window))))
+         (height (or (second pinned) (lightfast:widget-height window)))
          (inspector-p (workbench-inspector-visible-p workbench))
          (rail-p (and (>= width *rail-breakpoint*)
                       (or (not inspector-p) (>= width *inspector-breakpoint*))))

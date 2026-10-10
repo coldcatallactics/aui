@@ -78,7 +78,10 @@
                                                            "description" "picker" "admitted" t
                                                            "terminalOwning" t)))))
     ((string= method "_autolith/invoke")
-     (push (acp:json-get params "operation") (extension-test-agent-invoked agent))
+     (push (list (acp:json-get params "operation")
+                 (acp:json-object-p (acp:json-get params "arguments"))
+                 (acp:json-get (acp:json-get params "arguments") "path"))
+           (extension-test-agent-invoked agent))
      (acp:connection-notify (acp:acp-agent-connection agent) "_autolith/event"
                             (acp:json-object "sessionId" (acp:json-get params "sessionId") "sequence" 1
                                              "kind" "compaction" "data" (acp:json-object)))
@@ -200,7 +203,33 @@ catalog bootstrap that follows session readiness."
                      (backend-test-events-until
                       queue (lambda (event) (and (typep event 'transcript-event)
                                                  (eq ':compaction (getf (transcript-event-arguments event) ':key)))))))
-      (fiveam:is (equal '("/compact") (extension-test-agent-invoked (first *backend-test-servers*)))))))
+      (fiveam:is (equal '(("/compact" t nil)) (extension-test-agent-invoked (first *backend-test-servers*)))))
+    (let* ((request (backend-invoke backend "lisp.paren-check" "{\"path\": \"src\"}"))
+           (events (backend-test-events-until
+                    queue (lambda (event) (and (typep event 'result-event)
+                                               (equal request (result-event-request-id event)))))))
+      (fiveam:is (eq ':ok (result-event-outcome
+                           (event-of events 'result-event
+                                     (lambda (event) (equal request (result-event-request-id event)))))))
+      (fiveam:is (equal '("lisp.paren-check" t "src") (first (extension-test-agent-invoked (first *backend-test-servers*))))))
+    (let* ((request (backend-invoke backend "/compact" "not json"))
+           (events (backend-test-events-until
+                    queue (lambda (event) (and (typep event 'result-event)
+                                               (equal request (result-event-request-id event)))))))
+      (fiveam:is (eq ':condition (result-event-outcome
+                                  (event-of events 'result-event
+                                            (lambda (event) (equal request (result-event-request-id event))))))))))
+
+(fiveam:test plain-values-keep-objects-inspectable
+  (let ((plain (json-plain-value (acp:json-object "type" "object"
+                                                  "properties" (acp:json-object "path" (acp:json-object "type" "string"))))))
+    (fiveam:is (equal '("path") (mapcar #'first (plain-object-field plain "properties"))))
+    (fiveam:is (string= "object" (plain-object-field plain "type")))
+    (let ((operation (make-instance 'operation-entry :name "x" :kind ':tool :argument-schema plain))
+          (bare (make-instance 'operation-entry :name "y" :kind ':tool
+                                                :argument-schema (json-plain-value (acp:json-object "properties" (acp:json-object))))))
+      (fiveam:is (operation-needs-arguments-p operation))
+      (fiveam:is (not (operation-needs-arguments-p bare))))))
 
 (fiveam:test extension-job-actions
   (with-extension-fixture (backend queue)

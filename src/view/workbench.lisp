@@ -452,12 +452,26 @@ backend so the first events have somewhere to land."
      (transcript-notice (workbench-transcript workbench) :severity ':warning
                         :text (format nil "~A cannot run while Autolith is busy." (operation-entry-name operation))))
     (t
-     (let ((arguments (if (operation-entry-argument-schema operation)
-                          (lightfast:input-dialog (format nil "Arguments for ~A" (operation-entry-name operation)))
+     (let ((arguments (if (operation-needs-arguments-p operation)
+                          (lightfast:input-dialog
+                           (format nil "Arguments for ~A as a JSON object~@[; fields: ~{~A~^, ~}~]"
+                                   (operation-entry-name operation)
+                                   (operation-argument-names operation)))
                           "")))
        (when arguments
          (backend-invoke (workbench-backend workbench) (operation-entry-name operation) arguments)))))
   nil)
+
+(-> operation-argument-names (operation-entry) list)
+(defun operation-argument-names (operation)
+  "Return the argument names OPERATION's schema declares, when it is an object schema."
+  (let ((properties (plain-object-field (operation-entry-argument-schema operation) "properties")))
+    (and (consp properties) (mapcar #'first properties))))
+
+(-> operation-needs-arguments-p (operation-entry) boolean)
+(defun operation-needs-arguments-p (operation)
+  "Return T when OPERATION declares at least one argument."
+  (and (operation-argument-names operation) t))
 
 (-> workbench-decide (workbench integer) null)
 (defun workbench-decide (workbench option-number)

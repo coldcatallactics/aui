@@ -66,13 +66,42 @@ cannot intern arbitrary text."
 (-> json-plain-value (t) t)
 (defun json-plain-value (value)
   "Return VALUE as immutable Lisp data: strings copied, numbers and booleans
-as they are, arrays as lists of plain values, objects encoded as text."
+as they are, arrays as lists of plain values, and objects as alists of
+(KEY . PLAIN-VALUE) ordered by key."
   (cond
     ((stringp value) (copy-seq value))
     ((or (null value) (eq value ':null) (argo:json-false-p value)) nil)
     ((or (numberp value) (eq value t)) value)
     ((vectorp value) (mapcar #'json-plain-value (agentcomms:json-sequence->list value)))
+    ((hash-table-p value)
+     (let ((pairs nil))
+       (maphash (lambda (key item) (push (cons (copy-seq key) (json-plain-value item)) pairs)) value)
+       (sort pairs #'string< :key #'first)))
     (t (agentcomms:json-encode value))))
+
+(-> plain-object-field (t string) t)
+(defun plain-object-field (object key)
+  "Return the value of KEY in OBJECT, an alist from JSON-PLAIN-VALUE, or NIL."
+  (and (consp object) (rest (assoc key object :test #'equal))))
+
+(-> arguments->json-object (t) (values (or null hash-table) (or null string)))
+(defun arguments->json-object (arguments)
+  "Return ARGUMENTS as a JSON object for the wire: an object passes through,
+an empty string or NIL becomes an empty object, and other text is decoded as
+JSON. The second value is a report when the text is not a JSON object."
+  (cond
+    ((agentcomms:json-object-p arguments) (values arguments nil))
+    ((or (null arguments) (and (stringp arguments) (zerop (length (string-trim " " arguments)))))
+     (values (agentcomms:json-object) nil))
+    ((stringp arguments)
+     (handler-case
+         (let ((decoded (agentcomms:json-decode arguments)))
+           (if (agentcomms:json-object-p decoded)
+               (values decoded nil)
+               (values nil "Arguments must be a JSON object, such as {\"path\": \"src\"}.")))
+       (error (condition)
+         (values nil (format nil "Arguments are not valid JSON: ~A" condition)))))
+    (t (values nil "Arguments must be a JSON object or text."))))
 
 (-> setting-name-string (keyword) string)
 (defun setting-name-string (name)
@@ -310,7 +339,22 @@ value on success before the result is posted."
 
 (-> acp-backend--extension-invoke (acp-backend string string t) boolean)
 (defun acp-backend--extension-invoke (backend request operation arguments)
-  "Run OPERATION with ARGUMENTS through the server and show its text as a notice."
+  "Run OPERATION with ARGUMENTS, a JSON object or its text, through the server
+and show the result text as a notice. Malformed arguments are reported without
+a round trip."
+  (multiple-value-bind (object report) (arguments->json-object arguments)
+    (cond
+      ((not (acp-backend-extension-p backend "_autolith/invoke"))
+       nil)
+      (report
+       (acp-backend--result backend request ':condition :report report :condition-type "invalid-arguments")
+       t)
+      (t
+       (acp-backend--extension-invoke-object backend request operation object)))))
+
+(-> acp-backend--extension-invoke-object (acp-backend string string hash-table) boolean)
+(defun acp-backend--extension-invoke-object (backend request operation arguments)
+  "Queue the invocation of OPERATION with the JSON object ARGUMENTS."
   (acp-backend--extension-mutation
    backend request "_autolith/invoke"
    (list "operation" operation "arguments" arguments)

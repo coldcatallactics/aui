@@ -56,6 +56,8 @@
       (lightfast:set-text-font groups-list (font ':prose))
       (lightfast:set-text-size groups-list *prose-size*)
       (lightfast:set-box groups-list lightfast:+box-no-box+)
+      (lightfast:browser-set-scrollbars groups-list ':vertical)
+      (lightfast:browser-set-line-spacing groups-list *list-line-spacing*)
       (lightfast:set-box rows lightfast:+box-no-box+)
       (lightfast:on groups-list (lambda (widget event value)
                                   (declare (ignore widget event value))
@@ -129,7 +131,7 @@
          (width (max 480 (progn (lightfast:refresh-geometry scroll) (lightfast:widget-width scroll))))
          (label-width 260)
          (control-x 272)
-         (control-width (max 200 (- width control-x 220)))
+         (control-width (max 200 (min 480 (- width control-x 24))))
          (source-x (+ control-x control-width 16))
          (y 0))
     (dolist (entry entries)
@@ -149,10 +151,11 @@
                                       :label (setting-entry-label entry)))
          (documentation (lightfast:make-label :parent scroll :x 0 :y (+ y *control-height*)
                                               :width (- width 8) :height (- *settings-row-height* *control-height*)
-                                              :label (setting-entry-documentation entry)))
+                                              :label (format nil "~A~@[  ·  ~(~A~)~]" (setting-entry-documentation entry)
+                                                             (setting-entry-source entry))))
          (source (lightfast:make-label :parent scroll :x source-x :y y :width (- width source-x) :height *control-height*
                                        :label (if (setting-entry-adjustable-p entry)
-                                                  (format nil "~@[~(~A~)~]" (setting-entry-source entry))
+                                                  ""
                                                   (format nil "read only~@[: ~A~]" (setting-entry-reason entry)))))
          (control
            (cond
@@ -193,7 +196,7 @@
     (lightfast:set-label-size label *prose-size*)
     (lightfast:set-label-align documentation ':left ':inside ':clip)
     (lightfast:set-label-font documentation (font ':prose-italic))
-    (lightfast:set-label-size documentation *meta-size*)
+    (lightfast:set-label-size documentation *small-size*)
     (lightfast:set-label-align source ':left ':inside ':clip)
     (lightfast:set-label-font source (font ':prose-italic))
     (lightfast:set-label-size source *meta-size*)

@@ -214,12 +214,21 @@ cells padded to their column's width, columns separated by two spaces."
     ((or (uiop:string-prefix-p "[x] " text) (uiop:string-prefix-p "[X] " text)) "☑ ")
     (t nil)))
 
+(-> blank-line-ends-p (list) boolean)
+(defun blank-line-ends-p (runs)
+  "Return T when RUNS, newest first, end with an empty line."
+  (and (>= (length runs) 2)
+       (string= (run-text (first runs)) (string #\Newline))
+       (let ((text (run-text (second runs))))
+         (and (plusp (length text)) (char= (char text (1- (length text))) #\Newline)))))
+
 (-> markdown-runs (string) list)
 (defun markdown-runs (text)
   "Return the runs for the Markdown document TEXT, line breaks included.
 Fenced code becomes highlighted :CODE-BLOCK runs, headings become sized
-heading runs that swallow the blank line after them, since their size already
-sets them off, list items get a bullet or a bold number, task items a box,
+heading runs preceded by a blank line and swallowing the one after them,
+since their size already sets them off below, list items get a bullet or a
+bold number, task items a box,
 quotes an italic indented run, tables a monospace grid, and everything else
 goes through MARKDOWN-INLINE-RUNS."
   (let ((runs nil)
@@ -246,6 +255,10 @@ goes through MARKDOWN-INLINE-RUNS."
                    ((markdown-heading-level line)
                     (let* ((level (markdown-heading-level line))
                            (style (case level (1 ':heading-1) (2 ':heading-2) (t ':heading-3))))
+                      ;; A heading opens a section: a blank line before it
+                      ;; unless the text starts or already paused there.
+                      (when (and runs (not (blank-line-ends-p runs)))
+                        (newline))
                       (dolist (run (markdown-inline-runs (string-trim " " (subseq line level)) :base style))
                         (push run runs))
                       (newline)

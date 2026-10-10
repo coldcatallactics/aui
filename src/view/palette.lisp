@@ -129,7 +129,7 @@ An empty QUERY returns the first LIMIT items unsorted."
   (let* ((palette (make-instance 'palette :workbench workbench))
          (group (lightfast:make-group :parent parent :width 600 :height 400))
          (input (lightfast:make-input :parent group :height (+ *control-height* 6)))
-         (list (lightfast:make-browser :parent group :height 300 :column-widths '(300 0)))
+         (list (lightfast:make-browser :parent group :height 300 :column-widths '(340 0)))
          (hint (workbench--make-label group "Type to search; Enter runs the choice, Escape returns." ':prose-italic)))
     (setf (slot-value palette 'group) group
           (slot-value palette 'input) input
@@ -141,7 +141,9 @@ An empty QUERY returns the first LIMIT items unsorted."
     (lightfast:set-text-font list (font ':prose))
     (lightfast:set-text-size list *prose-size*)
     (lightfast:set-box list lightfast:+box-no-box+)
-    (lightfast:set-label-size hint *meta-size*)
+    (lightfast:browser-set-scrollbars list ':vertical)
+    (lightfast:browser-set-line-spacing list *list-line-spacing*)
+    (lightfast:set-label-size hint *small-size*)
     (lightfast:set-when input ':changed ':enter-key)
     (lightfast:on input (lambda (widget event value)
                           (declare (ignore widget event value))

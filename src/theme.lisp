@@ -47,16 +47,23 @@ check marks. Chosen by measurement: at *MARKER-SIZE* beside the prose, once
 the prose face has been through LIGHTFAST:CORRECT-FONT-BASELINES, their
 shapes sit on the prose baseline and stand about one x-height tall.")
 
-(defparameter *marker-size* 20
-  "Pixel size of marker glyphs beside prose.")
+(defparameter *marker-size* 24
+  "Pixel size of marker glyphs beside prose. Measured beside 20 px prose:
+Adwaita Mono's boxes, triangles and circles then stand 12 px, from the cap
+height to two pixels above the baseline, and their line height stays under
+the first-level heading's, so the transcript's line pitch does not grow.")
 
 (defparameter *prose-size* 20
   "Pixel size of prose, labels and controls.")
 
-(defparameter *code-size* 17
-  "Pixel size of code, kept near the prose size as Interlisp Paper asks. The
-measured residue beside 20 px prose is one pixel above the baseline, the
-rounding floor of FLTK's integer metrics.")
+(defparameter *code-size* 18
+  "Pixel size of code, nine tenths of the prose as Interlisp Paper asks; CMU
+Typewriter's small x-height wants the size kept close. The measured residue
+beside 20 px prose is one pixel above the baseline, the rounding floor of
+FLTK's integer metrics.")
+
+(defparameter *small-size* 18
+  "Pixel size of secondary lines: setting documentation, hints and sources.")
 
 (defparameter *meta-size* 20
   "Pixel size of metadata: times, status words, sources. The same as prose so

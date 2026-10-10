@@ -22,6 +22,9 @@
 (defparameter *header-height* 36
   "Height of the header row in pixels.")
 
+(defparameter *list-line-spacing* 10
+  "Pixels between the rows of a list, room above and below the text.")
+
 (defparameter *menu-height* 34
   "Height of the menu bar in pixels.")
 
@@ -49,7 +52,7 @@
 (defparameter *plan-indent* 40
   "Pixels of a plan line taken by the marker and the display's margins.")
 
-(defparameter *plan-line-height* 27
+(defparameter *plan-line-height* 30
   "Height of one plan line in the rail, about the prose line pitch.")
 
 (defparameter *job-poll-interval* 3.0
@@ -319,7 +322,8 @@ backend so the first events have somewhere to land."
         (lightfast:set-text-font list (font ':prose))
         (lightfast:set-text-size list *prose-size*)
         (lightfast:set-box list lightfast:+box-no-box+)
-        (lightfast:browser-set-scrollbars list ':vertical))
+        (lightfast:browser-set-scrollbars list ':vertical)
+        (lightfast:browser-set-line-spacing list *list-line-spacing*))
       (setf (slot-value workbench 'plan-label) (workbench--make-label rail "Plan" ':prose-bold)
             (slot-value workbench 'plan-view) (lightfast:make-text-display :parent rail :width *rail-width* :height 120))
       (let ((plan-view (workbench--plan-view workbench)))

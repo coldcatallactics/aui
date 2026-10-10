@@ -308,8 +308,12 @@ conversations across folders (another folder opens another window); windows
 are resizable so the compositor tiles them.
 
 Revised again on 2026-10-10 midday after the second review. The type scale is
-20 px prose and metadata, 17 px code, 25/22/20 px headings, 32 px display and
-20 px Adwaita Mono markers; the text column is capped at 780 px. The recurring
+20 px prose and metadata, 18 px code and secondary lines, 25/22/20 px
+headings, 32 px display and 24 px Adwaita Mono markers (12 px shapes from the
+cap height down, under the heading's line height so the pitch stays); the
+text column is capped at 780 px. Lists have 10 px between rows; tool rows set
+the name bold and the arguments in mono, cut at 48 characters; a heading
+opens with a blank line; setting provenance follows the documentation line. The recurring
 off-baseline marks were FLTK's: its Cairo driver places text by line height
 minus descent, so a face with a line gap (Times New Roman MT Std carries
 410/2048 em) is drawn the gap above the baseline. Lightfast's

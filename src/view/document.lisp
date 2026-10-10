@@ -208,18 +208,22 @@ stand apart from the tight rows of collapsed tools above them."
     (:cancelled (values "cancelled" ':meta))
     (:interrupted (values "interrupted" ':failure))))
 
+(defparameter *tool-arguments-characters* 48
+  "Longest a tool's arguments run in its header line before an ellipsis.")
+
 (defmethod block-runs ((block tool-call))
   (multiple-value-bind (status-word status-style) (tool-status-text block)
-    (let ((head (list (make-run (if (transcript-block-collapsed-p block) "" (string #\Newline)) ':body)
-                      (make-run (disclosure-marker block) ':marker)
-                      (make-run (if (plusp (length (tool-call-title block)))
-                                    (tool-call-title block)
-                                    (tool-call-name block))
-                                ':tool-head)
-                      (make-run "  " ':meta)
-                      (make-run status-word status-style)
-                      (make-run (format nil "  ~A~%" (clock-text (transcript-block-received-at block)))
-                                ':meta))))
+    (multiple-value-bind (name arguments) (tool-call-head-parts block)
+      (let ((head (append (list (make-run (if (transcript-block-collapsed-p block) "" (string #\Newline)) ':body)
+                                (make-run (disclosure-marker block) ':marker)
+                                (make-run name ':tool-head))
+                          (when arguments
+                            (list (make-run "  " ':meta)
+                                  (make-run (bounded-text arguments *tool-arguments-characters*) ':code)))
+                          (list (make-run "  " ':meta)
+                                (make-run status-word status-style)
+                                (make-run (format nil "  ~A~%" (clock-text (transcript-block-received-at block)))
+                                          ':meta)))))
       (if (transcript-block-collapsed-p block)
           head
           (append head
@@ -232,7 +236,30 @@ stand apart from the tight rows of collapsed tools above them."
                               (when (plusp omitted)
                                 (list (make-run (format nil "~D more lines in the inspector~%" omitted)
                                                 ':meta))))))
-                  (list (make-run (string #\Newline) ':body)))))))
+                  (list (make-run (string #\Newline) ':body))))))))
+
+(-> tool-call-head-parts (tool-call) (values string (or null string)))
+(defun tool-call-head-parts (block)
+  "Return the tool's name and its arguments for the header line. A title of
+the form \"name · arguments\" splits there; a title that is not the name is
+taken as the arguments; otherwise there are none."
+  (let* ((name (tool-call-name block))
+         (title (tool-call-title block))
+         (separator (and (plusp (length title)) (search " · " title))))
+    (cond
+      ((or (null title) (zerop (length title)) (string= title name))
+       (values name nil))
+      ((and separator (string= (subseq title 0 separator) name))
+       (values name (string-trim " " (subseq title (+ separator 3)))))
+      (t
+       (values name title)))))
+
+(-> bounded-text (string integer) string)
+(defun bounded-text (text limit)
+  "Return TEXT, or its first LIMIT characters with an ellipsis when longer."
+  (if (> (length text) limit)
+      (concatenate 'string (subseq text 0 limit) "…")
+      text))
 
 (-> plan-entry-marker (keyword) string)
 (defun plan-entry-marker (status)

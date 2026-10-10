@@ -21,10 +21,12 @@
 (fiveam:test user-and-assistant-blocks-show-heads-and-markdown
   (let ((user-runs (block-runs (make-instance 'user-message :text "Hello **there**" :received-at 0)))
         (assistant-runs (block-runs (make-instance 'assistant-text :text "Sure." :received-at 0))))
-    (fiveam:is (eq ':user-head (run-style (first user-runs))))
-    (fiveam:is (string= "You" (run-text (first user-runs))))
+    ;; A blank line separates a message from whatever stands above it.
+    (fiveam:is (string= (string #\Newline) (run-text (first user-runs))))
+    (fiveam:is (eq ':user-head (run-style (second user-runs))))
+    (fiveam:is (string= "You" (run-text (second user-runs))))
     (fiveam:is (find "there" user-runs :key #'run-text :test #'string=))
-    (fiveam:is (eq ':assistant-head (run-style (first assistant-runs))))
+    (fiveam:is (eq ':assistant-head (run-style (second assistant-runs))))
     (fiveam:is (search "Sure." (runs-text assistant-runs)))))
 
 (fiveam:test collapsed-reasoning-shows-one-line
@@ -68,8 +70,8 @@
     (fiveam:is (null (block-runs (make-instance 'plan-block :received-at 0 :entries '(("read" . :completed))))))
     (fiveam:is (search "● read" plan))
     (fiveam:is (search "◐ write" plan))
-    (fiveam:is (string= "Failure" (run-text (first notice))))
-    (fiveam:is (eq ':failure (run-style (first notice))))))
+    (fiveam:is (string= "Failure" (run-text (second notice))))
+    (fiveam:is (eq ':failure (run-style (second notice))))))
 
 (fiveam:test document-spans-follow-byte-lengths
   (let* ((document (make-document))

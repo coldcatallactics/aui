@@ -27,8 +27,12 @@ show the workbench and return it."
     (backend-open-conversation backend :conversation-id conversation-id)
     workbench))
 
-(defparameter *backend-stop-timeout* 5
+(defparameter *backend-stop-timeout* 3
   "Seconds to wait for each backend to release its Autolith process at exit.")
+
+(defparameter *exit-thread-timeout* 1
+  "Seconds the process waits for lingering threads once the backends were given
+their chance; a reader still blocked on a slow child must not hold the exit.")
 
 (-> stop-all-backends () null)
 (defun stop-all-backends ()
@@ -39,6 +43,14 @@ Autolith process outlives the application."
   (dolist (backend *stopped-backends*)
     (backend-join backend :timeout *backend-stop-timeout*))
   (setf *stopped-backends* nil)
+  nil)
+
+(-> exit-promptly () null)
+(defun exit-promptly ()
+  "End the process without waiting long for threads that outlived shutdown."
+  (finish-output)
+  #+sbcl (sb-ext:exit :code 0 :timeout *exit-thread-timeout*)
+  #-sbcl (uiop:quit 0)
   nil)
 
 (-> show-welcome () welcome)
@@ -145,5 +157,6 @@ captures the window and exits after --shot-after SECONDS."
       (when shot-path
         (screenshot-after (or shot-after (if demo-prompt 5 2)) shot-path))
       (lightfast:run-with-idle #'drain-ui-queue)
-      (stop-all-backends)))
+      (stop-all-backends)
+      (exit-promptly)))
   nil)

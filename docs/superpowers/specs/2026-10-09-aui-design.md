@@ -276,10 +276,23 @@ atomically.
    resolves as cancelled.
 5. **Inspector.** Right pane for the selected tool call, job (transcript,
    send, cancel), artifact or resource window.
-6. **Settings sheet, model picker, permission picker.** Property sheets from
-   catalogs: value, source, scope, adjustable-p and reason.
-7. **Command palette** (Ctrl+K): operations, conversations, settings;
-   executes only what is admitted now.
+6. **Settings pane** (Ctrl+,): inside the window, groups on the left and the
+   chosen group's settings on the right, each with its own control (switch,
+   choice or field), its documentation and its source; read-only settings
+   show their reason. The model, effort and permission chips in the header
+   open menus directly.
+7. **Commands pane** (Ctrl+K): inside the window, a field and a list over
+   actions, permission modes, operations, conversations, settings and
+   models; executes only what is admitted now and marks the rest unavailable.
+   Escape returns to the transcript.
+
+Revised on 2026-10-10 morning after Lukas's review: no separate popup windows
+(a tiling compositor sizes them badly and they could not be closed without
+decorations); a type scale of 20/17/15/14 px for headings, prose, code and
+metadata instead of one size; outer margins of 24 px and a text column capped
+at 720 px; no boxes around lists; glyphs on buttons and list rows; the rail
+lists conversations across folders (another folder opens another window);
+windows are resizable so the compositor tiles them.
 
 ## 7. Repository
 

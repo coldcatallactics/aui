@@ -213,11 +213,18 @@
   nil)
 
 (defmethod backend-join ((backend scripted-backend) &key (timeout 5))
-  (let ((thread (scripted--thread backend)))
-    (when (and thread (bordeaux-threads:thread-alive-p thread))
-      (handler-case (bordeaux-threads:join-thread thread :timeout timeout)
-        (error () nil)))
-    (not (and thread (bordeaux-threads:thread-alive-p thread)))))
+  (let ((thread (scripted--thread backend))
+        (deadline (+ (get-internal-real-time) (* timeout internal-time-units-per-second))))
+    (loop while (and thread (bordeaux-threads:thread-alive-p thread)
+                     (< (get-internal-real-time) deadline))
+          do (sleep 0.02))
+    (cond
+      ((and thread (bordeaux-threads:thread-alive-p thread))
+       nil)
+      (t
+       (when thread
+         (ignore-errors (bordeaux-threads:join-thread thread)))
+       t))))
 
 (defmethod backend-open-conversation ((backend scripted-backend) &key conversation-id)
   (scripted--post backend 'session-event :state ':loading :conversation-id conversation-id

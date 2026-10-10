@@ -6,6 +6,13 @@
 ;;; driven by UI events from one backend. Everything here runs on the FLTK
 ;;; thread.
 
+(defparameter *permission-modes*
+  '(("ask" "Ask before commands" "approve commands and external tools here")
+    ("auto" "Auto" "classify commands with the configured policy")
+    ("sandboxed" "Sandboxed" "run commands in the workspace sandbox")
+    ("full-access" "Full access" "allow commands and external tools without approval"))
+  "The ACP permission modes Autolith offers: id, label and description.")
+
 (defparameter *rail-breakpoint* 1100
   "Window width in pixels below which the rail is hidden.")
 
@@ -21,8 +28,15 @@
 (defparameter *status-height* 28
   "Height of the status row in pixels.")
 
-(defparameter *control-height* 32
+(defparameter *control-height* 34
   "Height of buttons and single-line fields.")
+
+(defparameter *text-column-width* 720
+  "Widest the transcript and composer grow, in pixels: about 95 characters of
+17 px serif, so that lines stay readable on a wide window.")
+
+(defparameter *rail-width* 260
+  "Width of the rail in pixels.")
 
 (defclass workbench ()
   ((window              :reader workbench-window)
@@ -31,8 +45,9 @@
    (transcript-view     :reader workbench-transcript-view)
    (folder-label        :reader workbench--folder-label)
    (title-label         :reader workbench--title-label)
-   (model-label         :reader workbench--model-label)
-   (permission-label    :reader workbench--permission-label)
+   (model-chip          :reader workbench--model-chip)
+   (effort-chip         :reader workbench--effort-chip)
+   (permission-chip     :reader workbench--permission-chip)
    (state-label         :reader workbench--state-label)
    (rail                :reader workbench--rail)
    (conversations-label :reader workbench--conversations-label)
@@ -109,6 +124,59 @@ size, used to inspect other layouts under a tiling compositor; NIL normally.")
     (lightfast:set-label-size label *prose-size*)
     label))
 
+(-> workbench--make-chip (t string function) t)
+(defun workbench--make-chip (parent text function)
+  "Create a flat, clickable chip under PARENT showing TEXT; a click calls FUNCTION."
+  (let ((chip (lightfast:make-button :parent parent :label (format nil "~A ▾" text) :height *control-height*
+                                     :callback (lambda (widget event value)
+                                                 (declare (ignore widget event value))
+                                                 (funcall function)))))
+    (lightfast:set-box chip lightfast:+box-no-box+)
+    (lightfast:set-label-font chip (font ':prose-italic))
+    (lightfast:set-label-size chip *prose-size*)
+    (lightfast:set-tooltip chip "Click to change")
+    chip))
+
+(-> workbench--set-chip (t string) null)
+(defun workbench--set-chip (chip text)
+  "Show TEXT on CHIP with the dropdown mark."
+  (setf (lightfast:label chip) (format nil "~A ▾" text))
+  nil)
+
+(-> workbench-choose-model (workbench) null)
+(defun workbench-choose-model (workbench)
+  "Offer the models with a stored credential in a menu and apply the choice."
+  (let* ((models (remove-if-not #'model-entry-credential-p (workbench-models workbench)))
+         (verified (remove-if-not #'model-entry-verified-p models))
+         (shown (or verified models))
+         (items (append (mapcar #'model-entry-id shown) (list "All models in the palette"))))
+    (let ((choice (lightfast:popup-menu items)))
+      (cond
+        ((null choice) nil)
+        ((= choice (length shown)) (workbench-show-palette workbench))
+        (t (backend-set-setting (workbench-backend workbench) ':model (nth choice items))))))
+  nil)
+
+(-> workbench-choose-effort (workbench) null)
+(defun workbench-choose-effort (workbench)
+  "Offer the reasoning efforts the settings catalog lists and apply the choice."
+  (let* ((entry (find ':reasoning-effort (workbench-settings workbench) :key #'setting-entry-name))
+         (options (mapcar #'princ-to-string (and entry (setting-entry-options entry)))))
+    (when options
+      (let ((choice (lightfast:popup-menu options)))
+        (when choice
+          (backend-set-setting (workbench-backend workbench) ':reasoning-effort (nth choice options))))))
+  nil)
+
+(-> workbench-choose-permission (workbench) null)
+(defun workbench-choose-permission (workbench)
+  "Offer the permission modes and apply the choice."
+  (let* ((labels (mapcar #'second *permission-modes*))
+         (choice (lightfast:popup-menu labels)))
+    (when choice
+      (backend-set-mode (workbench-backend workbench) (first (nth choice *permission-modes*)))))
+  nil)
+
 (-> make-workbench (backend &key (:width integer) (:height integer)) workbench)
 (defun make-workbench (backend &key (width 1280) (height 860))
   "Create the window for BACKEND, register it, and return the workbench.
@@ -127,11 +195,16 @@ backend so the first events have somewhere to land."
         workbench
       (setf folder-label (workbench--make-label window (backend-directory backend) ':prose-italic)
             title-label (workbench--make-label window "New conversation" ':prose)
-            model-label (workbench--make-label window "" ':prose-italic)
-            permission-label (workbench--make-label window "" ':prose-italic)
             state-label (workbench--make-label window "starting" ':prose-italic))
+      (lightfast:set-label-size title-label *heading-size*)
       (lightfast:set-label-align title-label ':left ':inside ':clip)
       (lightfast:set-label-align state-label ':right ':inside)
+      (setf (slot-value workbench 'model-chip)
+            (workbench--make-chip window "model" (lambda () (workbench-choose-model workbench)))
+            (slot-value workbench 'effort-chip)
+            (workbench--make-chip window "effort" (lambda () (workbench-choose-effort workbench)))
+            (slot-value workbench 'permission-chip)
+            (workbench--make-chip window "permissions" (lambda () (workbench-choose-permission workbench))))
       (setf (slot-value workbench 'commands-button)
             (lightfast:make-button :parent window :label "Commands" :height *control-height*
                                    :callback (lambda (widget event value)
@@ -144,13 +217,16 @@ backend so the first events have somewhere to land."
                                                (workbench-show-settings workbench))))
       (lightfast:set-tooltip (slot-value workbench 'commands-button) "Ctrl+K")
       (lightfast:set-tooltip (slot-value workbench 'settings-button) "Ctrl+,")
-      (setf rail (lightfast:make-group :parent window :width 240 :height 400))
-      (setf conversations-label (workbench--make-label rail "Conversations here" ':prose-bold)
-            conversations-list (lightfast:make-browser :parent rail :width 240 :height 200)
-            jobs-label (workbench--make-label rail "Running work" ':prose-bold)
-            jobs-list (lightfast:make-browser :parent rail :width 240 :height 160))
-      (lightfast:set-text-font conversations-list (font ':prose))
-      (lightfast:set-text-font jobs-list (font ':prose))
+      (setf rail (lightfast:make-group :parent window :width *rail-width* :height 400))
+      (lightfast:set-box rail lightfast:+box-no-box+)
+      (setf conversations-label (workbench--make-label rail "Conversations" ':prose-bold)
+            conversations-list (lightfast:make-browser :parent rail :width *rail-width* :height 200)
+            jobs-label (workbench--make-label rail "Work" ':prose-bold)
+            jobs-list (lightfast:make-browser :parent rail :width *rail-width* :height 160))
+      (dolist (list (list conversations-list jobs-list))
+        (lightfast:set-text-font list (font ':prose))
+        (lightfast:set-text-size list *prose-size*)
+        (lightfast:set-box list lightfast:+box-no-box+))
       (lightfast:on conversations-list
                     (lambda (widget event value)
                       (declare (ignore widget event value))
@@ -177,11 +253,11 @@ backend so the first events have somewhere to land."
                       (declare (ignore widget event))
                       (workbench--composer-key workbench value))
                     :event lightfast:+event-key+)
-      (setf send-button (lightfast:make-button :parent window :label "Send" :height *control-height*
+      (setf send-button (lightfast:make-button :parent window :label "Send ▸" :height *control-height*
                                                :callback (lambda (widget event value)
                                                            (declare (ignore widget event value))
                                                            (workbench-send workbench)))
-            stop-button (lightfast:make-button :parent window :label "Stop" :height *control-height*
+            stop-button (lightfast:make-button :parent window :label "Stop ■" :height *control-height*
                                                :callback (lambda (widget event value)
                                                            (declare (ignore widget event value))
                                                            (workbench-stop workbench))))
@@ -207,7 +283,9 @@ backend so the first events have somewhere to land."
 
 (-> workbench--relayout (workbench) null)
 (defun workbench--relayout (workbench)
-  "Lay the window out for its current size, hiding the rail when narrow."
+  "Lay the window out for its current size: rail on the left when wide enough,
+a text column capped at *TEXT-COLUMN-WIDTH*, the inspector on the right when
+open, and the decision row only while an approval waits."
   (let* ((window (workbench-window workbench))
          (pinned (workbench-layout-size workbench))
          (width (or (first pinned)
@@ -217,67 +295,68 @@ backend so the first events have somewhere to land."
          (rail-p (and (>= width *rail-breakpoint*)
                       (or (not inspector-p) (>= width *inspector-breakpoint*))))
          (approval-p (and (workbench-pending-approval workbench) t))
-         (gap (spacing 3))
-         (margin (spacing 5))
+         (gap (spacing 4))
          (rail (workbench--rail workbench))
          (approval-row (workbench--approval-row workbench)))
     (if rail-p (lightfast:show rail) (lightfast:hide rail))
     (if approval-p (lightfast:show approval-row) (lightfast:hide approval-row))
-    (dolist (chip (list (workbench--model-label workbench) (workbench--permission-label workbench)))
-      (if (>= width *rail-breakpoint*) (lightfast:show chip) (lightfast:hide chip)))
     (if inspector-p
         (lightfast:show (inspector-group (workbench-inspector workbench)))
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
+    (dolist (chip (list (workbench--model-chip workbench) (workbench--effort-chip workbench)
+                        (workbench--permission-chip workbench)))
+      (if (>= width *rail-breakpoint*) (lightfast:show chip) (lightfast:hide chip)))
     (let* ((header (lightfast:make-layout-row
-                    :basis *header-height* :shrink 0 :gap (spacing 4)
+                    :basis *header-height* :shrink 0 :gap gap
                     :children (append
                                (list (lightfast:make-layout-item (workbench--title-label workbench) :basis 0 :grow 1 :min-width 200))
                                (when (>= width *rail-breakpoint*)
-                                 (list (lightfast:make-layout-item (workbench--model-label workbench) :basis 200 :shrink 1)
-                                       (lightfast:make-layout-item (workbench--permission-label workbench) :basis 90 :shrink 1)))
-                               (list (lightfast:make-layout-item (workbench--state-label workbench) :basis 110 :shrink 0)
-                                     (lightfast:make-layout-item (workbench--commands-button workbench) :basis 110 :shrink 0)
-                                     (lightfast:make-layout-item (workbench--settings-button workbench) :basis 100 :shrink 0)))))
+                                 (list (lightfast:make-layout-item (workbench--model-chip workbench) :basis 230 :shrink 1)
+                                       (lightfast:make-layout-item (workbench--effort-chip workbench) :basis 120 :shrink 1)
+                                       (lightfast:make-layout-item (workbench--permission-chip workbench) :basis 150 :shrink 1)))
+                               (list (lightfast:make-layout-item (workbench--state-label workbench) :basis 100 :shrink 0)
+                                     (lightfast:make-layout-item (workbench--commands-button workbench) :basis 120 :shrink 0)
+                                     (lightfast:make-layout-item (workbench--settings-button workbench) :basis 110 :shrink 0)))))
            (rail-layout (lightfast:make-layout-column
-                         :target rail :basis 240 :shrink 0 :gap gap
+                         :target rail :basis *rail-width* :shrink 0 :gap (spacing 2)
                          :children (list (lightfast:make-layout-item (workbench--conversations-label workbench)
                                                                      :basis *control-height* :shrink 0)
                                          (lightfast:make-layout-item (workbench--conversations-list workbench)
                                                                      :basis 0 :grow 3)
                                          (lightfast:make-layout-item (workbench--jobs-label workbench)
-                                                                     :basis *control-height* :shrink 0)
+                                                                     :basis (+ *control-height* (spacing 4)) :shrink 0)
                                          (lightfast:make-layout-item (workbench--jobs-list workbench)
                                                                      :basis 0 :grow 2))))
            (approval-layout (lightfast:make-layout-row
-                             :target approval-row :basis *control-height* :shrink 0 :gap gap
+                             :target approval-row :basis *control-height* :shrink 0 :gap (spacing 3)
                              :children (cons (lightfast:make-layout-item (workbench--approval-label workbench)
                                                                          :basis 0 :grow 1)
                                              (mapcar (lambda (button)
-                                                       (lightfast:make-layout-item button :basis 200 :shrink 1))
+                                                       (lightfast:make-layout-item button :basis 190 :shrink 1))
                                                      (workbench--approval-buttons workbench)))))
            (composer-row (lightfast:make-layout-row
-                          :basis *composer-height* :shrink 0 :gap gap
+                          :basis *composer-height* :shrink 0 :gap (spacing 3)
                           :children (list (lightfast:make-layout-item (workbench-composer workbench) :basis 0 :grow 1)
                                           (lightfast:make-layout-column
-                                           :basis 112 :shrink 0 :gap gap
+                                           :basis 120 :shrink 0 :gap (spacing 3)
                                            :children (list (lightfast:make-layout-item (workbench--send-button workbench)
                                                                                        :basis *control-height* :shrink 0)
                                                            (lightfast:make-layout-item (workbench--stop-button workbench)
                                                                                        :basis *control-height* :shrink 0))))))
            (center (lightfast:make-layout-column
-                    :basis 0 :grow 1 :gap gap
+                    :basis 0 :grow 1 :max-width *text-column-width* :gap (spacing 4)
                     :children (append (list (lightfast:make-layout-item
                                              (transcript-view-display (workbench-transcript-view workbench))
                                              :basis 0 :grow 1))
                                       (when approval-p (list approval-layout))
                                       (list composer-row))))
            (body (lightfast:make-layout-row
-                  :basis 0 :grow 1 :gap (spacing 5)
+                  :basis 0 :grow 1 :gap (spacing 6)
                   :children (append (when rail-p (list rail-layout))
                                     (list center)
                                     (when inspector-p (list (inspector-layout (workbench-inspector workbench)))))))
            (layout (lightfast:make-layout-column
-                    :padding (list margin (spacing 3) margin (spacing 3)) :gap gap
+                    :padding (list (spacing 5) (spacing 4) (spacing 5) (spacing 3)) :gap gap
                     :children (list header body
                                     (lightfast:make-layout-row
                                      :basis *status-height* :shrink 0 :gap (spacing 4)
@@ -498,14 +577,26 @@ or NIL and 0 when VALUE is not a key event."
       (workbench--clear-approval workbench)))
   nil)
 
+(-> workbench-same-folder-p (workbench conversation-entry) boolean)
+(defun workbench-same-folder-p (workbench entry)
+  "Return T when ENTRY lives in this workbench's folder."
+  (string= (namestring (uiop:ensure-directory-pathname (backend-directory (workbench-backend workbench))))
+           (namestring (uiop:ensure-directory-pathname (conversation-entry-directory entry)))))
+
 (-> workbench--conversation-chosen (workbench) null)
 (defun workbench--conversation-chosen (workbench)
-  "Open the conversation selected in the rail."
+  "Open the conversation selected in the rail: here when it belongs to this
+folder, otherwise in a new workspace window for its folder."
   (let* ((index (first (lightfast:browser-selected-indices (workbench--conversations-list workbench))))
          (entry (and index (nth index (workbench-conversations workbench)))))
-    (when (and entry (eq (workbench-turn-state workbench) ':idle))
-      (backend-open-conversation (workbench-backend workbench)
-                                 :conversation-id (conversation-entry-id entry))))
+    (when entry
+      (cond
+        ((not (workbench-same-folder-p workbench entry))
+         (open-workspace (conversation-entry-directory entry) :conversation-id (conversation-entry-id entry)))
+        ((and (eq (workbench-turn-state workbench) ':idle)
+              (not (equal (conversation-entry-id entry) (workbench-conversation-id workbench))))
+         (backend-open-conversation (workbench-backend workbench)
+                                    :conversation-id (conversation-entry-id entry))))))
   nil)
 
 (-> workbench-restart (workbench) null)
@@ -543,7 +634,7 @@ catalog's title, else the id, else a name for a fresh conversation."
                         (find conversation-id (workbench-conversations workbench)
                               :key #'conversation-entry-id :test #'equal))))
         (and entry (conversation-entry-title entry)))
-      conversation-id
+      (and conversation-id (conversation-display-id conversation-id))
       "New conversation"))
 
 
@@ -635,23 +726,28 @@ catalog's title, else the id, else a name for a fresh conversation."
   (workbench--refresh-status workbench)
   nil)
 
+(-> folder-tail (string) string)
+(defun folder-tail (directory)
+  "Return the last component of DIRECTORY for a compact label."
+  (let* ((trimmed (string-right-trim "/" directory))
+         (slash (position #\/ trimmed :from-end t)))
+    (if slash (subseq trimmed (1+ slash)) trimmed)))
+
 (-> workbench--show-conversations (workbench list) null)
 (defun workbench--show-conversations (workbench entries)
-  "List the ENTRIES belonging to this workspace in the rail, most recent first."
+  "List ENTRIES in the rail, most recent first, this folder's entries marked
+with a filled mark and others with their folder name."
   (let* ((list (workbench--conversations-list workbench))
-         (directory (namestring (uiop:ensure-directory-pathname (backend-directory (workbench-backend workbench)))))
-         (here (remove-if-not (lambda (entry)
-                                (string= directory
-                                         (namestring (uiop:ensure-directory-pathname
-                                                      (conversation-entry-directory entry)))))
-                              entries))
-         (sorted (conversations-by-recency here)))
+         (sorted (conversations-by-recency entries)))
     (setf (workbench-conversations workbench) sorted)
     (lightfast:clear list)
     (dolist (entry sorted)
-      (lightfast:add-item list (format nil "~A~@[  ~A~]"
-                                       (or (conversation-entry-title entry) (conversation-entry-id entry))
-                                       (and (conversation-entry-live-p entry) "live")))))
+      (let ((here-p (workbench-same-folder-p workbench entry)))
+        (lightfast:add-item list (format nil "~A ~A~@[  ·  ~A~]~@[  ·  ~A~]"
+                                         (if here-p "●" "○")
+                                         (conversation-entry-name entry)
+                                         (and (not here-p) (folder-tail (conversation-entry-directory entry)))
+                                         (and (conversation-entry-live-p entry) "live"))))))
   nil)
 
 (-> workbench--show-jobs (workbench) null)
@@ -660,7 +756,12 @@ catalog's title, else the id, else a name for a fresh conversation."
   (let ((list (workbench--jobs-list workbench)))
     (lightfast:clear list)
     (dolist (job (workbench-jobs workbench))
-      (lightfast:add-item list (format nil "~A  ~(~A~)~@[  ~Ds~]"
+      (lightfast:add-item list (format nil "~A ~A  ~(~A~)~@[  ~D s~]"
+                                       (case (job-entry-state job)
+                                         ((:running :pending :waiting) "◐")
+                                         (:completed "●")
+                                         ((:failed :cancelled :abandoned) "✕")
+                                         (t "○"))
                                        (or (job-entry-role job) (job-entry-id job))
                                        (job-entry-state job)
                                        (job-entry-elapsed-seconds job)))))
@@ -672,12 +773,12 @@ catalog's title, else the id, else a name for a fresh conversation."
   (setf (workbench-snapshot workbench) snapshot)
   (when (state-snapshot-title snapshot)
     (setf (lightfast:label (workbench--title-label workbench)) (state-snapshot-title snapshot)))
-  (setf (lightfast:label (workbench--model-label workbench))
-        (format nil "~@[~A~]~@[ · ~A~]" (state-snapshot-model snapshot) (state-snapshot-effort snapshot)))
-  (setf (lightfast:label (workbench--permission-label workbench))
-        (if (state-snapshot-permission-mode snapshot)
-            (string-downcase (symbol-name (state-snapshot-permission-mode snapshot)))
-            ""))
+  (workbench--set-chip (workbench--model-chip workbench) (or (state-snapshot-model snapshot) "model"))
+  (workbench--set-chip (workbench--effort-chip workbench) (or (state-snapshot-effort snapshot) "effort"))
+  (workbench--set-chip (workbench--permission-chip workbench)
+                       (if (state-snapshot-permission-mode snapshot)
+                           (string-downcase (symbol-name (state-snapshot-permission-mode snapshot)))
+                           "permissions"))
   (workbench--refresh-status workbench)
   nil)
 

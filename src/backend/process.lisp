@@ -188,10 +188,15 @@ how a development build of Autolith is tested.")
                    :turn-state (acp-backend--turn backend)
                    :health (string-downcase (symbol-name (acp-backend--state backend))))))
 
-(-> acp-backend--publish-state (acp-backend) ui-event)
+(-> acp-backend--publish-state (acp-backend) t)
 (defun acp-backend--publish-state (backend)
-  "Publish the current confirmed state as an immutable snapshot."
-  (acp-backend--post backend 'state-event :snapshot (acp-backend--snapshot backend)))
+  "Publish the current state: through the server's state extension when it is
+provided, since that snapshot carries title, usage and health, else as the
+locally confirmed snapshot."
+  (if (and (acp-backend--session backend)
+           (acp-backend--extension-refresh backend (acp-backend--identifier backend) ':state))
+      nil
+      (acp-backend--post backend 'state-event :snapshot (acp-backend--snapshot backend))))
 
 (-> acp-backend--abandon-requests (acp-backend) null)
 (defun acp-backend--abandon-requests (backend)

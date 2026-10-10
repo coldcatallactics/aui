@@ -43,13 +43,6 @@ and matches at word starts score more."
                      position (1+ found))))
     (- score (floor (length text) 16))))
 
-(defparameter *permission-modes*
-  '(("ask" "Ask before commands" "approve commands and external tools here")
-    ("auto" "Auto" "classify commands with the configured policy")
-    ("sandboxed" "Sandboxed" "run commands in the workspace sandbox")
-    ("full-access" "Full access" "allow commands and external tools without approval"))
-  "The ACP permission modes Autolith offers: id, label and description.")
-
 (-> workbench-actions (workbench) list)
 (defun workbench-actions (workbench)
   "Return the application actions the palette offers for WORKBENCH as
@@ -91,7 +84,7 @@ and matches at word starts score more."
                   (workbench-operations workbench))
           (mapcar (lambda (entry)
                     (make-palette-item ':conversation
-                                       (or (conversation-entry-title entry) (conversation-entry-id entry))
+                                       (conversation-entry-name entry)
                                        (format nil "conversation in ~A" (conversation-entry-directory entry))
                                        entry))
                   (workbench-conversations workbench))

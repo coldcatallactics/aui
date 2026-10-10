@@ -8,6 +8,9 @@
 (defvar *queue* nil
   "The queue every backend posts to, drained by the event loop.")
 
+(defvar *welcome* nil
+  "The welcome window while it is open, so that it can be captured.")
+
 (-> drain-ui-queue () null)
 (defun drain-ui-queue ()
   "Apply every pending event to its workbench."
@@ -66,9 +69,6 @@ Autolith process outlives the application."
     (setf *welcome* welcome)
     (lightfast:show (welcome-window welcome))
     welcome))
-
-(defvar *welcome* nil
-  "The welcome window while it is open, so that it can be captured.")
 
 (-> capture-window-to (string) null)
 (defun capture-window-to (path)

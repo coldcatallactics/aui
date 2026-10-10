@@ -163,10 +163,27 @@ catalog bootstrap that follows session readiness."
   "Return the first event in EVENTS of CLASS satisfying PREDICATE."
   (find-if (lambda (event) (and (typep event class) (funcall predicate event))) events))
 
+(-> events-until-all (ui-queue list &key (:seconds real)) list)
+(defun events-until-all (queue predicates &key (seconds 5))
+  "Collect events from QUEUE until every predicate in PREDICATES has matched
+one, or SECONDS pass; return the events collected."
+  (let ((events nil)
+        (deadline (+ (get-internal-real-time) (round (* seconds internal-time-units-per-second)))))
+    (loop do (setf events (nconc events (backend-test-drain queue)))
+          when (every (lambda (predicate) (find-if predicate events)) predicates) do (return events)
+          when (>= (get-internal-real-time) deadline) do (return events)
+          do (sleep 0.01))))
+
 (fiveam:test extensions-are-probed-and-catalogs-bootstrap
   (with-extension-fixture (backend queue)
-    (let ((events (backend-test-events-until
-                   queue (lambda (event) (and (typep event 'jobs-event) (jobs-event-jobs event))))))
+    (let ((events (events-until-all
+                   queue
+                   (list (lambda (event) (and (typep event 'jobs-event) (jobs-event-jobs event)))
+                         (lambda (event) (and (typep event 'catalog-event) (eq ':settings (catalog-event-kind event))))
+                         (lambda (event) (and (typep event 'catalog-event) (eq ':models (catalog-event-kind event))))
+                         (lambda (event) (and (typep event 'catalog-event) (eq ':operations (catalog-event-kind event))))
+                         (lambda (event) (and (typep event 'state-event)
+                                              (state-snapshot-title (state-event-snapshot event))))))))
       (fiveam:is (not (null events)))
       (fiveam:is (acp-backend-extension-p backend "_autolith/state"))
       (fiveam:is (not (acp-backend-extension-p backend "_autolith/resource")))

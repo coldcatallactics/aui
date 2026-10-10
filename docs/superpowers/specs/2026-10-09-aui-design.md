@@ -180,8 +180,16 @@ carries `workspace`, `title`, `model`, `effort`, `permissionMode`,
 `set-setting` returns the updated settings item; `invoke` returns `text` and
 optional `data`; `job-transcript` returns `content`, `offset`, `nextOffset`,
 `total`, `complete`. `_autolith/event` notifications carry `sessionId`,
-`sequence`, `kind` (`jobs`, `state`, `compaction`, `decision`, `overflow`)
-and `data`.
+`sequence`, `kind` (`jobs`, `state`, `compaction`, `decision`, `overflow`,
+`turn`) and `data`. A `turn` event carries `state` (`running` or `idle`),
+`epoch` (the server's own operation identity), `source` (`prompt`,
+`completion` or `invoke`) and `outcome` (null, `end-turn`, `cancelled` or
+`condition`); the server sends `running` before any observer or tool callback
+and `idle` after the final flush. The client admits a turn the server owns
+(automatic continuation or invocation) on `running` when it is idle, so
+approvals and Stop work for it, finishes it on the matching `idle`, sends
+`session/cancel` alone when stopping it, treats prompt-sourced events as text
+boundaries only, and drops events from another session or generation.
 
 Client side (`src/backend/extensions.lisp`, owned by Fable): the backend
 probes capabilities right after `initialize`, fetches every provided catalog

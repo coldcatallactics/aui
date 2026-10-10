@@ -7,10 +7,14 @@
 
 (fiveam:test styles-have-indices-faces-and-colors
   (fiveam:is (= 0 (document-style-index ':body)))
-  (fiveam:is (eq ':prose-bold (document-style-face ':heading)))
+  (fiveam:is (eq ':prose-bold (document-style-face ':heading-1)))
   (fiveam:is (equal *ink* (document-style-color ':body)))
   (fiveam:is (equal (accent ':blue) (document-style-color ':link)))
   (fiveam:is (document-style-underline-p ':link))
+  (fiveam:is (= *heading-size* (document-style-size ':heading-1)))
+  (fiveam:is (= *subheading-size* (document-style-size ':heading-2)))
+  (fiveam:is (= *meta-size* (document-style-size ':meta)))
+  (fiveam:is (= *code-size* (document-style-size ':code-block)))
   (fiveam:is (not (document-style-underline-p ':body)))
   (fiveam:signals error (document-style-index ':nonsense)))
 
@@ -59,9 +63,9 @@
     (fiveam:is (search "Cancelled" (runs-text (block-runs block))))))
 
 (fiveam:test plans-and-notices-render
-  (let ((plan (runs-text (block-runs (make-instance 'plan-block :received-at 0
-                                                                :entries '(("read" . :completed) ("write" . :in-progress))))))
+  (let ((plan (plan-entry-text '(("read" . :completed) ("write" . :in-progress))))
         (notice (block-runs (make-instance 'notice :severity ':failure :text "Connection lost" :received-at 0))))
+    (fiveam:is (null (block-runs (make-instance 'plan-block :received-at 0 :entries '(("read" . :completed))))))
     (fiveam:is (search "● read" plan))
     (fiveam:is (search "◐ write" plan))
     (fiveam:is (string= "Failure" (run-text (first notice))))
@@ -100,3 +104,8 @@
     (fiveam:signals error (document-rerender document (make-instance 'notice :id "missing")))
     (document-clear document)
     (fiveam:is (zerop (document-length document)))))
+
+(fiveam:test tool-data-reads-as-fields
+  (fiveam:is (string= (format nil "command: ls~%directory: /tmp") (readable-data-text "{\"directory\": \"/tmp\", \"command\": \"ls\"}")))
+  (fiveam:is (string= "plain output" (readable-data-text "plain output")))
+  (fiveam:is (string= (format nil "a~%2") (readable-data-text "[\"a\", 2]"))))

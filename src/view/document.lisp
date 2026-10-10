@@ -8,26 +8,35 @@
 ;;; end; the transcript view hands the results to the widget.
 
 (defparameter *document-styles*
-  '((:body           :prose        :ink)
-    (:bold           :prose-bold   :ink)
-    (:italic         :prose-italic :ink)
-    (:bold-italic    :prose-bold-italic :ink)
-    (:code           :code         :ink)
-    (:code-block     :code         :ink)
-    (:heading        :prose-bold   :ink)
-    (:link           :prose-italic (:blue :ink) :underline)
-    (:bullet         :prose        :ink)
-    (:meta           :prose-italic :ink)
-    (:user-head      :prose-bold   (:blue :ink))
-    (:assistant-head :prose-bold   (:green :ink))
-    (:reasoning-head :prose-bold   (:violet :ink))
-    (:tool-head      :prose-bold   :ink)
-    (:approval-head  :prose-bold   (:orange :ink))
-    (:failure        :prose-bold   (:red :ink))
-    (:success        :prose-bold   (:green :ink)))
+  '((:body           :prose        :ink          :prose)
+    (:bold           :prose-bold   :ink          :prose)
+    (:italic         :prose-italic :ink          :prose)
+    (:bold-italic    :prose-bold-italic :ink     :prose)
+    (:code           :code         :ink          :code)
+    (:code-block     :code         :ink          :code)
+    (:code-bold      :code-bold    :ink          :code)
+    (:code-italic    :code-italic  :ink          :code)
+    (:table          :code         :ink          :code)
+    (:heading-1      :prose-bold   :ink          :heading)
+    (:heading-2      :prose-bold   :ink          :subheading)
+    (:heading-3      :prose-bold   :ink          :small-heading)
+    (:link           :prose-italic (:blue :ink)  :prose :underline)
+    (:bullet         :prose        :ink          :prose)
+    (:list-number    :prose-bold   :ink          :prose)
+    (:quote          :prose-italic :ink          :prose)
+    (:strike         :prose        :ink          :prose :strike)
+    (:meta           :prose-italic :ink          :meta)
+    (:user-head      :prose-bold   (:blue :ink)  :prose)
+    (:assistant-head :prose-bold   (:green :ink) :prose)
+    (:reasoning-head :prose-bold   (:violet :ink) :prose)
+    (:tool-head      :prose-bold   :ink          :prose)
+    (:approval-head  :prose-bold   (:orange :ink) :prose)
+    (:failure        :prose-bold   (:red :ink)   :meta)
+    (:success        :prose-bold   (:green :ink) :meta))
   "Every document style: its name, the theme face, the color as :INK or an
-(ROLE TIER) accent, and optional attribute flags. The position of an entry is
-its style index in the display's style table.")
+(ROLE TIER) accent, its size class (:PROSE, :CODE, :META or :HEADING), and
+optional attribute flags. The position of an entry is its style index in the
+display's style table.")
 
 (deftype document-style ()
   "A style name from *DOCUMENT-STYLES*."
@@ -57,10 +66,59 @@ its style index in the display's style table.")
         *ink*
         (accent (first color) :tier (second color)))))
 
+(-> document-style-size (keyword) integer)
+(defun document-style-size (name)
+  "Return the pixel size of the document style NAME from its size class."
+  (ecase (fourth (assoc name *document-styles*))
+    (:prose *prose-size*)
+    (:code *code-size*)
+    (:meta *meta-size*)
+    (:heading *heading-size*)
+    (:subheading *subheading-size*)
+    (:small-heading *small-heading-size*)))
+
 (-> document-style-underline-p (keyword) boolean)
 (defun document-style-underline-p (name)
   "Return T when the document style NAME is underlined."
-  (and (member ':underline (cdddr (assoc name *document-styles*))) t))
+  (and (member ':underline (cddddr (assoc name *document-styles*))) t))
+
+(-> document-style-strike-p (keyword) boolean)
+(defun document-style-strike-p (name)
+  "Return T when the document style NAME is struck through."
+  (and (member ':strike (cddddr (assoc name *document-styles*))) t))
+
+(-> readable-data-text (t) string)
+(defun readable-data-text (value)
+  "Return VALUE, a tool's input or output, as readable text: a JSON object
+becomes one `name: value` line per field, a JSON array one line per item,
+anything else is shown as it is."
+  (let ((text (if (stringp value) value (princ-to-string value))))
+    (handler-case
+        (let ((decoded (and (plusp (length text))
+                            (find (char (string-left-trim " " text) 0) "{[")
+                            (agentcomms:json-decode text))))
+          (cond
+            ((agentcomms:json-object-p decoded)
+             (let ((lines nil))
+               (maphash (lambda (key item)
+                          (push (format nil "~A: ~A" key (readable-data-item item)) lines))
+                        decoded)
+               (format nil "~{~A~^~%~}" (sort lines #'string<))))
+            ((vectorp decoded)
+             (format nil "~{~A~^~%~}" (map 'list #'readable-data-item decoded)))
+            (t text)))
+      (error ()
+        text))))
+
+(-> readable-data-item (t) string)
+(defun readable-data-item (item)
+  "Return one JSON value as text for READABLE-DATA-TEXT."
+  (cond
+    ((stringp item) item)
+    ((null item) "null")
+    ((eq item t) "true")
+    ((numberp item) (princ-to-string item))
+    (t (agentcomms:json-encode item))))
 
 
 ;;; Rendering blocks to runs
@@ -99,41 +157,42 @@ cut to LIMIT characters with an ellipsis."
         (values (format nil "~{~A~^~%~}" (subseq lines 0 limit))
                 (- (length lines) limit)))))
 
-(-> header-runs (string keyword transcript-block &key (:note string)) list)
-(defun header-runs (label style block &key (note ""))
-  "Return the runs of a block's header line: LABEL in STYLE, NOTE, and the time."
-  (list (make-run label style)
-        (make-run (format nil "~@[  ~A~]  ~A~%" (and (plusp (length note)) note)
-                          (clock-text (transcript-block-received-at block)))
-                  ':meta)))
+(-> header-runs (string keyword transcript-block &key (:note string) (:space-before boolean)) list)
+(defun header-runs (label style block &key (note "") space-before)
+  "Return the runs of a block's header line: LABEL in STYLE, NOTE, and the time.
+With SPACE-BEFORE a blank line precedes the header, which is how messages
+stand apart from the tight rows of collapsed tools above them."
+  (append (when space-before (list (make-run (string #\Newline) ':body)))
+          (list (make-run label style)
+                (make-run (format nil "~@[  ~A~]  ~A~%" (and (plusp (length note)) note)
+                                  (clock-text (transcript-block-received-at block)))
+                          ':meta))))
 
 (defgeneric block-runs (block)
   (:documentation "Return the runs that show BLOCK, ending with a blank line."))
 
 (defmethod block-runs ((block user-message))
-  (append (header-runs "You" ':user-head block)
-          (markdown-runs (user-message-text block))
-          (list (make-run (string #\Newline) ':body))))
+  (append (header-runs "You" ':user-head block :space-before t)
+          (markdown-runs (user-message-text block))))
 
 (defmethod block-runs ((block assistant-text))
-  (append (header-runs "Autolith" ':assistant-head block)
-          (markdown-runs (assistant-text-text block))
-          (list (make-run (string #\Newline) ':body))))
+  (append (header-runs "Autolith" ':assistant-head block :space-before t)
+          (markdown-runs (assistant-text-text block))))
 
 (defmethod block-runs ((block reasoning))
   (let ((text (reasoning-text block)))
     (if (transcript-block-collapsed-p block)
         (list (make-run (disclosure-marker block) ':reasoning-head)
               (make-run "Reasoning" ':reasoning-head)
-              (make-run (format nil "  ~A~%~%" (first-line text)) ':meta))
-        (append (list (make-run (disclosure-marker block) ':reasoning-head))
+              (make-run (format nil "  ~A~%" (first-line text)) ':meta))
+        (append (list (make-run (string #\Newline) ':body)
+                      (make-run (disclosure-marker block) ':reasoning-head))
                 (header-runs "Reasoning" ':reasoning-head block)
                 (mapcar (lambda (run)
                           (if (member (run-style run) '(:body :bullet))
                               (make-run (run-text run) ':italic (run-url run))
                               run))
-                        (markdown-runs text))
-                (list (make-run (string #\Newline) ':body))))))
+                        (markdown-runs text))))))
 
 (-> tool-status-text (tool-call) (values string keyword))
 (defun tool-status-text (block)
@@ -149,7 +208,8 @@ cut to LIMIT characters with an ellipsis."
 
 (defmethod block-runs ((block tool-call))
   (multiple-value-bind (status-word status-style) (tool-status-text block)
-    (let ((head (list (make-run (disclosure-marker block) ':tool-head)
+    (let ((head (list (make-run (if (transcript-block-collapsed-p block) "" (string #\Newline)) ':body)
+                      (make-run (disclosure-marker block) ':tool-head)
                       (make-run (if (plusp (length (tool-call-title block)))
                                     (tool-call-title block)
                                     (tool-call-name block))
@@ -159,13 +219,13 @@ cut to LIMIT characters with an ellipsis."
                       (make-run (format nil "  ~A~%" (clock-text (transcript-block-received-at block)))
                                 ':meta))))
       (if (transcript-block-collapsed-p block)
-          (append head (list (make-run (string #\Newline) ':body)))
+          head
           (append head
                   (when (tool-call-input block)
-                    (list (make-run (format nil "~A~%" (tool-call-input block)) ':code-block)))
+                    (list (make-run (format nil "~A~%" (readable-data-text (tool-call-input block))) ':code-block)))
                   (when (tool-call-output block)
                     (multiple-value-bind (shown omitted)
-                        (bounded-lines (tool-call-output block) *tool-output-preview-lines*)
+                        (bounded-lines (readable-data-text (tool-call-output block)) *tool-output-preview-lines*)
                       (append (list (make-run (format nil "~A~%" shown) ':code-block))
                               (when (plusp omitted)
                                 (list (make-run (format nil "~D more lines in the inspector~%" omitted)
@@ -181,12 +241,16 @@ cut to LIMIT characters with an ellipsis."
     (:completed "● ")))
 
 (defmethod block-runs ((block plan-block))
-  (append (header-runs "Plan" ':tool-head block)
-          (loop for (text . status) in (plan-block-entries block)
-                append (list (make-run (plan-entry-marker status) ':body)
-                             (make-run (format nil "~A~%" text)
-                                       (if (eq status ':completed) ':meta ':body))))
-          (list (make-run (string #\Newline) ':body))))
+  "The plan is shown beside the transcript, not inside it."
+  (declare (ignore block))
+  nil)
+
+(-> plan-entry-text (list) string)
+(defun plan-entry-text (entries)
+  "Return the plan ENTRIES as lines with a state glyph each, for the rail."
+  (format nil "~{~A~^~%~}"
+          (loop for (text . status) in entries
+                collect (format nil "~A~A" (plan-entry-marker status) text))))
 
 (-> approval-option-text (list integer) string)
 (defun approval-option-text (option number)
@@ -194,7 +258,7 @@ cut to LIMIT characters with an ellipsis."
   (format nil "~A (~D)" (second option) number))
 
 (defmethod block-runs ((block approval))
-  (append (header-runs "Approval needed" ':approval-head block)
+  (append (header-runs "Approval needed" ':approval-head block :space-before t)
           (list (make-run (format nil "~A~%" (approval-title block)) ':bold))
           (when (approval-arguments block)
             (list (make-run (format nil "~A~%" (approval-arguments block)) ':code-block)))
@@ -217,12 +281,13 @@ cut to LIMIT characters with an ellipsis."
           (list (make-run (string #\Newline) ':body))))
 
 (defmethod block-runs ((block notice))
-  (list (make-run (ecase (notice-severity block)
+  (list (make-run (string #\Newline) ':body)
+        (make-run (ecase (notice-severity block)
                     (:information "Notice")
                     (:warning "Warning")
                     (:failure "Failure"))
                   (if (eq (notice-severity block) ':failure) ':failure ':meta))
-        (make-run (format nil "  ~A~%~%" (notice-text block)) ':meta)))
+        (make-run (format nil "  ~A~%" (notice-text block)) ':meta)))
 
 
 ;;; Spans

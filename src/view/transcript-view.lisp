@@ -23,13 +23,14 @@
   "Return the Lightfast style plists for *DOCUMENT-STYLES*, in index order."
   (loop for (name face) in *document-styles*
         collect (list :font (font face)
-                      :size (if (member face '(:code :code-bold :code-italic :code-bold-italic))
-                                *code-size*
-                                *prose-size*)
+                      :size (document-style-size name)
                       :color (document-style-color name)
-                      :attributes (if (document-style-underline-p name)
-                                      lightfast:+text-attribute-underline+
-                                      0))))
+                      :attributes (logior (if (document-style-underline-p name)
+                                              lightfast:+text-attribute-underline+
+                                              0)
+                                          (if (document-style-strike-p name)
+                                              lightfast:+text-attribute-strike-through+
+                                              0)))))
 
 (-> runs->styled (list) list)
 (defun runs->styled (runs)

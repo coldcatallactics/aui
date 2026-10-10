@@ -716,10 +716,9 @@ catalog's title, else the id, else a name for a fresh conversation."
          (connection (string-downcase (symbol-name (workbench-connection-state workbench))))
          (turn (string-downcase (symbol-name (workbench-turn-state workbench)))))
     (setf (lightfast:label (workbench--status-label workbench))
-          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]~:[~; · scrolled up, End follows~]"
+          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]"
                   connection turn (and fraction (round (* 100 fraction)))
-                  pending remaining
-                  (not (transcript-view-follow-p (workbench-transcript-view workbench)))))
+                  pending remaining))
     (setf (lightfast:label (workbench--state-label workbench))
           (cond
             ((member (workbench-connection-state workbench) '(:lost :exited)) connection)

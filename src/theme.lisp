@@ -40,11 +40,28 @@ lightness and is used only for small fills carrying black labels.")
   '("CMU Typewriter Text" "IBM Plex Mono" "Berkeley Mono" "Liberation Mono")
   "Monospace families for code, first installed one wins.")
 
-(defparameter *prose-size* 16
-  "Pixel size of prose and labels.")
+(defparameter *prose-size* 18
+  "Pixel size of prose, labels and controls.")
 
-(defparameter *code-size* 15
+(defparameter *code-size* 16
   "Pixel size of code, kept near the prose size as Interlisp Paper asks.")
+
+(defparameter *meta-size* 18
+  "Pixel size of metadata: times, status words, sources. The same as prose so
+that a metadata run shares the baseline of the words beside it; italics and
+placement carry the distinction.")
+
+(defparameter *heading-size* 22
+  "Pixel size of first-level headings inside messages and of pane titles.")
+
+(defparameter *subheading-size* 20
+  "Pixel size of second-level headings.")
+
+(defparameter *small-heading-size* 18
+  "Pixel size of third-level and deeper headings, bold at prose size.")
+
+(defparameter *display-size* 28
+  "Pixel size of the few display-scale words: the wordmark, a conversation title.")
 
 (defparameter *spacing-scale* #(4 8 12 16 24 32)
   "The spacing scale in pixels; SPACING indexes it from 1.")

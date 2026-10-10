@@ -34,19 +34,21 @@
 
 (fiveam:test documents-have-fences-headings-and-lists
   (let ((runs (markdown-runs (format nil "# Title~%Text~%~%```lisp~%(+ 1 2)~%```~%- one~%2. two~%"))))
-    (fiveam:is (equal (list (cons "Title" ':heading) (cons (string #\Newline) ':body)
+    (fiveam:is (equal (list (cons "Title" ':heading-1) (cons (string #\Newline) ':body)
                             (cons "Text" ':body) (cons (string #\Newline) ':body)
                             (cons (string #\Newline) ':body)
                             (cons (format nil "(+ 1 2)~%") ':code-block)
                             (cons "• " ':bullet) (cons "one" ':body) (cons (string #\Newline) ':body)
-                            (cons "2. " ':bullet) (cons "two" ':body) (cons (string #\Newline) ':body))
+                            (cons "2. " ':list-number) (cons "two" ':body) (cons (string #\Newline) ':body))
                       (styles-of runs)))
     (fiveam:is (string= (format nil "Title~%Text~%~%(+ 1 2)~%• one~%2. two~%") (runs-text runs)))))
 
 (fiveam:test headings-flatten-inner-emphasis
-  (fiveam:is (equal '(("Bold heading" . :heading) ("
+  (fiveam:is (equal '(("Bold heading" . :heading-2) ("
 " . :body))
                     (styles-of (markdown-runs "## **Bold** heading"))))
+  (fiveam:is (eq ':heading-1 (run-style (first (markdown-runs "# One")))))
+  (fiveam:is (eq ':heading-3 (run-style (first (markdown-runs "#### Deep")))))
   (fiveam:is (null (markdown-heading-level "#hashtag")))
   (fiveam:is (= 3 (markdown-heading-level "### Deep"))))
 
@@ -67,3 +69,31 @@
 (fiveam:test empty-lines-are-kept
   (fiveam:is (equal '("a" "" "b") (split-lines-keeping-empty (format nil "a~%~%b~%"))))
   (fiveam:is (equal '("") (split-lines-keeping-empty ""))))
+
+(fiveam:test strike-images-quotes-tasks-and-tables
+  (fiveam:is (equal '(("old" . :strike) (" new" . :body)) (styles-of (markdown-inline-runs "~~old~~ new"))))
+  (let ((image (first (markdown-inline-runs "![a cat](http://x/c.png)"))))
+    (fiveam:is (string= "[image: a cat]" (run-text image)))
+    (fiveam:is (string= "http://x/c.png" (run-url image))))
+  (fiveam:is (equal '(("│ " . :quote) ("wise words" . :quote) ("
+" . :body))
+                    (styles-of (markdown-runs "> wise words"))))
+  (fiveam:is (equal '(("☑ " . :bullet) ("done" . :body) ("
+" . :body) ("☐ " . :bullet) ("todo" . :body) ("
+" . :body))
+                    (styles-of (markdown-runs (format nil "- [x] done~%- [ ] todo")))))
+  (let ((runs (markdown-runs (format nil "| a | bb |~%|---|---|~%| 1 | 2 |"))))
+    (fiveam:is (eq ':code-bold (run-style (first runs))))
+    (fiveam:is (string= "a  " (run-text (first runs))))
+    (fiveam:is (find ':table runs :key #'run-style))))
+
+(fiveam:test code-is-highlighted-in-monochrome
+  (let ((runs (code-runs (format nil "(defun f (x) ; add~%  (+ x 1))") "lisp")))
+    (fiveam:is (equal '(("(" . :code-block) ("defun" . :code-bold) (" f (x) " . :code-block) ("; add" . :code-italic)
+                        ("
+  (+ x 1))
+" . :code-block))
+                      (styles-of runs))))
+  (let ((runs (code-runs "if x: return y # note" "python")))
+    (fiveam:is (eq ':code-bold (run-style (first runs))))
+    (fiveam:is (eq ':code-italic (run-style (find "# note" runs :key #'run-text :test #'string=))))))

@@ -231,7 +231,7 @@ size, used to inspect other layouts under a tiling compositor; NIL normally.")
     (lightfast:set-tooltip chip "Click to change")
     chip))
 
-(-> workbench--set-chip (t string) null)
+(-> workbench--set-chip (workbench t string) null)
 (defun workbench--set-chip (workbench chip text)
   "Show TEXT on CHIP with the dropdown mark, and give the chip the width the
 new text wants."

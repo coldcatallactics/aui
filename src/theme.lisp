@@ -41,36 +41,38 @@ lightness and is used only for small fills carrying black labels.")
   "Monospace families for code, first installed one wins.")
 
 (defparameter *marker-families*
-  '("Iosevka Term" "Adwaita Mono" "Unifont")
+  '("Adwaita Mono" "Iosevka Term" "Unifont")
   "Families for marker glyphs the serif lacks: boxes, triangles, circles and
-check marks. Chosen by measurement: at *MARKER-SIZE* beside 18 px prose their
-descent equals the prose descent, so FLTK draws them on the prose baseline,
-and their shapes stand one x-height tall.")
+check marks. Chosen by measurement: at *MARKER-SIZE* beside the prose, once
+the prose face has been through LIGHTFAST:CORRECT-FONT-BASELINES, their
+shapes sit on the prose baseline and stand about one x-height tall.")
 
 (defparameter *marker-size* 20
   "Pixel size of marker glyphs beside prose.")
 
-(defparameter *prose-size* 18
+(defparameter *prose-size* 20
   "Pixel size of prose, labels and controls.")
 
-(defparameter *code-size* 16
-  "Pixel size of code, kept near the prose size as Interlisp Paper asks.")
+(defparameter *code-size* 17
+  "Pixel size of code, kept near the prose size as Interlisp Paper asks. The
+measured residue beside 20 px prose is one pixel above the baseline, the
+rounding floor of FLTK's integer metrics.")
 
-(defparameter *meta-size* 18
+(defparameter *meta-size* 20
   "Pixel size of metadata: times, status words, sources. The same as prose so
 that a metadata run shares the baseline of the words beside it; italics and
 placement carry the distinction.")
 
-(defparameter *heading-size* 22
+(defparameter *heading-size* 25
   "Pixel size of first-level headings inside messages and of pane titles.")
 
-(defparameter *subheading-size* 20
+(defparameter *subheading-size* 22
   "Pixel size of second-level headings.")
 
-(defparameter *small-heading-size* 18
+(defparameter *small-heading-size* 20
   "Pixel size of third-level and deeper headings, bold at prose size.")
 
-(defparameter *display-size* 28
+(defparameter *display-size* 32
   "Pixel size of the few display-scale words: the wordmark, a conversation title.")
 
 (defparameter *spacing-scale* #(4 8 12 16 24 32)
@@ -199,6 +201,9 @@ keyed by :PROSE, :PROSE-BOLD, :PROSE-ITALIC, :PROSE-BOLD-ITALIC, :CODE,
                    (first *code-families*)))
          (marker (or (theme--first-installed-family *marker-families* installed)
                      (first *marker-families*))))
+    ;; FLTK draws a face with a line gap above its baseline; the corrected
+    ;; copies land where every other face does, so runs in one line meet.
+    (lightfast:correct-font-baselines (list prose code marker))
     (flet ((face (family style)
              (let ((name (theme--face-name family style)))
                ;; CMU Typewriter spells its bold italic as one word.

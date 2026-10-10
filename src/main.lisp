@@ -100,7 +100,7 @@ any other path receives the PPM itself."
 (-> parse-arguments (list) list)
 (defun parse-arguments (arguments)
   "Return a plist from command line ARGUMENTS: :DIRECTORY, :CONVERSATION-ID,
-:DEMO-P, :SHOT-PATH, :SHOT-AFTER, :SIZE, :DEMO-PROMPT and :OPEN-VIEW."
+:DEMO-P, :SHOT-PATH, :SHOT-AFTER, :SIZE, :DEMO-PROMPT, :DRAFT and :OPEN-VIEW."
   (let ((result nil))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -118,6 +118,7 @@ any other path receives the PPM itself."
                     (setf (getf result ':size) (list (parse-integer text :end separator)
                                                      (parse-integer text :start (1+ separator))))))
                  ((string= argument "--demo-prompt") (setf (getf result ':demo-prompt) (pop arguments)))
+                 ((string= argument "--draft") (setf (getf result ':draft) (pop arguments)))
                  ((string= argument "--open") (setf (getf result ':open-view) (intern (string-upcase (pop arguments)) :keyword)))
                  ((and (plusp (length argument)) (char= #\- (char argument 0)))
                   (error "Unknown option ~A." argument))
@@ -150,10 +151,11 @@ size; the workbench then lays itself out for the requested size inside it."
   "Run AUI. With a directory argument, open a workspace there at once;
 otherwise show the welcome window. --conversation ID resumes a conversation,
 --demo uses the scripted backend, --open settings, palette or inspector opens
-that view, --demo-prompt TEXT sends TEXT once the session is ready, --size
+that view, --demo-prompt TEXT sends TEXT once the session is ready, --draft
+TEXT puts TEXT in the composer without sending it, --size
 WIDTHxHEIGHT pins the window size for layout inspection, and --shot PATH
 captures the window and exits after --shot-after SECONDS."
-  (destructuring-bind (&key directory conversation-id demo-p shot-path shot-after size demo-prompt open-view)
+  (destructuring-bind (&key directory conversation-id demo-p shot-path shot-after size demo-prompt draft open-view)
       (parse-arguments arguments)
     (lightfast:load-library)
     (lightfast:enable-thread-wakeups)
@@ -171,6 +173,10 @@ captures the window and exits after --shot-after SECONDS."
              (workbench--relayout workbench))
            (when demo-prompt
              (setf (workbench-queued-prompt workbench) demo-prompt))
+           (when draft
+             (setf (lightfast:value (workbench-composer workbench)) draft
+                   (lightfast:text-insert-position (workbench-composer workbench))
+                   (lightfast:string-byte-length draft)))
            (when open-view
              (lightfast:add-timeout 0.5 (lambda () (open-view workbench open-view))))))
         (t

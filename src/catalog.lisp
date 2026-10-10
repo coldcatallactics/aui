@@ -106,6 +106,24 @@ and :CONTEXT-MEASURED-P; absent keys are unknown, never zero.")
   (:documentation "What the status line and header show about the session."))
 
 
+;;; Identifiers
+
+(-> conversation-display-id (string) string)
+(defun conversation-display-id (id)
+  "Return the conversation ID as Autolith shows it: the first character, a
+hyphen, then the rest, so that a prefix is easy to remember and type."
+  (if (and (> (length id) 1) (not (find #\- id)))
+      (format nil "~A-~A" (subseq id 0 1) (subseq id 1))
+      id))
+
+(-> conversation-entry-name (conversation-entry) string)
+(defun conversation-entry-name (entry)
+  "Return ENTRY's title, or its display id when it has none."
+  (or (conversation-entry-title entry)
+      (conversation-entry-display-id entry)
+      (conversation-display-id (conversation-entry-id entry))))
+
+
 ;;; Ordering helpers for the welcome screen
 
 (-> conversation-entry-activity-key (conversation-entry) integer)

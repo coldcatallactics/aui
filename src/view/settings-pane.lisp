@@ -6,7 +6,7 @@
 ;;; the chosen group's settings on the right, each with its own control, its
 ;;; documentation and where its value came from.
 
-(defparameter *settings-row-height* 76
+(defparameter *settings-row-height* 84
   "Height of one setting row: a control line and a documentation line.")
 
 (defclass settings-pane ()

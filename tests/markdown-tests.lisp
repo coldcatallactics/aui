@@ -97,3 +97,15 @@
   (let ((runs (code-runs "if x: return y # note" "python")))
     (fiveam:is (eq ':code-bold (run-style (first runs))))
     (fiveam:is (eq ':code-italic (run-style (find "# note" runs :key #'run-text :test #'string=))))))
+
+(fiveam:test headings-swallow-the-blank-line-after-them
+  (fiveam:is (equal '(("Title" . :heading-1) ("
+" . :body) ("Body" . :body) ("
+" . :body))
+                    (styles-of (markdown-runs (format nil "# Title~%~%Body")))))
+  (fiveam:is (equal '(("Title" . :heading-1) ("
+" . :body) ("
+" . :body) ("
+" . :body) ("Body" . :body) ("
+" . :body))
+                    (styles-of (markdown-runs (format nil "# Title~%~%~%~%Body"))))))

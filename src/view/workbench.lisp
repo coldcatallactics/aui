@@ -28,10 +28,10 @@
 (defparameter *status-height* 28
   "Height of the status row in pixels.")
 
-(defparameter *control-height* 34
+(defparameter *control-height* 38
   "Height of buttons and single-line fields.")
 
-(defparameter *text-column-width* 720
+(defparameter *text-column-width* 780
   "Widest the transcript and composer grow, in pixels: about 95 characters of
 17 px serif, so that lines stay readable on a wide window.")
 
@@ -60,6 +60,10 @@
    (approval-label      :reader workbench--approval-label)
    (approval-buttons    :initform nil :accessor workbench--approval-buttons)
    (composer            :reader workbench-composer)
+   (composer-frame      :reader workbench--composer-frame
+                        :documentation "The hairline group around the composer, giving it padding.")
+   (follow-ups          :initform nil :accessor workbench-follow-ups
+                        :documentation "Prompts queued to be sent, oldest first, when the turn ends.")
    (send-button         :reader workbench--send-button)
    (stop-button         :reader workbench--stop-button)
    (status-label        :reader workbench--status-label)
@@ -233,7 +237,8 @@ backend so the first events have somewhere to land."
       (dolist (list (list conversations-list jobs-list))
         (lightfast:set-text-font list (font ':prose))
         (lightfast:set-text-size list *prose-size*)
-        (lightfast:set-box list lightfast:+box-no-box+))
+        (lightfast:set-box list lightfast:+box-no-box+)
+        (lightfast:browser-set-scrollbars list ':vertical))
       (lightfast:on conversations-list
                     (lambda (widget event value)
                       (declare (ignore widget event value))
@@ -253,7 +258,12 @@ backend so the first events have somewhere to land."
             (slot-value workbench 'settings-pane) (make-settings-pane workbench window))
       (setf approval-row (lightfast:make-group :parent window :width 600 :height *control-height*))
       (setf approval-label (workbench--make-label approval-row "" ':prose-bold))
-      (setf composer (lightfast:make-text-editor :parent window :width 600 :height *composer-height*))
+      (setf (slot-value workbench 'composer-frame)
+            (lightfast:make-group :parent window :width 600 :height *composer-height*))
+      (lightfast:set-box (workbench--composer-frame workbench) lightfast:+box-down-frame+)
+      (setf composer (lightfast:make-text-editor :parent (workbench--composer-frame workbench)
+                                                 :width 600 :height *composer-height*))
+      (lightfast:set-box composer lightfast:+box-no-box+)
       (lightfast:set-text-font composer (font ':prose))
       (lightfast:set-text-size composer *prose-size*)
       (lightfast:text-set-wrap composer ':bounds)
@@ -262,11 +272,11 @@ backend so the first events have somewhere to land."
                       (declare (ignore widget event))
                       (workbench--composer-key workbench value))
                     :event lightfast:+event-key+)
-      (setf send-button (lightfast:make-button :parent window :label "Send ▸" :height *control-height*
+      (setf send-button (lightfast:make-button :parent window :label "Send" :height *control-height*
                                                :callback (lambda (widget event value)
                                                            (declare (ignore widget event value))
                                                            (workbench-send workbench)))
-            stop-button (lightfast:make-button :parent window :label "Stop ■" :height *control-height*
+            stop-button (lightfast:make-button :parent window :label "Stop" :height *control-height*
                                                :callback (lambda (widget event value)
                                                            (declare (ignore widget event value))
                                                            (workbench-stop workbench))))
@@ -314,7 +324,7 @@ open, and the decision row only while an approval waits."
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
     (let ((mode (workbench-center-mode workbench)))
       (dolist (widget (list (transcript-view-display (workbench-transcript-view workbench))
-                            (workbench-composer workbench) (workbench--send-button workbench)
+                            (workbench--composer-frame workbench) (workbench--send-button workbench)
                             (workbench--stop-button workbench)))
         (if (eq mode ':transcript) (lightfast:show widget) (lightfast:hide widget)))
       (when (and approval-p (not (eq mode ':transcript)))
@@ -358,7 +368,11 @@ open, and the decision row only while an approval waits."
                                                      (workbench--approval-buttons workbench)))))
            (composer-row (lightfast:make-layout-row
                           :basis *composer-height* :shrink 0 :gap (spacing 3)
-                          :children (list (lightfast:make-layout-item (workbench-composer workbench) :basis 0 :grow 1)
+                          :children (list (lightfast:make-layout-column
+                                           :target (workbench--composer-frame workbench)
+                                           :basis 0 :grow 1 :padding (spacing 2)
+                                           :children (list (lightfast:make-layout-item (workbench-composer workbench)
+                                                                                       :basis 0 :grow 1)))
                                           (lightfast:make-layout-column
                                            :basis 120 :shrink 0 :gap (spacing 3)
                                            :children (list (lightfast:make-layout-item (workbench--send-button workbench)
@@ -422,13 +436,32 @@ open, and the decision row only while an approval waits."
 
 (-> workbench-send (workbench) null)
 (defun workbench-send (workbench)
-  "Send the composer text as a prompt and clear the composer."
+  "Send the composer text as a prompt and clear the composer. While a turn
+runs or the session is not ready yet, the text is queued as a follow-up."
   (let ((text (string-trim '(#\Space #\Newline #\Tab) (lightfast:value (workbench-composer workbench)))))
-    (when (and (plusp (length text))
-               (eq (workbench-turn-state workbench) ':idle)
+    (when (plusp (length text))
+      (if (and (eq (workbench-turn-state workbench) ':idle)
                (eq (workbench-session-state workbench) ':ready))
-      (backend-prompt (workbench-backend workbench) text)
+          (backend-prompt (workbench-backend workbench) text)
+          (workbench-queue-follow-up workbench text))
       (setf (lightfast:value (workbench-composer workbench)) "")))
+  nil)
+
+(-> workbench-queue-follow-up (workbench string) null)
+(defun workbench-queue-follow-up (workbench text)
+  "Queue TEXT to be sent when the turn ends."
+  (setf (workbench-follow-ups workbench) (append (workbench-follow-ups workbench) (list text)))
+  (workbench--refresh-status workbench)
+  nil)
+
+(-> workbench--send-follow-up (workbench) null)
+(defun workbench--send-follow-up (workbench)
+  "Send the oldest queued follow-up when the session is ready and idle."
+  (when (and (workbench-follow-ups workbench)
+             (eq (workbench-session-state workbench) ':ready)
+             (eq (workbench-turn-state workbench) ':idle))
+    (backend-prompt (workbench-backend workbench) (pop (workbench-follow-ups workbench)))
+    (workbench--refresh-status workbench))
   nil)
 
 (-> workbench--send-queued-prompt (workbench) null)
@@ -471,20 +504,157 @@ or NIL and 0 when VALUE is not a key event."
         (values (first parts) (second parts))
         (values nil 0))))
 
+(defparameter *state-shift* #x10000
+  "FLTK's state bit for Shift.")
+
+(defparameter *state-alt* #x80000
+  "FLTK's state bit for Alt.")
+
+(defparameter *key-tab* #xff09
+  "FLTK's key number for Tab.")
+
 (-> workbench--composer-key (workbench string) null)
 (defun workbench--composer-key (workbench value)
-  "Send on Ctrl+Enter, stop on Escape, decide approvals on Ctrl+1 to Ctrl+9."
+  "The composer's keys. Enter sends, Shift+Enter or Ctrl+Enter breaks the
+line, Tab queues the text as a follow-up, Escape stops the turn and Ctrl+1 to
+Ctrl+9 decide approvals. The line editing keys of a terminal composer apply:
+Ctrl+A and Ctrl+E move to the ends of the line, Ctrl+K and Ctrl+U kill to the
+end or the start of the line, Ctrl+W and Alt+D kill a word, Alt+B and Alt+F
+move by a word."
   (multiple-value-bind (key state) (key-event-parts value)
-    (let ((control-p (logtest state *state-control*)))
-      (cond
-        ((and control-p (or (eql key *key-enter*) (eql key *key-keypad-enter*)))
-         (lightfast:consume-event)
-         (workbench-send workbench))
-        ((eql key *key-escape*)
-         (lightfast:consume-event)
-         (workbench-stop workbench))
-        ((workbench--global-key workbench key control-p)
-         (lightfast:consume-event)))))
+    (let ((control-p (logtest state *state-control*))
+          (shift-p (logtest state *state-shift*))
+          (alt-p (logtest state *state-alt*))
+          (composer (workbench-composer workbench)))
+      (flet ((claim () (lightfast:consume-event))
+             (letter-p (character) (eql key (char-code character))))
+        (cond
+          ((null key) nil)
+          ((or (eql key *key-enter*) (eql key *key-keypad-enter*))
+           (claim)
+           (if (or shift-p control-p)
+               (lightfast:text-insert composer (string #\Newline))
+               (workbench-send workbench)))
+          ((eql key *key-tab*)
+           (claim)
+           (workbench-queue-composer workbench))
+          ((eql key *key-escape*)
+           (claim)
+           (workbench-stop workbench))
+          ((and control-p (letter-p #\a)) (claim) (composer-move-line composer ':start))
+          ((and control-p (letter-p #\e)) (claim) (composer-move-line composer ':end))
+          ((and control-p (letter-p #\k)) (claim) (composer-kill-line composer ':end))
+          ((and control-p (letter-p #\u)) (claim) (composer-kill-line composer ':start))
+          ((and control-p (letter-p #\w)) (claim) (composer-kill-word composer ':backward))
+          ((and alt-p (letter-p #\d)) (claim) (composer-kill-word composer ':forward))
+          ((and alt-p (letter-p #\b)) (claim) (composer-move-word composer ':backward))
+          ((and alt-p (letter-p #\f)) (claim) (composer-move-word composer ':forward))
+          ((workbench--global-key workbench key control-p)
+           (claim))))))
+  nil)
+
+(-> workbench-queue-composer (workbench) null)
+(defun workbench-queue-composer (workbench)
+  "Queue the composer text as a follow-up and clear the composer."
+  (let* ((composer (workbench-composer workbench))
+         (text (string-trim '(#\Space #\Newline #\Tab) (lightfast:value composer))))
+    (when (plusp (length text))
+      (workbench-queue-follow-up workbench text)
+      (setf (lightfast:value composer) "")))
+  nil)
+
+
+;;; Line editing in the composer
+
+(-> composer-caret-character (t) (values string integer))
+(defun composer-caret-character (composer)
+  "Return the composer text and the caret's character index within it."
+  (let* ((text (lightfast:value composer))
+         (bytes (lightfast:text-insert-position composer))
+         (index 0)
+         (count 0))
+    (loop while (and (< index (length text)) (< count bytes))
+          do (incf count (lightfast:character-byte-length (char text index)))
+             (incf index))
+    (values text index)))
+
+(-> composer-set-caret-character (t string integer) null)
+(defun composer-set-caret-character (composer text index)
+  "Put the caret before character INDEX of TEXT."
+  (setf (lightfast:text-insert-position composer)
+        (lightfast:string-byte-length (subseq text 0 (min index (length text)))))
+  nil)
+
+(-> composer-delete-characters (t string integer integer) null)
+(defun composer-delete-characters (composer text start end)
+  "Delete characters START to END of TEXT from the composer and leave the
+caret at START."
+  (when (< start end)
+    (lightfast:text-replace composer
+                            (lightfast:string-byte-length (subseq text 0 start))
+                            (lightfast:string-byte-length (subseq text 0 end))
+                            "")
+    (composer-set-caret-character composer text start))
+  nil)
+
+(-> line-bounds (string integer) (values integer integer))
+(defun line-bounds (text index)
+  "Return the start and end character indices of the line holding INDEX."
+  (let ((start (let ((newline (position #\Newline text :end index :from-end t)))
+                 (if newline (1+ newline) 0)))
+        (end (or (position #\Newline text :start index) (length text))))
+    (values start end)))
+
+(-> composer-move-line (t (member :start :end)) null)
+(defun composer-move-line (composer where)
+  "Move the caret to the start or the end of its line."
+  (multiple-value-bind (text index) (composer-caret-character composer)
+    (multiple-value-bind (start end) (line-bounds text index)
+      (composer-set-caret-character composer text (if (eq where ':start) start end))))
+  nil)
+
+(-> composer-kill-line (t (member :start :end)) null)
+(defun composer-kill-line (composer where)
+  "Delete from the caret to the end of its line, the line break itself when
+the caret already sits at the end, or from the start of the line to the caret."
+  (multiple-value-bind (text index) (composer-caret-character composer)
+    (multiple-value-bind (start end) (line-bounds text index)
+      (if (eq where ':end)
+          (composer-delete-characters composer text index (if (= index end) (min (length text) (1+ end)) end))
+          (composer-delete-characters composer text start index))))
+  nil)
+
+(-> word-boundary (string integer (member :backward :forward)) integer)
+(defun word-boundary (text index direction)
+  "Return the character index one word away from INDEX in DIRECTION."
+  (flet ((word-char-p (position) (alphanumericp (char text position))))
+    (ecase direction
+      (:backward
+       (let ((position index))
+         (loop while (and (> position 0) (not (word-char-p (1- position)))) do (decf position))
+         (loop while (and (> position 0) (word-char-p (1- position))) do (decf position))
+         position))
+      (:forward
+       (let ((position index))
+         (loop while (and (< position (length text)) (not (word-char-p position))) do (incf position))
+         (loop while (and (< position (length text)) (word-char-p position)) do (incf position))
+         position)))))
+
+(-> composer-move-word (t (member :backward :forward)) null)
+(defun composer-move-word (composer direction)
+  "Move the caret by one word."
+  (multiple-value-bind (text index) (composer-caret-character composer)
+    (composer-set-caret-character composer text (word-boundary text index direction)))
+  nil)
+
+(-> composer-kill-word (t (member :backward :forward)) null)
+(defun composer-kill-word (composer direction)
+  "Delete one word before or after the caret."
+  (multiple-value-bind (text index) (composer-caret-character composer)
+    (let ((boundary (word-boundary text index direction)))
+      (if (eq direction ':backward)
+          (composer-delete-characters composer text boundary index)
+          (composer-delete-characters composer text index boundary))))
   nil)
 
 (-> workbench--global-key (workbench integer boolean) boolean)
@@ -721,9 +891,11 @@ catalog's title, else the id, else a name for a fresh conversation."
 
 (-> workbench--restore-draft (workbench) null)
 (defun workbench--restore-draft (workbench)
-  "Put back the draft kept for the open conversation, or clear the composer."
-  (setf (lightfast:value (workbench-composer workbench))
-        (or (gethash (workbench-conversation-id workbench) (workbench--drafts workbench)) ""))
+  "Put back the draft kept for the open conversation. Text typed while the
+session was still opening stays when no draft is kept."
+  (let ((draft (gethash (workbench-conversation-id workbench) (workbench--drafts workbench))))
+    (when (or draft (string= (lightfast:value (workbench-composer workbench)) ""))
+      (setf (lightfast:value (workbench-composer workbench)) (or draft ""))))
   nil)
 
 
@@ -740,9 +912,9 @@ catalog's title, else the id, else a name for a fresh conversation."
          (connection (string-downcase (symbol-name (workbench-connection-state workbench))))
          (turn (string-downcase (symbol-name (workbench-turn-state workbench)))))
     (setf (lightfast:label (workbench--status-label workbench))
-          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]"
+          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]~[~; · 1 follow-up queued~:; · ~:*~D follow-ups queued~]"
                   connection turn (and fraction (round (* 100 fraction)))
-                  pending remaining))
+                  pending remaining (length (workbench-follow-ups workbench))))
     (setf (lightfast:label (workbench--state-label workbench))
           (cond
             ((member (workbench-connection-state workbench) '(:lost :exited)) connection)
@@ -916,6 +1088,7 @@ with a filled mark and others with their folder name."
      (workbench--restore-draft workbench)
      (workbench-focus-composer workbench)
      (workbench--send-queued-prompt workbench)
+     (workbench--send-follow-up workbench)
      (setf (lightfast:label (workbench--title-label workbench))
            (workbench-title-for workbench (session-event-conversation-id event)
                                 (session-event-title event))))
@@ -926,6 +1099,8 @@ with a filled mark and others with their folder name."
 
 (defmethod apply-ui-event ((event turn-event) (workbench workbench))
   (setf (workbench-turn-state workbench) (turn-event-state event))
+  (when (eq (turn-event-state event) ':idle)
+    (workbench--send-follow-up workbench))
   (when (eq (turn-event-state event) ':interrupted)
     (transcript-notice (workbench-transcript workbench) :severity ':warning
                        :text "The turn was interrupted; review the transcript before retrying."

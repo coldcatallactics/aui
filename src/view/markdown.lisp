@@ -218,7 +218,8 @@ cells padded to their column's width, columns separated by two spaces."
 (defun markdown-runs (text)
   "Return the runs for the Markdown document TEXT, line breaks included.
 Fenced code becomes highlighted :CODE-BLOCK runs, headings become sized
-heading runs, list items get a bullet or a bold number, task items a box,
+heading runs that swallow the blank line after them, since their size already
+sets them off, list items get a bullet or a bold number, task items a box,
 quotes an italic indented run, tables a monospace grid, and everything else
 goes through MARKDOWN-INLINE-RUNS."
   (let ((runs nil)
@@ -247,7 +248,9 @@ goes through MARKDOWN-INLINE-RUNS."
                            (style (case level (1 ':heading-1) (2 ':heading-2) (t ':heading-3))))
                       (dolist (run (markdown-inline-runs (string-trim " " (subseq line level)) :base style))
                         (push run runs))
-                      (newline)))
+                      (newline)
+                      (when (and lines (string= (string-trim " " (first lines)) ""))
+                        (pop lines))))
                    ((and (> (length line) 0) (char= #\> (char (string-left-trim " " line) 0)))
                     (push (make-run "│ " ':quote) runs)
                     (dolist (run (markdown-inline-runs (string-trim " " (subseq (string-left-trim " " line) 1))

@@ -43,7 +43,10 @@ of Autolith instead of the one on the path. The design is in
 
 | key | action |
 |---|---|
-| Ctrl+Enter | send the composer |
+| Enter | send the composer; while a turn runs, queue it as a follow-up |
+| Shift+Enter, Ctrl+Enter | break the line |
+| Tab | queue the composer text as a follow-up |
+| Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+U, Ctrl+W, Alt+D, Alt+B, Alt+F | line editing as in a terminal composer |
 | Escape | stop the running turn |
 | Ctrl+1 to Ctrl+9 | answer the pending approval with that option |
 | Ctrl+K | commands pane |

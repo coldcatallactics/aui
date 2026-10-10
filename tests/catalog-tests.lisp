@@ -37,3 +37,19 @@
   (fiveam:is (equal '(72 262144) (multiple-value-list (key-event-parts "72 262144 H"))))
   (fiveam:is (equal '(nil 0) (multiple-value-list (key-event-parts "H"))))
   (fiveam:is (equal '(nil 0) (multiple-value-list (key-event-parts "")))))
+
+(fiveam:test display-ids-carry-the-hyphen
+  (fiveam:is (string= "9-3tEGL1" (conversation-display-id "93tEGL1")))
+  (fiveam:is (string= "9-3tEGL1" (conversation-display-id "9-3tEGL1")))
+  (fiveam:is (string= "x" (conversation-display-id "x")))
+  (fiveam:is (string= "9-3tEGL1" (conversation-entry-name (make-instance 'conversation-entry :id "93tEGL1" :directory "/"))))
+  (fiveam:is (string= "Howdy" (conversation-entry-name (make-instance 'conversation-entry :id "93tEGL1" :directory "/" :title "Howdy")))))
+
+(fiveam:test composer-line-and-word-helpers
+  (fiveam:is (equal '(0 5) (multiple-value-list (line-bounds "hello" 2))))
+  (fiveam:is (equal '(6 11) (multiple-value-list (line-bounds (format nil "hello~%world") 8))))
+  (fiveam:is (= 0 (word-boundary "hello world" 5 ':backward)))
+  (fiveam:is (= 11 (word-boundary "hello world" 5 ':forward)))
+  (fiveam:is (= 5 (word-boundary "hello world" 0 ':forward)))
+  (fiveam:is (= 11 (word-boundary "hello world" 6 ':forward)))
+  (fiveam:is (= 6 (word-boundary "hello world" 11 ':backward))))

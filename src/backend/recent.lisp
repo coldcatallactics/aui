@@ -145,7 +145,7 @@ cannot be read or validated."
              (written (conversation-latest-write-date entry)))
         (make-instance 'conversation-entry
                        :id id
-                       :display-id (format nil "~A-~A" (subseq id 0 1) (subseq id 1))
+                       :display-id (conversation-display-id id)
                        :title (or (and picker (record-string picker ':title))
                                   (record-string header ':title))
                        :directory (record-string header ':directory)

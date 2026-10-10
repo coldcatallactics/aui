@@ -331,9 +331,10 @@ long path, running and failed tools, an approval, a child job, selected text,
 and focused and disabled controls; test selection and copy, keyboard
 traversal, scrolling during streaming, and resizing while streaming.
 
-Status on 2026-10-10 04:05, against Autolith's `aui-acp` branch served
-through `AUI_AUTOLITH`: every gate passes through the real GUI on
-`gpt-5.6-luna`. Start, prompt and reply; tool call with approval; Stop;
+Status on 2026-10-10 05:00: every gate passes through the real GUI on
+`gpt-5.6-luna`. The `_autolith/*` server is on Autolith master (fd20263e,
+installed launcher), so no launcher override is needed; AUI a59fdc8,
+Lightfast 5a1839f and agentcomms 796033f are the verified set. Start, prompt and reply; tool call with approval; Stop;
 resume with accurate replay; settings, models and operations catalogs
 (37, 414 and 121 items); a setting change round trip; invoking an operation
 with and without an approval; a detached child job listed in the rail,

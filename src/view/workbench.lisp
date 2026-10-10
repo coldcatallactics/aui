@@ -652,6 +652,16 @@ workbench and are dropped."
     (backend-open-conversation new :conversation-id (workbench-conversation-id workbench)))
   nil)
 
+(-> workbench-open-another-folder (workbench) null)
+(defun workbench-open-another-folder (workbench)
+  "Ask for a folder and open a new workspace window there. A workspace is one
+Autolith process in one folder, so another folder means another window."
+  (let ((directory (lightfast:choose-directory :title "Choose a folder for Autolith"
+                                               :preset-path (backend-directory (workbench-backend workbench)))))
+    (when (and directory (plusp (length directory)) (uiop:directory-exists-p directory))
+      (open-workspace (namestring (uiop:ensure-directory-pathname directory)))))
+  nil)
+
 (-> workbench-close (workbench) null)
 (defun workbench-close (workbench)
   "Stop the backend and forget the workbench; the window closes with it."

@@ -59,7 +59,9 @@ and matches at word starts score more."
                "the pane for tool calls and jobs, Ctrl+I"
                (lambda () (workbench-toggle-inspector workbench)))
          (list "Settings" "every Autolith setting, Ctrl+,"
-               (lambda () (workbench-show-settings workbench))))
+               (lambda () (workbench-show-settings workbench)))
+         (list "Open another folder" "choose a folder and start Autolith there in a new window"
+               (lambda () (workbench-open-another-folder workbench))))
    (when (member (workbench-connection-state workbench) '(:lost :exited))
      (list (list "Restart Autolith" "start the process again and reopen this conversation"
                  (lambda () (workbench-restart workbench)))))))

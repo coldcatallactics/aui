@@ -22,6 +22,18 @@
 (defparameter *header-height* 36
   "Height of the header row in pixels.")
 
+(defparameter *menu-height* 34
+  "Height of the menu bar in pixels.")
+
+(defvar *open-conversations-function* nil
+  "Called with no arguments to show the conversation manager; set by MAIN.")
+
+(defparameter *shortcut-control* #x40000
+  "FLTK's shortcut modifier bit for Ctrl.")
+
+(defparameter *shortcut-shift* #x10000
+  "FLTK's shortcut modifier bit for Shift.")
+
 (defparameter *composer-height* 112
   "Height of the composer row in pixels.")
 
@@ -111,8 +123,8 @@
                         :documentation "The repeating timeout animating the state word, or NIL.")
    (animation-phase     :initform 0 :accessor workbench--animation-phase
                         :documentation "Which frame of the working animation shows.")
-   (commands-button     :reader workbench--commands-button)
-   (settings-button     :reader workbench--settings-button)
+   (menu                :reader workbench--menu
+                        :documentation "The menu bar across the top of the window.")
    (inspector           :reader workbench-inspector)
    (inspector-visible-p :initform nil :accessor workbench-inspector-visible-p :type boolean)
    (center-mode         :initform ':transcript :accessor workbench-center-mode
@@ -273,16 +285,8 @@ backend so the first events have somewhere to land."
             (workbench--make-chip window "effort" (lambda () (workbench-choose-effort workbench)))
             (slot-value workbench 'permission-chip)
             (workbench--make-chip window "permissions" (lambda () (workbench-choose-permission workbench))))
-      (setf (slot-value workbench 'commands-button)
-            (lightfast:make-button :parent window :label "Commands" :height *control-height*
-                                   :callback (lambda (widget event value)
-                                               (declare (ignore widget event value))
-                                               (workbench-show-palette workbench)))
-            (slot-value workbench 'settings-button)
-            (lightfast:make-button :parent window :label "Settings" :height *control-height*
-                                   :callback (lambda (widget event value)
-                                               (declare (ignore widget event value))
-                                               (workbench-show-settings workbench))))
+      (setf (slot-value workbench 'menu) (lightfast:make-menu-bar :parent window :width 600 :height *menu-height*))
+      (workbench--fill-menu workbench)
       (setf (slot-value workbench 'job-view)
             (make-transcript-view (workbench--job-transcript workbench) :parent window :width 600 :height 300)
             (slot-value workbench 'job-label) (workbench--make-label window "" ':prose-bold)
@@ -301,8 +305,6 @@ backend so the first events have somewhere to land."
       (dolist (widget (list (transcript-view-display (workbench--job-view workbench)) (workbench--job-label workbench)
                             (workbench--job-back-button workbench) (workbench--job-cancel-button workbench)))
         (lightfast:hide widget))
-      (lightfast:set-tooltip (slot-value workbench 'commands-button) "Ctrl+K")
-      (lightfast:set-tooltip (slot-value workbench 'settings-button) "Ctrl+,")
       (setf rail (lightfast:make-group :parent window :width *rail-width* :height 400))
       (lightfast:set-box rail lightfast:+box-no-box+)
       (setf (slot-value workbench 'left-spacer) (lightfast:make-box :parent window :width 1 :height 1)
@@ -449,9 +451,7 @@ open, and the decision row only while an approval waits."
                                        (lightfast:make-layout-item (workbench--effort-chip workbench) :basis 100 :shrink 1)
                                        (lightfast:make-layout-item (workbench--permission-chip workbench) :basis 120 :shrink 1)))
                                (list (lightfast:make-layout-item (workbench--state-mark workbench)
-                                                                 :basis *spinner-size* :shrink 0 :align-self ':center)
-                                     (lightfast:make-layout-item (workbench--commands-button workbench) :basis 120 :shrink 0)
-                                     (lightfast:make-layout-item (workbench--settings-button workbench) :basis 110 :shrink 0)))))
+                                                                 :basis *spinner-size* :shrink 0 :align-self ':center)))))
            (rail-layout (lightfast:make-layout-column
                          :target rail :basis *rail-width* :shrink 0 :gap (spacing 2)
                          :children (append
@@ -539,7 +539,8 @@ open, and the decision row only while an approval waits."
                                     (when inspector-p (list (inspector-layout (workbench-inspector workbench)))))))
            (layout (lightfast:make-layout-column
                     :padding (list (spacing 5) (spacing 4) (spacing 5) (spacing 3)) :gap gap
-                    :children (list header body
+                    :children (list (lightfast:make-layout-item (workbench--menu workbench) :basis *menu-height* :shrink 0)
+                                    header body
                                     (lightfast:make-layout-row
                                      :basis *status-height* :shrink 0 :gap (spacing 4)
                                      :children (list (lightfast:make-layout-item (workbench--folder-label workbench)
@@ -556,9 +557,8 @@ open, and the decision row only while an approval waits."
                                          (when (>= width *rail-breakpoint*)
                                            (list (workbench--model-chip workbench) (workbench--effort-chip workbench)
                                                  (workbench--permission-chip workbench)))
-                                         (list (workbench--commands-button workbench)
-                                               (workbench--settings-button workbench)))
-                                 :reference (workbench--commands-button workbench))
+                                         nil)
+                                 :reference (workbench--title-label workbench))
       (lightfast:align-baselines (list (workbench--folder-label workbench) (workbench--status-label workbench)))))
   nil)
 
@@ -817,8 +817,66 @@ the caret already sits at the end, or from the start of the line to the caret."
     ((and control-p (eql key (char-code #\i)))
      (workbench-toggle-inspector workbench)
      t)
+    ((and control-p (eql key (char-code #\o)))
+     (workbench-open-conversations workbench)
+     t)
+    ((and control-p (eql key (char-code #\n)))
+     (workbench-new-conversation workbench)
+     t)
+    ((and control-p (eql key (char-code #\q)))
+     (lightfast:quit)
+     t)
     (t
      nil)))
+
+(-> workbench-open-conversations (workbench) null)
+(defun workbench-open-conversations (workbench)
+  "Show the conversation manager."
+  (declare (ignore workbench))
+  (when *open-conversations-function*
+    (funcall *open-conversations-function*))
+  nil)
+
+(-> workbench-new-conversation (workbench) null)
+(defun workbench-new-conversation (workbench)
+  "Start a fresh conversation in this folder once the turn is over."
+  (when (eq (workbench-turn-state workbench) ':idle)
+    (backend-open-conversation (workbench-backend workbench)))
+  nil)
+
+(-> workbench--fill-menu (workbench) null)
+(defun workbench--fill-menu (workbench)
+  "Put the application's commands in the menu bar."
+  (let ((menu (workbench--menu workbench)))
+    (lightfast:set-box menu lightfast:+box-no-box+)
+    (lightfast:set-text-font menu (font ':prose))
+    (lightfast:set-text-size menu *prose-size*)
+    (flet ((item (path function &key shortcut)
+             (lightfast:add-menu-item menu path
+                                      (lambda (widget value)
+                                        (declare (ignore widget value))
+                                        (funcall function))
+                                      :shortcut (or shortcut 0))))
+      (item "Autolith/Conversations..." (lambda () (workbench-open-conversations workbench))
+            :shortcut (logior *shortcut-control* (char-code #\o)))
+      (item "Autolith/New conversation here" (lambda () (workbench-new-conversation workbench))
+            :shortcut (logior *shortcut-control* (char-code #\n)))
+      (item "Autolith/Open another folder..." (lambda () (workbench-open-another-folder workbench))
+            :shortcut (logior *shortcut-control* *shortcut-shift* (char-code #\o)))
+      (item "Autolith/Restart Autolith" (lambda () (workbench-restart workbench)))
+      (item "Autolith/Quit" (lambda () (lightfast:quit))
+            :shortcut (logior *shortcut-control* (char-code #\q)))
+      (item "View/Transcript" (lambda () (workbench-show-transcript workbench)))
+      (item "View/Commands..." (lambda () (workbench-show-palette workbench))
+            :shortcut (logior *shortcut-control* (char-code #\k)))
+      (item "View/Settings..." (lambda () (workbench-show-settings workbench))
+            :shortcut (logior *shortcut-control* (char-code #\,)))
+      (item "View/Inspector" (lambda () (workbench-toggle-inspector workbench))
+            :shortcut (logior *shortcut-control* (char-code #\i)))
+      (item "View/Jump to latest" (lambda () (transcript-view-jump-to-end (workbench-transcript-view workbench))))
+      (item "Turn/Stop" (lambda () (workbench-stop workbench)))
+      (item "Turn/Full access from now" (lambda () (workbench-grant-full-access workbench)))))
+  nil)
 
 (-> workbench-toggle-inspector (workbench) null)
 (defun workbench-toggle-inspector (workbench)

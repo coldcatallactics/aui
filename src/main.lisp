@@ -58,17 +58,50 @@ Autolith process outlives the application."
 
 (-> show-welcome () welcome)
 (defun show-welcome ()
-  "Show the welcome window; choosing there opens a workspace and closes it."
-  (let ((welcome nil))
-    (setf welcome
-          (make-welcome :entries (recent-conversations)
-                        :on-open (lambda (directory conversation-id)
-                                   (open-workspace directory :conversation-id conversation-id)
-                                   (lightfast:hide (welcome-window welcome))
-                                   (setf *welcome* nil))))
-    (setf *welcome* welcome)
+  "Show the conversation manager; choosing there opens the conversation in the
+workspace already showing its folder, or in a new one, and hides the manager."
+  (let ((welcome *welcome*))
+    (cond
+      (welcome
+       (welcome-set-entries welcome (known-conversations)))
+      (t
+       (setf welcome
+             (make-welcome :entries (known-conversations)
+                           :on-open (lambda (directory conversation-id)
+                                      (open-conversation-somewhere directory conversation-id)
+                                      (lightfast:hide (welcome-window welcome)))))
+       (setf *welcome* welcome)))
     (lightfast:show (welcome-window welcome))
+    (welcome-focus welcome)
     welcome))
+
+(-> known-conversations () list)
+(defun known-conversations ()
+  "Return every conversation known: those the open workspaces list, which come
+from their Autolith processes, and those read from the store."
+  (let ((entries (recent-conversations)))
+    (dolist (workbench *workbenches*)
+      (dolist (entry (workbench-conversations workbench))
+        (unless (find (conversation-entry-id entry) entries :key #'conversation-entry-id :test #'equal)
+          (push entry entries))))
+    (conversations-by-recency entries)))
+
+(-> open-conversation-somewhere (string (or null string)) null)
+(defun open-conversation-somewhere (directory conversation-id)
+  "Open CONVERSATION-ID, or a new conversation when NIL, in the workspace
+showing DIRECTORY when one exists and is idle, otherwise in a new workspace."
+  (let ((workbench (find-if (lambda (workbench)
+                              (and (equal (backend-directory (workbench-backend workbench)) directory)
+                                   (eq (workbench-turn-state workbench) ':idle)
+                                   (member (workbench-connection-state workbench) '(:starting :ready))))
+                            *workbenches*)))
+    (cond
+      (workbench
+       (backend-open-conversation (workbench-backend workbench) :conversation-id conversation-id)
+       (lightfast:show (workbench-window workbench)))
+      (t
+       (open-workspace directory :conversation-id conversation-id))))
+  nil)
 
 (-> capture-window-to (string) null)
 (defun capture-window-to (path)
@@ -164,7 +197,8 @@ captures the window and exits after --shot-after SECONDS."
     (lightfast:load-library)
     (lightfast:enable-thread-wakeups)
     (theme-install)
-    (setf *queue* (make-ui-queue :wakeup #'lightfast:awake))
+    (setf *queue* (make-ui-queue :wakeup #'lightfast:awake)
+          *open-conversations-function* #'show-welcome)
     (let ((*backend-factory* (if demo-p #'make-scripted-backend *backend-factory*))
           (*recent-conversations-function* (if demo-p #'sample-conversations *recent-conversations-function*)))
       (cond

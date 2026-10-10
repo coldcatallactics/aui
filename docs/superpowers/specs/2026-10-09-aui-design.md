@@ -252,14 +252,29 @@ atomically.
 
 ## 6. Views (owned by Fable)
 
-1. **Welcome.** Wordmark line; "Open a folder" (native chooser) and a path
-   field; recent folders; recent conversations (title, folder, model, last
-   activity) sorted by activity. Enter resumes, N starts new.
-2. **Workbench.** Header strip: folder, title, model, permission mode, turn
-   state word. Left rail: this folder's conversations; running jobs with
-   state and elapsed time. Transcript. Composer: multiline, draft retained
-   per conversation, Ctrl+Enter sends, Escape stops, queued input shown.
-   Status line: connection, usage, context occupancy, pending approvals.
+1. **Conversations.** The conversation manager is the first window when AUI
+   starts without a folder and the window Autolith/Conversations (Ctrl+O)
+   opens from a workbench. A search field over every known conversation
+   (name, folder, model, last activity, in columns under bold headings);
+   Enter or a double click opens the chosen one in the workspace already
+   showing its folder when that one is idle, otherwise in a new window; a
+   path field with Browse and Start here, and the recent folders, start new
+   conversations. The manager hides once a choice is made.
+2. **Workbench.** A gentle menu bar (Autolith: Conversations, New
+   conversation here, Open another folder, Restart, Quit; View: Transcript,
+   Commands, Settings, Inspector, Jump to latest; Turn: Stop, Full access
+   from now). Header: title, then the model, effort and permission chips
+   (each a menu), then the state mark: a drawn eight-dot spinner with a lit
+   head while something runs (green working, orange stopping, ink starting
+   or loading), a still red dot for interrupted or lost, nothing when idle;
+   the word is its tooltip. Left rail: conversations across folders, the
+   agent's plan with ○ ◐ ● marks, running jobs. Transcript. Composer in a
+   hairline frame: Enter sends or queues a follow-up while a turn runs,
+   Shift or Ctrl+Enter breaks the line, Tab queues, Escape stops, Ctrl+A/E/
+   K/U/W and Alt+B/F/D edit as in a terminal. Status row: folder, a thin
+   context occupancy bar, approval countdown and the follow-up queue.
+   A child job chosen in the rail takes the center: its transcript, a Cancel
+   job button, Back to the conversation, and the composer addressing it.
    Rail and inspector collapse below 1100 px; everything reflows to any size;
    no restrictive minimum.
 3. **Transcript renderer.** One `Fl_Text_Display` with a style table and word
@@ -288,11 +303,22 @@ atomically.
 
 Revised on 2026-10-10 morning after Lukas's review: no separate popup windows
 (a tiling compositor sizes them badly and they could not be closed without
-decorations); a type scale of 20/17/15/14 px for headings, prose, code and
-metadata instead of one size; outer margins of 24 px and a text column capped
-at 720 px; no boxes around lists; glyphs on buttons and list rows; the rail
-lists conversations across folders (another folder opens another window);
-windows are resizable so the compositor tiles them.
+decorations); outer margins of 24 px; no boxes around lists; the rail lists
+conversations across folders (another folder opens another window); windows
+are resizable so the compositor tiles them.
+
+Revised again on 2026-10-10 midday after the second review. The type scale is
+20 px prose and metadata, 17 px code, 25/22/20 px headings, 32 px display and
+20 px Adwaita Mono markers; the text column is capped at 780 px. The recurring
+off-baseline marks were FLTK's: its Cairo driver places text by line height
+minus descent, so a face with a line gap (Times New Roman MT Std carries
+410/2048 em) is drawn the gap above the baseline. Lightfast's
+`correct-font-baselines` folds the gap into the ascender in cached copies of
+the font files and makes the process use them through fontconfig; AUI calls it
+before loading fonts, and the chosen sizes were then measured to share the
+baseline within one pixel. Headings swallow the blank line after them, since
+their size already sets them off. The welcome window became the conversation
+manager and the header buttons became the menu bar, both described above.
 
 ## 7. Repository
 

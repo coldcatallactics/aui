@@ -6,7 +6,8 @@ and FLTK 1.4. One substrate, black ink, Times New Roman for prose, CMU
 Typewriter Text for code, hairline boxes, and accent colors derived in OKLCH
 from the Lambda Symbolics green.
 
-AUI starts and owns an `autolith --permissions auto acp` process for a chosen folder,
+AUI opens a conversation manager, or a workspace for a folder given on the
+command line, and owns an `autolith --permissions auto acp` process for a chosen folder,
 shows the conversation as a legible document with collapsible reasoning and
 tool calls, answers permission requests, and exposes Autolith's settings,
 models, operations and jobs through a property sheet, a command palette and
@@ -48,6 +49,9 @@ of Autolith instead of the one on the path. The design is in
 | Tab | queue the composer text as a follow-up |
 | Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+U, Ctrl+W, Alt+D, Alt+B, Alt+F | line editing as in a terminal composer |
 | Escape | stop the running turn |
+| Ctrl+O | the conversation manager: every conversation across folders |
+| Ctrl+N | a new conversation in this folder |
+| Ctrl+Q | quit |
 | Ctrl+1 to Ctrl+9 | answer the pending approval with that option |
 | Ctrl+K | commands pane |
 | Ctrl+, | settings pane |

@@ -51,8 +51,10 @@ and matches at word starts score more."
   "Return the application actions the palette offers for WORKBENCH as
 (LABEL DETAIL FUNCTION) lists, only those that apply right now."
   (append
-   (list (list "New conversation here" "start a fresh conversation in this folder"
-               (lambda () (backend-open-conversation (workbench-backend workbench))))
+   (list (list "Conversations" "every conversation across folders, Ctrl+O"
+               (lambda () (workbench-open-conversations workbench)))
+         (list "New conversation here" "start a fresh conversation in this folder, Ctrl+N"
+               (lambda () (workbench-new-conversation workbench)))
          (list "Jump to latest" "follow the end of the transcript again"
                (lambda () (transcript-view-jump-to-end (workbench-transcript-view workbench))))
          (list (if (workbench-inspector-visible-p workbench) "Hide inspector" "Show inspector")

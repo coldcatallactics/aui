@@ -332,19 +332,23 @@ transmission for a local prompt, or at once for a turn the server owns."
   nil)
 
 (defmethod backend-set-mode ((backend acp-backend) mode-id)
-  "Reserve a mode change atomically against prompt and session-switch admission."
+  "Change the permission mode: queued behind prompts when the session is idle,
+sent at once on the control path while a turn runs, since ACP admits a mode
+change at any time and the user asks for it mid-turn when approvals pile up."
   (let* ((request (acp-backend--identifier backend))
          (mode (copy-seq mode-id))
          (admitted
            (bordeaux-threads:with-lock-held ((acp-backend--lock backend))
              (when (and (eq (acp-backend--state backend) ':ready)
-                        (eq (acp-backend--session-state backend) ':ready)
-                        (eq (acp-backend--turn backend) ':idle))
-               (acp-backend--queue-request
-                backend request (lambda () (acp-backend--set-mode backend request mode)))
+                        (eq (acp-backend--session-state backend) ':ready))
+               (if (eq (acp-backend--turn backend) ':idle)
+                   (acp-backend--queue-request
+                    backend request (lambda () (acp-backend--set-mode backend request mode)))
+                   (acp-backend--control backend "AUI set mode"
+                                         (lambda () (acp-backend--set-mode backend request mode))))
                t))))
     (unless admitted
-      (acp-backend--result backend request ':busy :report "Change permission mode in an open idle session."))
+      (acp-backend--result backend request ':busy :report "Change permission mode in an open session."))
     request))
 
 (defmethod backend-refresh ((backend acp-backend) kind)

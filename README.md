@@ -47,9 +47,11 @@ of Autolith instead of the one on the path. The design is in
 | Enter | send the composer; while a turn runs, queue it as a follow-up |
 | Shift+Enter, Ctrl+Enter | break the line |
 | Tab | queue the composer text as a follow-up |
-| Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+U, Ctrl+W, Alt+D, Alt+B, Alt+F | line editing as in a terminal composer |
+| Ctrl+A, Ctrl+E, Ctrl+K, Ctrl+U | line start, line end, kill to end, kill to start |
+| Ctrl+Backspace, Alt+Backspace, Ctrl+W, Ctrl+Delete, Alt+D | kill the word before or after the caret |
+| Ctrl+Left, Ctrl+Right, Alt+B, Alt+F | move by a word |
 | Escape | stop the running turn |
-| Ctrl+O | the conversation manager: every conversation across folders |
+| Ctrl+O | the conversation manager: search, the latest conversations and folders |
 | Ctrl+N | a new conversation in this folder |
 | Ctrl+Q | quit |
 | Ctrl+1 to Ctrl+9 | answer the pending approval with that option |

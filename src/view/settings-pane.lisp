@@ -23,7 +23,9 @@
    (groups        :initform nil :accessor settings-pane-groups
                   :documentation "The group names in catalog order.")
    (selected      :initform nil :accessor settings-pane-selected-group
-                  :documentation "The group whose settings are shown."))
+                  :documentation "The group whose settings are shown.")
+   (built-width   :initform 0 :accessor settings-pane--built-width
+                  :documentation "The scroll width the rows were last built for."))
   (:documentation "The settings pane of one workbench."))
 
 (-> setting-entry-value-text (setting-entry) string)
@@ -42,7 +44,7 @@
     (setf (slot-value pane 'group) group)
     (lightfast:set-box group lightfast:+box-no-box+)
     (let ((heading (workbench--make-label group "Settings" ':prose-bold))
-          (close-button (lightfast:make-button :parent group :label "Close ✕" :height *control-height*
+          (close-button (lightfast:make-button :parent group :label "✕" :height *control-height*
                                                :callback (lambda (widget event value)
                                                            (declare (ignore widget event value))
                                                            (workbench-show-transcript workbench))))
@@ -76,7 +78,7 @@
    :children (list (lightfast:make-layout-row
                     :basis *control-height* :shrink 0 :gap (spacing 4)
                     :children (list (lightfast:make-layout-item (settings-pane--heading pane) :basis 0 :grow 1)
-                                    (lightfast:make-layout-item (settings-pane--close-button pane) :basis 110 :shrink 0)))
+                                    (lightfast:make-layout-item (settings-pane--close-button pane) :basis *control-height* :shrink 0)))
                    (lightfast:make-layout-row
                     :basis 0 :grow 1 :gap (spacing 6)
                     :children (list (lightfast:make-layout-item (settings-pane--groups-list pane) :basis 200 :shrink 0)
@@ -99,6 +101,16 @@
       (when position
         (lightfast:browser-select list position)))
     (settings-pane--build-rows pane))
+  nil)
+
+(-> settings-pane-fit (settings-pane) null)
+(defun settings-pane-fit (pane)
+  "Rebuild the rows when the scroll's width changed since they were built, so
+that controls follow the window."
+  (let ((scroll (settings-pane--rows pane)))
+    (lightfast:refresh-geometry scroll)
+    (unless (= (max 480 (lightfast:widget-width scroll)) (settings-pane--built-width pane))
+      (settings-pane--build-rows pane)))
   nil)
 
 (-> settings-pane-show-group (settings-pane (or null string)) null)
@@ -129,11 +141,13 @@
                                           (settings-pane-selected-group pane)))
                                  (workbench-settings (settings-pane-workbench pane))))
          (width (max 480 (progn (lightfast:refresh-geometry scroll) (lightfast:widget-width scroll))))
+         (built (setf (settings-pane--built-width pane) width))
          (label-width 260)
          (control-x 272)
          (control-width (max 200 (min 480 (- width control-x 24))))
          (source-x (+ control-x control-width 16))
          (y 0))
+    (declare (ignore built))
     (dolist (entry entries)
       (let ((widgets (settings-pane--make-row pane scroll entry y label-width control-x control-width source-x width)))
         (setf (settings-pane--row-widgets pane) (append (settings-pane--row-widgets pane) widgets)))
@@ -154,9 +168,7 @@
                                               :label (format nil "~A~@[  ·  ~(~A~)~]" (setting-entry-documentation entry)
                                                              (setting-entry-source entry))))
          (source (lightfast:make-label :parent scroll :x source-x :y y :width (- width source-x) :height *control-height*
-                                       :label (if (setting-entry-adjustable-p entry)
-                                                  ""
-                                                  (format nil "read only~@[: ~A~]" (setting-entry-reason entry)))))
+                                       :label ""))
          (control
            (cond
              ((not (setting-entry-adjustable-p entry))
@@ -201,6 +213,7 @@
     (lightfast:set-label-font source (font ':prose-italic))
     (lightfast:set-label-size source *meta-size*)
     (when (not (setting-entry-adjustable-p entry))
+      (lightfast:set-tooltip control (format nil "Fixed~@[: ~A~]" (setting-entry-reason entry)))
       (lightfast:set-label-align control ':left ':inside ':clip)
       (lightfast:set-label-font control (font ':prose))
       (lightfast:set-label-size control *prose-size*))

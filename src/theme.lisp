@@ -80,7 +80,10 @@ placement carry the distinction.")
   "Pixel size of third-level and deeper headings, bold at prose size.")
 
 (defparameter *display-size* 32
-  "Pixel size of the few display-scale words: the wordmark, a conversation title.")
+  "Pixel size of the few display-scale words: a conversation title.")
+
+(defparameter *wordmark-size* 44
+  "Pixel size of the wordmark on the conversation manager, set bold.")
 
 (defparameter *spacing-scale* #(4 8 12 16 24 32)
   "The spacing scale in pixels; SPACING indexes it from 1.")

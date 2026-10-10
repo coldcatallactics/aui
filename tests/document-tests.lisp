@@ -52,15 +52,18 @@
     (setf (tool-call-status block) ':failed)
     (fiveam:is (find ':failure (block-runs block) :key #'run-style))))
 
-(fiveam:test approvals-list-options-then-the-decision
+(fiveam:test approvals-record-only-refusals
   (let* ((block (make-instance 'approval :request-id "r" :title "shell.run" :received-at 0
+                                         :arguments "{\"command\": \"ls\"}"
                                          :options '(("once" "Allow once" :allow-once)
                                                     ("deny" "Reject" :reject-once))))
          (pending (runs-text (block-runs block))))
-    (fiveam:is (search "Allow once (1)" pending))
-    (fiveam:is (search "Reject (2)" pending))
+    (fiveam:is (search "command: ls" pending))
+    (fiveam:is (null (search "Allow once" pending)))
+    (setf (approval-decision block) "once")
+    (fiveam:is (null (search "Allow once" (runs-text (block-runs block)))))
     (setf (approval-decision block) "deny")
-    (fiveam:is (search "Decided: Reject" (runs-text (block-runs block))))
+    (fiveam:is (search "Reject" (runs-text (block-runs block))))
     (setf (approval-decision block) ':cancelled)
     (fiveam:is (search "Cancelled" (runs-text (block-runs block))))))
 
@@ -110,4 +113,6 @@
 (fiveam:test tool-data-reads-as-fields
   (fiveam:is (string= (format nil "command: ls~%directory: /tmp") (readable-data-text "{\"directory\": \"/tmp\", \"command\": \"ls\"}")))
   (fiveam:is (string= "plain output" (readable-data-text "plain output")))
-  (fiveam:is (string= (format nil "a~%2") (readable-data-text "[\"a\", 2]"))))
+  (fiveam:is (string= (format nil "- a~%- 2") (readable-data-text "[\"a\", 2]")))
+  (fiveam:is (string= (format nil "exit: 0~%output:~%  stdout: one~%    two")
+                      (readable-data-text "{\"output\": {\"stdout\": \"one\\ntwo\"}, \"exit\": 0}"))))

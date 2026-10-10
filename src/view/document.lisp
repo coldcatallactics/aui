@@ -92,35 +92,59 @@ display's style table.")
 (-> readable-data-text (t) string)
 (defun readable-data-text (value)
   "Return VALUE, a tool's input or output, as readable text: a JSON object
-becomes one `name: value` line per field, a JSON array one line per item,
-anything else is shown as it is."
+becomes one `name: value` line per field, nested objects and arrays indent
+under their field, multi-line strings continue indented, and anything that
+is not JSON is shown as it is."
   (let ((text (if (stringp value) value (princ-to-string value))))
     (handler-case
         (let ((decoded (and (plusp (length text))
                             (find (char (string-left-trim " " text) 0) "{[")
                             (agentcomms:json-decode text))))
-          (cond
-            ((agentcomms:json-object-p decoded)
-             (let ((lines nil))
-               (maphash (lambda (key item)
-                          (push (format nil "~A: ~A" key (readable-data-item item)) lines))
-                        decoded)
-               (format nil "~{~A~^~%~}" (sort lines #'string<))))
-            ((vectorp decoded)
-             (format nil "~{~A~^~%~}" (map 'list #'readable-data-item decoded)))
-            (t text)))
+          (if (or (agentcomms:json-object-p decoded) (and (vectorp decoded) (not (stringp decoded))))
+              (format nil "~{~A~^~%~}" (readable-data-lines decoded 0))
+              text))
       (error ()
         text))))
 
-(-> readable-data-item (t) string)
-(defun readable-data-item (item)
-  "Return one JSON value as text for READABLE-DATA-TEXT."
-  (cond
-    ((stringp item) item)
-    ((null item) "null")
-    ((eq item t) "true")
-    ((numberp item) (princ-to-string item))
-    (t (agentcomms:json-encode item))))
+(-> readable-data-lines (t integer) list)
+(defun readable-data-lines (value depth)
+  "Return VALUE, decoded JSON, as lines indented DEPTH levels."
+  (let ((indent (make-string (* 2 depth) :initial-element #\Space)))
+    (cond
+      ((agentcomms:json-object-p value)
+       (let ((pairs nil))
+         (maphash (lambda (key item) (push (cons key item) pairs)) value)
+         (loop for (key . item) in (sort pairs #'string< :key #'car)
+               append (if (readable-data-scalar-p item)
+                          (readable-data-scalar-lines (format nil "~A~A: " indent key) item depth)
+                          (cons (format nil "~A~A:" indent key) (readable-data-lines item (1+ depth)))))))
+      ((vectorp value)
+       (loop for item across value
+             append (if (readable-data-scalar-p item)
+                        (readable-data-scalar-lines (format nil "~A- " indent) item depth)
+                        (cons (format nil "~A-" indent) (readable-data-lines item (1+ depth))))))
+      (t
+       (readable-data-scalar-lines indent value depth)))))
+
+(-> readable-data-scalar-p (t) boolean)
+(defun readable-data-scalar-p (item)
+  "Return T when ITEM is a JSON scalar rather than an object or an array."
+  (not (or (agentcomms:json-object-p item) (and (vectorp item) (not (stringp item))))))
+
+(-> readable-data-scalar-lines (string t integer) list)
+(defun readable-data-scalar-lines (prefix item depth)
+  "Return the lines for scalar ITEM after PREFIX; a multi-line string
+continues on lines indented one level past DEPTH."
+  (let* ((text (cond
+                 ((stringp item) item)
+                 ((null item) "null")
+                 ((eq item t) "true")
+                 ((numberp item) (princ-to-string item))
+                 (t (agentcomms:json-encode item))))
+         (lines (split-lines-keeping-empty text))
+         (continuation (make-string (* 2 (1+ depth)) :initial-element #\Space)))
+    (cons (concatenate 'string prefix (or (first lines) ""))
+          (mapcar (lambda (line) (concatenate 'string continuation line)) (rest lines)))))
 
 
 ;;; Rendering blocks to runs
@@ -281,32 +305,23 @@ taken as the arguments; otherwise there are none."
           (loop for (text . status) in entries
                 collect (format nil "~A~A" (plan-entry-marker status) text))))
 
-(-> approval-option-text (list integer) string)
-(defun approval-option-text (option number)
-  "Return the label of OPTION, an (ID NAME KIND) list, with its key NUMBER."
-  (format nil "~A (~D)" (second option) number))
-
 (defmethod block-runs ((block approval))
   (append (header-runs "Approval needed" ':approval-head block :space-before t)
           (list (make-run (format nil "~A~%" (approval-title block)) ':bold))
           (when (approval-arguments block)
-            (list (make-run (format nil "~A~%" (approval-arguments block)) ':code-block)))
+            (list (make-run (format nil "~A~%" (readable-data-text (approval-arguments block))) ':code-block)))
           (when (approval-directory block)
             (list (make-run (format nil "in ~A~%" (approval-directory block)) ':meta)))
-          (let ((decision (approval-decision block)))
+          ;; The choices live in the approval card; the block only records a
+          ;; refusal, since an allowed request shows its effect right after.
+          (let* ((decision (approval-decision block))
+                 (option (and decision (find decision (approval-options block) :key #'first :test #'equal))))
             (cond
-              ((null decision)
-               (list (make-run (format nil "~{~A~^  ·  ~}~%"
-                                       (loop for option in (approval-options block)
-                                             for number from 1
-                                             collect (approval-option-text option number)))
-                               ':body)))
               ((eq decision ':cancelled)
                (list (make-run (format nil "Cancelled~%") ':meta)))
-              (t
-               (let ((option (find decision (approval-options block) :key #'first :test #'equal)))
-                 (list (make-run (format nil "Decided: ~A~%" (if option (second option) decision))
-                                 ':meta))))))
+              ((and option (member (third option) '(:reject-once :reject-always)))
+               (list (make-run (format nil "~A~%" (second option)) ':meta)))
+              (t nil)))
           (list (make-run (string #\Newline) ':body))))
 
 (defmethod block-runs ((block notice))

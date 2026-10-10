@@ -63,8 +63,16 @@
     view))
 
 (-> transcript-view--append (transcript-view transcript-block) null)
+(defun transcript-view--follow-if-at-end (view)
+  "Resume following the end when the reader has scrolled back to it."
+  (when (and (not (transcript-view-follow-p view))
+             (lightfast:text-at-end-p (transcript-view-display view)))
+    (setf (transcript-view-follow-p view) t))
+  nil)
+
 (defun transcript-view--append (view block)
   "Render BLOCK at the end of the display."
+  (transcript-view--follow-if-at-end view)
   (lightfast:text-append-styled (transcript-view-display view)
                                 (runs->styled (document-append (transcript-view-document view) block)))
   (transcript-view--follow view)
@@ -73,6 +81,7 @@
 (-> transcript-view--rerender (transcript-view transcript-block) null)
 (defun transcript-view--rerender (view block)
   "Replace BLOCK's span with its current rendering."
+  (transcript-view--follow-if-at-end view)
   (multiple-value-bind (runs start end) (document-rerender (transcript-view-document view) block)
     (lightfast:text-replace-styled (transcript-view-display view) start end (runs->styled runs)))
   (transcript-view--follow view)
@@ -132,13 +141,21 @@
          (open-url (document-link-at document position)))
         ((and block-id
               (= (lightfast:text-line-of-position display position)
-                 (lightfast:text-line-of-position
-                  display (block-span-start (document-span document block-id)))))
+                 (lightfast:text-line-of-position display (transcript-view--header-position view block-id))))
          (transcript-view-toggle view block-id))
         (t
          ;; A click into the body means the reader is here, not at the end.
          (setf (transcript-view-follow-p view) nil)))))
   nil)
+
+(-> transcript-view--header-position (transcript-view string) integer)
+(defun transcript-view--header-position (view block-id)
+  "Return the byte position of the header line of block BLOCK-ID: past the
+blank line an expanded or spaced block opens with."
+  (let* ((span (document-span (transcript-view-document view) block-id))
+         (text (transcript-view-block-text view block-id))
+         (blank (if (and (plusp (length text)) (char= (char text 0) #\Newline)) 1 0)))
+    (+ (block-span-start span) blank)))
 
 (-> transcript-view-block-text (transcript-view string) string)
 (defun transcript-view-block-text (view block-id)

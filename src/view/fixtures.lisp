@@ -382,11 +382,21 @@
 
 (defmethod backend-invoke ((backend scripted-backend) operation arguments)
   (let ((request-id (make-request-id)))
-    (scripted--post backend 'transcript-event :operation ':notice
-                                              :arguments (list ':text (format nil "Ran ~A~@[ with ~A~]" operation
-                                                                              (and (plusp (length arguments)) arguments))))
-    (scripted--post backend 'result-event :request-id request-id :outcome ':ok)
+    (cond
+      ((string= operation "agenda")
+       (scripted--post backend 'result-event :request-id request-id :outcome ':ok
+                                             :value (list (cons "text" (sample-agenda)))))
+      (t
+       (scripted--post backend 'transcript-event :operation ':notice
+                                                 :arguments (list ':text (format nil "Ran ~A~@[ with ~A~]" operation
+                                                                                 (and (plusp (length arguments)) arguments))))
+       (scripted--post backend 'result-event :request-id request-id :outcome ':ok)))
     request-id))
+
+(-> sample-agenda () string)
+(defun sample-agenda ()
+  "Return the demo workspace's agenda as Autolith's agenda command prints it."
+  (format nil "## Agenda for lightfast~%~%- [ ] route every literal through the theme struct~%- [ ] inspect the gallery at three widths~%- [x] write the flat theme entry point~%~%Two items open, one done this week."))
 
 (defmethod backend-job-action ((backend scripted-backend) job-id action &key text)
   (let ((request-id (make-request-id)))

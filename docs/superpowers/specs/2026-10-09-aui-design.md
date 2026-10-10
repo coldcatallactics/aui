@@ -254,29 +254,42 @@ atomically.
 
 1. **Conversations.** The conversation manager is the first window when AUI
    starts without a folder and the window Autolith/Conversations (Ctrl+O)
-   opens from a workbench. A search field over every known conversation
-   (name, folder, model, last activity, in columns under bold headings);
-   Enter or a double click opens the chosen one in the workspace already
-   showing its folder when that one is idle, otherwise in a new window; a
-   path field with Browse and Start here, and the recent folders, start new
-   conversations. The manager hides once a choice is made.
+   opens from a workbench. Centered: the wordmark, a lead line, a search
+   field with a New button beside it, then two short columns, the latest
+   four conversations (name and age) and the latest four folders (their last
+   name). Typing lists up to eight matching conversations; Enter or a click
+   opens one in the workspace already showing its folder when that one is
+   idle, otherwise in a new window; a folder click starts a conversation
+   there; New asks for a folder with the native chooser. The manager hides
+   once a choice is made.
 2. **Workbench.** A gentle menu bar (Autolith: Conversations, New
    conversation here, Open another folder, Restart, Quit; View: Transcript,
-   Commands, Settings, Inspector, Jump to latest; Turn: Stop, Full access
-   from now). Header: title, then the model, effort and permission chips
-   (each a menu), then the state mark: a drawn eight-dot spinner with a lit
-   head while something runs (green working, orange stopping, ink starting
-   or loading), a still red dot for interrupted or lost, nothing when idle;
-   the word is its tooltip. Left rail: conversations across folders, the
-   agent's plan with ○ ◐ ● marks, running jobs. Transcript. Composer in a
-   hairline frame: Enter sends or queues a follow-up while a turn runs,
-   Shift or Ctrl+Enter breaks the line, Tab queues, Escape stops, Ctrl+A/E/
-   K/U/W and Alt+B/F/D edit as in a terminal. Status row: folder, a thin
-   context occupancy bar, approval countdown and the follow-up queue.
-   A child job chosen in the rail takes the center: its transcript, a Cancel
-   job button, Back to the conversation, and the composer addressing it.
-   Rail and inspector collapse below 1100 px; everything reflows to any size;
-   no restrictive minimum.
+   Commands, Settings, Inspector, Agenda, Jump to latest; Turn: Stop, Full
+   access from now). Header: the title alone. The state mark sits centered
+   under the transcript, where the next words appear: a drawn eight-dot
+   spinner with a lit head while something runs (green working, orange
+   stopping, ink starting or loading), a still red dot for interrupted or
+   lost, nothing when idle, the word in its tooltip. Left rail, shown only
+   when it has content: the agent's plan with ○ ◐ ● marks and hanging
+   indents, and Agents, the sub-agents by name with a turning mark while
+   they run; a click shows one in the center. Transcript. Composer in a
+   hairline frame that grows with its text to twice its height: Enter sends
+   or queues a follow-up while a turn runs, Shift or Ctrl+Enter breaks the
+   line, Tab queues, Escape stops, and the terminal editing keys apply
+   (Ctrl+A/E/K/U/W, Ctrl+Backspace, Ctrl+Delete, Ctrl+Left/Right, Alt+B/F/D).
+   Stop shows only while something runs. Status row: the folder's last name,
+   the follow-up queue, a thin context occupancy bar, then the model, effort
+   and permission chips (each a menu; models grouped by provider) at the
+   bottom right. An approval is a card above the composer: "Approve
+   shell.run?" with the seconds left, the request's arguments in mono, and
+   the choices set to the right with the first allowing one filled in the
+   mark green; the transcript's approval block records only refusals. A
+   sub-agent chosen in the rail takes the center: its transcript, Back to
+   the conversation, and the composer reading "Send to <role>" and "Cancel
+   job". Agenda (View menu) shows the agenda command's text in the same
+   aside view. Scrolling back to the end of the transcript resumes
+   following. Rail and inspector collapse below 1100 px; the chips below
+   760 px; everything reflows to any size; no restrictive minimum.
 3. **Transcript renderer.** One `Fl_Text_Display` with a style table and word
    wrap, fed from the block model. Each block starts with a header line
    (speaker or tool title; time in a gutter or overlay rather than padding).

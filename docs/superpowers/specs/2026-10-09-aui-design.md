@@ -331,12 +331,17 @@ long path, running and failed tools, an approval, a child job, selected text,
 and focused and disabled controls; test selection and copy, keyboard
 traversal, scrolling during streaming, and resizing while streaming.
 
-Status on 2026-10-10 01:40: gates 1, 2 and cancellation pass through the
-real GUI on `gpt-5.6-luna`; gate 5 replays but two replay defects are open
-on the Autolith side (replayed tool statuses, internal messages replayed as
-prompts). Screenshots were taken at the 1131 by 2114 tile niri gives the
-window; niri's by-id resize actions did not move this window, so other
-widths are still to be inspected by hand.
+Status on 2026-10-10 04:05, against Autolith's `aui-acp` branch served
+through `AUI_AUTOLITH`: every gate passes through the real GUI on
+`gpt-5.6-luna`. Start, prompt and reply; tool call with approval; Stop;
+resume with accurate replay; settings, models and operations catalogs
+(37, 414 and 121 items); a setting change round trip; invoking an operation
+with and without an approval; a detached child job listed in the rail,
+inspected with its transcript, and its completion driving an automatic
+continuation turn. No owned process survived any run. Screenshots were taken
+at the 1131 by 2114 tile niri gives the window; niri's by-id resize actions
+did not move this window, so narrower and wider layouts remain to be
+inspected by hand.
 
 ## 9. Slices
 

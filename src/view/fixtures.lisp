@@ -145,7 +145,9 @@
         (make-instance 'model-entry :id "claude-haiku-4-5" :provider "anthropic" :credential-p nil)))
 
 (defclass scripted-backend (backend)
-  ((settings  :initform (sample-settings) :accessor scripted--settings)
+  ((job-message :initform nil :accessor scripted--job-message
+                :documentation "The last message sent to the demo job, echoed in its transcript.")
+   (settings  :initform (sample-settings) :accessor scripted--settings)
    (lock      :initform (bordeaux-threads:make-lock "scripted backend") :reader scripted--lock)
    (waiter    :initform (bordeaux-threads:make-condition-variable) :reader scripted--waiter)
    (decision  :initform nil :accessor scripted--decision)
@@ -387,7 +389,25 @@
     request-id))
 
 (defmethod backend-job-action ((backend scripted-backend) job-id action &key text)
-  (declare (ignore job-id action text))
   (let ((request-id (make-request-id)))
-    (scripted--post backend 'result-event :request-id request-id :outcome ':unsupported)
+    (ecase action
+      (:inspect
+       (let ((content (format nil "~A~@[~%~%You wrote: ~A~]" (sample-job-transcript) (scripted--job-message backend))))
+         (scripted--post backend 'result-event :request-id request-id :outcome ':ok
+                                               :value (list ':job-id job-id ':content content ':offset 0
+                                                            ':next-offset (length content) ':total (length content)
+                                                            ':complete-p t))))
+      (:send
+       (setf (scripted--job-message backend) text)
+       (scripted--post backend 'result-event :request-id request-id :outcome ':ok :value (list ':accepted t)))
+      (:cancel
+       (scripted--post backend 'jobs-event :kind ':delta
+                                           :jobs (list (make-instance 'job-entry :id job-id :role "reviewer"
+                                                                                 :state ':cancelled :elapsed-seconds 42)))
+       (scripted--post backend 'result-event :request-id request-id :outcome ':ok :value (list ':cancelled t))))
     request-id))
+
+(-> sample-job-transcript () string)
+(defun sample-job-transcript ()
+  "Return the text transcript of the demo's reviewer job."
+  (format nil "## Reviewer~%~%Reading `src/theme.lisp` and the flat theme entry point.~%~%- the palette is derived once, in OKLCH~%- the hairline box replaces every bevel~%- scrollbars still use the default slider~%~%Checking the gallery at three widths before reporting back."))

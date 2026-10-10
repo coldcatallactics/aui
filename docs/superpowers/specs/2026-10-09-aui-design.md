@@ -7,7 +7,7 @@ the agreed design; it changes by commit, not by conversation.
 ## 1. Purpose
 
 AUI is a native graphical workbench for Autolith. It starts and owns a
-pristine Autolith process for a chosen folder, shows the conversation as a
+Autolith process for a chosen folder, shows the conversation as a
 legible document, exposes every Autolith knob through typed interfaces, and
 stays fast and well behaved in a tiling window manager. It is written in
 Common Lisp on Lightfast (FLTK 1.4). Nothing in it is web based.
@@ -33,7 +33,7 @@ no dithered shadows inside the application.
 +----------------------------------------------|--------------------+
                                                | stdio JSON-RPC (ACP v1)
                                    +-----------v------------------+
-                                   | autolith --pristine acp      |
+                                   | autolith --permissions auto acp|
                                    | one per workspace window     |
                                    | one open conversation        |
                                    +------------------------------+
@@ -47,7 +47,7 @@ no dithered shadows inside the application.
   resources, operation invocation and runtime events. The management REPL
   is an optional developer facility, not a dependency; it does not start in
   ACP mode today.
-- **Process ownership.** One `autolith --pristine acp` process per workspace
+- **Process ownership.** One `autolith --permissions auto acp` process per workspace
   window, launched with the chosen folder as its working directory and
   `AUTOLITH_MODEL`/`AUTOLITH_REASONING_EFFORT` overrides. The verified cheap
   route is `gpt-5.6-luna` at low effort. Switching to another folder respawns;
@@ -332,7 +332,7 @@ spec change only after agreement in the mailbox.
 
 ## 8. Acceptance gates
 
-1. Start pristine, initialize ACP, negotiate extensions, target the session.
+1. Start `autolith --permissions auto acp`, initialize ACP, negotiate extensions, target the session.
 2. Prompt, inspect a tool call, approve and deny, cancel.
 3. Run a child job; verify completion delivery and continuation headlessly.
 4. Change model and settings at an admitted boundary.

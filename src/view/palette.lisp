@@ -128,7 +128,7 @@ An empty QUERY returns the first LIMIT items unsorted."
          (group (lightfast:make-group :parent parent :width 600 :height 400))
          (input (lightfast:make-input :parent group :height (+ *control-height* 6)))
          (list (lightfast:make-browser :parent group :height 300 :column-widths '(300 0)))
-         (hint (workbench--make-label group "Type to search commands, conversations, settings and models. Enter runs the choice, Escape returns." ':prose-italic)))
+         (hint (workbench--make-label group "Type to search; Enter runs the choice, Escape returns." ':prose-italic)))
     (setf (slot-value palette 'group) group
           (slot-value palette 'input) input
           (slot-value palette 'list) list

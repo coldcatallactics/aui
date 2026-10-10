@@ -6,7 +6,7 @@ and FLTK 1.4. One substrate, black ink, Times New Roman for prose, CMU
 Typewriter Text for code, hairline boxes, and accent colors derived in OKLCH
 from the Lambda Symbolics green.
 
-AUI starts and owns a pristine `autolith acp` process for a chosen folder,
+AUI starts and owns an `autolith --permissions auto acp` process for a chosen folder,
 shows the conversation as a legible document with collapsible reasoning and
 tool calls, answers permission requests, and exposes Autolith's settings,
 models, operations and jobs through a property sheet, a command palette and

@@ -53,7 +53,7 @@
    (external-turn :initform nil :accessor acp-backend--external-turn
                   :documentation "The server epoch of a turn the server owns, such as an automatic
 continuation or an invocation, while it runs; NIL otherwise."))
-  (:documentation "One pristine Autolith process with an independent cancellation path."))
+  (:documentation "One Autolith process with an independent cancellation path."))
 
 (defparameter *acp-event-generation* nil
   "The originating generation bound in each owned operation or callback.")
@@ -146,11 +146,13 @@ how a development build of Autolith is tested.")
 
 (-> acp-backend--launch (acp-backend) agentcomms:acp-channel)
 (defun acp-backend--launch (backend)
-  "Launch only the requested pristine process, preserving the inherited environment."
+  "Launch only the requested process, preserving the inherited environment.
+The process starts with automatic command authorization; the user changes the
+mode from the header chip when they want to be asked."
   (agentcomms:acp-launch-agent
    "env" :arguments (list (format nil "AUTOLITH_MODEL=~A" (acp-backend-model backend))
                            (format nil "AUTOLITH_REASONING_EFFORT=~A" (acp-backend-effort backend))
-                           (autolith-command) "--pristine" "acp")
+                           (autolith-command) "--permissions" "auto" "acp")
    :directory (backend-directory backend)))
 
 (-> make-acp-backend (string ui-queue &key (:model string) (:effort string) (:launcher function)) acp-backend)

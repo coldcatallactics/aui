@@ -136,14 +136,18 @@ size; the workbench then lays itself out for the requested size inside it."
 
 (-> open-view (workbench keyword) null)
 (defun open-view (workbench view)
-  "Open VIEW, one of :SETTINGS, :PALETTE or :INSPECTOR, on WORKBENCH."
+  "Open VIEW, one of :SETTINGS, :PALETTE, :INSPECTOR or :JOB, on WORKBENCH."
   (ecase view
     (:settings (workbench-show-settings workbench))
     (:palette (workbench-show-palette workbench))
     (:inspector
      (let ((block (transcript-last-block (workbench-transcript workbench) 'tool-call)))
        (when block
-         (workbench-inspect-block workbench (transcript-block-id block))))))
+         (workbench-inspect-block workbench (transcript-block-id block)))))
+    (:job
+     (let ((job (first (workbench-jobs workbench))))
+       (when job
+         (workbench-show-job workbench job)))))
   nil)
 
 (-> main (&key (:arguments list)) null)

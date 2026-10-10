@@ -25,6 +25,33 @@
 (defparameter *composer-height* 112
   "Height of the composer row in pixels.")
 
+(defparameter *context-bar-width* 120
+  "Width of the context occupancy bar in the status row.")
+
+(defparameter *context-bar-height* 8
+  "Height of the context occupancy bar.")
+
+(defparameter *plan-view-max-height* 260
+  "Tallest the plan section of the rail grows before it scrolls.")
+
+(defparameter *plan-indent* 40
+  "Pixels of a plan line taken by the marker and the display's margins.")
+
+(defparameter *plan-line-height* 27
+  "Height of one plan line in the rail, about the prose line pitch.")
+
+(defparameter *job-poll-interval* 3.0
+  "Seconds between refreshes of a viewed child job's transcript.")
+
+(defparameter *animation-interval* 0.12
+  "Seconds between frames of the spinner.")
+
+(defparameter *spinner-dots* 8
+  "How many dots the spinner's ring has.")
+
+(defparameter *spinner-size* 26
+  "Pixel size of the spinner and the state mark in the header.")
+
 (defparameter *status-height* 28
   "Height of the status row in pixels.")
 
@@ -48,7 +75,13 @@
    (model-chip          :reader workbench--model-chip)
    (effort-chip         :reader workbench--effort-chip)
    (permission-chip     :reader workbench--permission-chip)
-   (state-label         :reader workbench--state-label)
+   (state-mark          :reader workbench--state-mark
+                        :documentation "The canvas drawing the spinner or the trouble mark in the header.")
+   (state-kind          :initform ':idle :accessor workbench--state-kind
+                        :type (member :idle :busy :trouble)
+                        :documentation "What the state mark draws: nothing, a turning spinner or a still dot.")
+   (state-color         :initform '(0 0 0) :accessor workbench--state-color
+                        :documentation "The (RED GREEN BLUE) the state mark is drawn in.")
    (rail                :reader workbench--rail)
    (left-spacer         :reader workbench--left-spacer)
    (right-spacer        :reader workbench--right-spacer)
@@ -67,13 +100,37 @@
    (send-button         :reader workbench--send-button)
    (stop-button         :reader workbench--stop-button)
    (status-label        :reader workbench--status-label)
+   (context-bar         :reader workbench--context-bar
+                        :documentation "The progress bar showing how full the context is.")
+   (plan-label          :reader workbench--plan-label)
+   (plan-view           :reader workbench--plan-view
+                        :documentation "The styled display of the agent's plan in the rail.")
+   (plan-lines          :initform 0 :accessor workbench--plan-lines
+                        :documentation "How many plan entries the rail shows; zero hides the section.")
+   (animation-timer     :initform nil :accessor workbench--animation-timer
+                        :documentation "The repeating timeout animating the state word, or NIL.")
+   (animation-phase     :initform 0 :accessor workbench--animation-phase
+                        :documentation "Which frame of the working animation shows.")
    (commands-button     :reader workbench--commands-button)
    (settings-button     :reader workbench--settings-button)
    (inspector           :reader workbench-inspector)
    (inspector-visible-p :initform nil :accessor workbench-inspector-visible-p :type boolean)
    (center-mode         :initform ':transcript :accessor workbench-center-mode
-                        :type (member :transcript :commands :settings)
+                        :type (member :transcript :commands :settings :job)
                         :documentation "Which pane the center of the window shows.")
+   (job-transcript      :initform (make-transcript) :reader workbench--job-transcript
+                        :documentation "The transcript model holding the viewed child job's text.")
+   (job-view            :reader workbench--job-view
+                        :documentation "The TRANSCRIPT-VIEW showing the viewed child job.")
+   (job-label           :reader workbench--job-label)
+   (job-back-button     :reader workbench--job-back-button)
+   (job-cancel-button   :reader workbench--job-cancel-button)
+   (viewed-job          :initform nil :accessor workbench-viewed-job
+                        :documentation "The JOB-ENTRY whose transcript the center shows, or NIL.")
+   (job-content         :initform nil :accessor workbench--job-content
+                        :documentation "The job transcript text last rendered, to skip unchanged refreshes.")
+   (job-timer           :initform nil :accessor workbench--job-timer
+                        :documentation "The repeating timeout refreshing the viewed job, or NIL.")
    (settings-pane       :reader workbench-settings-pane)
    (palette             :reader workbench-palette)
    (settings            :initform nil :accessor workbench-settings
@@ -202,10 +259,14 @@ backend so the first events have somewhere to land."
         workbench
       (setf folder-label (workbench--make-label window (backend-directory backend) ':prose-italic)
             title-label (workbench--make-label window "New conversation" ':prose)
-            state-label (workbench--make-label window "starting" ':prose-italic))
+            (slot-value workbench 'state-mark)
+            (lightfast:make-canvas :parent window :width *spinner-size* :height *spinner-size*
+                                   :callback (lambda (widget event value)
+                                               (declare (ignore event value))
+                                               (workbench--draw-state-mark workbench widget))))
+      (lightfast:set-box (workbench--state-mark workbench) lightfast:+box-no-box+)
       (lightfast:set-label-size title-label *heading-size*)
       (lightfast:set-label-align title-label ':left ':inside ':clip)
-      (lightfast:set-label-align state-label ':right ':inside)
       (setf (slot-value workbench 'model-chip)
             (workbench--make-chip window "model" (lambda () (workbench-choose-model workbench)))
             (slot-value workbench 'effort-chip)
@@ -222,6 +283,24 @@ backend so the first events have somewhere to land."
                                    :callback (lambda (widget event value)
                                                (declare (ignore widget event value))
                                                (workbench-show-settings workbench))))
+      (setf (slot-value workbench 'job-view)
+            (make-transcript-view (workbench--job-transcript workbench) :parent window :width 600 :height 300)
+            (slot-value workbench 'job-label) (workbench--make-label window "" ':prose-bold)
+            (slot-value workbench 'job-back-button)
+            (lightfast:make-button :parent window :label "Back to the conversation" :height *control-height*
+                                   :callback (lambda (widget event value)
+                                               (declare (ignore widget event value))
+                                               (workbench-show-transcript workbench)))
+            (slot-value workbench 'job-cancel-button)
+            (lightfast:make-button :parent window :label "Cancel job" :height *control-height*
+                                   :callback (lambda (widget event value)
+                                               (declare (ignore widget event value))
+                                               (workbench-cancel-viewed-job workbench))))
+      (lightfast:set-label-align (workbench--job-label workbench) ':left ':inside ':clip)
+      (lightfast:set-tooltip (workbench--job-back-button workbench) "Escape")
+      (dolist (widget (list (transcript-view-display (workbench--job-view workbench)) (workbench--job-label workbench)
+                            (workbench--job-back-button workbench) (workbench--job-cancel-button workbench)))
+        (lightfast:hide widget))
       (lightfast:set-tooltip (slot-value workbench 'commands-button) "Ctrl+K")
       (lightfast:set-tooltip (slot-value workbench 'settings-button) "Ctrl+,")
       (setf rail (lightfast:make-group :parent window :width *rail-width* :height 400))
@@ -239,6 +318,18 @@ backend so the first events have somewhere to land."
         (lightfast:set-text-size list *prose-size*)
         (lightfast:set-box list lightfast:+box-no-box+)
         (lightfast:browser-set-scrollbars list ':vertical))
+      (setf (slot-value workbench 'plan-label) (workbench--make-label rail "Plan" ':prose-bold)
+            (slot-value workbench 'plan-view) (lightfast:make-text-display :parent rail :width *rail-width* :height 120))
+      (let ((plan-view (workbench--plan-view workbench)))
+        (lightfast:set-box plan-view lightfast:+box-no-box+)
+        (lightfast:text-set-wrap plan-view ':bounds)
+        (lightfast:text-set-styles plan-view
+                                   (list (list :font (font ':prose) :size *prose-size* :color *ink*)
+                                         (list :font (font ':marker) :size *marker-size* :color *ink*)
+                                         (list :font (font ':marker) :size *marker-size* :color (accent ':orange))
+                                         (list :font (font ':marker) :size *marker-size* :color (accent ':green))))
+        (lightfast:hide plan-view)
+        (lightfast:hide (workbench--plan-label workbench)))
       (lightfast:on conversations-list
                     (lambda (widget event value)
                       (declare (ignore widget event value))
@@ -281,6 +372,9 @@ backend so the first events have somewhere to land."
                                                            (declare (ignore widget event value))
                                                            (workbench-stop workbench))))
       (setf status-label (workbench--make-label window "" ':prose-italic))
+      (setf (slot-value workbench 'context-bar)
+            (lightfast:make-progress :parent window :width *context-bar-width* :height *context-bar-height* :value "0"))
+      (lightfast:hide (workbench--context-bar workbench))
       (lightfast:set-label-size status-label (- *prose-size* 1))
       (lightfast:set-label-size folder-label (- *prose-size* 1))
       (lightfast:set-label-align status-label ':right ':inside ':clip))
@@ -295,6 +389,8 @@ backend so the first events have somewhere to land."
     (lightfast:on-resize window (lambda (widget)
                                   (declare (ignore widget))
                                   (workbench--relayout workbench)))
+    (transcript-notice (workbench-transcript workbench) :severity ':information :key ':starting
+                       :text (format nil "Starting Autolith in ~A" (backend-directory backend)))
     (workbench--relayout workbench)
     (workbench--refresh-status workbench)
     (push workbench *workbenches*)
@@ -323,9 +419,15 @@ open, and the decision row only while an approval waits."
         (lightfast:show (inspector-group (workbench-inspector workbench)))
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
     (let ((mode (workbench-center-mode workbench)))
-      (dolist (widget (list (transcript-view-display (workbench-transcript-view workbench))
-                            (workbench--composer-frame workbench) (workbench--send-button workbench)
+      (dolist (widget (list (transcript-view-display (workbench--job-view workbench)) (workbench--job-label workbench)
+                            (workbench--job-back-button workbench) (workbench--job-cancel-button workbench)))
+        (if (eq mode ':job) (lightfast:show widget) (lightfast:hide widget)))
+      (when (eq mode ':job)
+        (workbench--show-job-label workbench))
+      (dolist (widget (list (workbench--composer-frame workbench) (workbench--send-button workbench)
                             (workbench--stop-button workbench)))
+        (if (member mode '(:transcript :job)) (lightfast:show widget) (lightfast:hide widget)))
+      (dolist (widget (list (transcript-view-display (workbench-transcript-view workbench))))
         (if (eq mode ':transcript) (lightfast:show widget) (lightfast:hide widget)))
       (when (and approval-p (not (eq mode ':transcript)))
         (lightfast:hide approval-row))
@@ -346,19 +448,31 @@ open, and the decision row only while an approval waits."
                                  (list (lightfast:make-layout-item (workbench--model-chip workbench) :basis 190 :shrink 1)
                                        (lightfast:make-layout-item (workbench--effort-chip workbench) :basis 100 :shrink 1)
                                        (lightfast:make-layout-item (workbench--permission-chip workbench) :basis 120 :shrink 1)))
-                               (list (lightfast:make-layout-item (workbench--state-label workbench) :basis 110 :shrink 0)
+                               (list (lightfast:make-layout-item (workbench--state-mark workbench)
+                                                                 :basis *spinner-size* :shrink 0 :align-self ':center)
                                      (lightfast:make-layout-item (workbench--commands-button workbench) :basis 120 :shrink 0)
                                      (lightfast:make-layout-item (workbench--settings-button workbench) :basis 110 :shrink 0)))))
            (rail-layout (lightfast:make-layout-column
                          :target rail :basis *rail-width* :shrink 0 :gap (spacing 2)
-                         :children (list (lightfast:make-layout-item (workbench--conversations-label workbench)
+                         :children (append
+                                    (list (lightfast:make-layout-item (workbench--conversations-label workbench)
                                                                      :basis *control-height* :shrink 0)
                                          (lightfast:make-layout-item (workbench--conversations-list workbench)
-                                                                     :basis 0 :grow 3)
-                                         (lightfast:make-layout-item (workbench--jobs-label workbench)
+                                                                     :basis 0 :grow 3))
+                                    (when (plusp (workbench--plan-lines workbench))
+                                      (list (lightfast:make-layout-item (workbench--plan-label workbench)
+                                                                        :basis (+ *control-height* (spacing 4)) :shrink 0)
+                                            (lightfast:make-layout-item (workbench--plan-view workbench)
+                                                                        :basis (min *plan-view-max-height*
+                                                                                    ;; One spare line keeps the display's
+                                                                                    ;; scrollbar away.
+                                                                                    (+ (spacing 4) (* *plan-line-height*
+                                                                                                      (1+ (workbench--plan-lines workbench)))))
+                                                                        :shrink 0)))
+                                    (list (lightfast:make-layout-item (workbench--jobs-label workbench)
                                                                      :basis (+ *control-height* (spacing 4)) :shrink 0)
                                          (lightfast:make-layout-item (workbench--jobs-list workbench)
-                                                                     :basis 0 :grow 2))))
+                                                                     :basis 0 :grow 2)))))
            (approval-layout (lightfast:make-layout-row
                              :target approval-row :basis *control-height* :shrink 0 :gap (spacing 3)
                              :children (cons (lightfast:make-layout-item (workbench--approval-label workbench)
@@ -388,6 +502,21 @@ open, and the decision row only while an approval waits."
                                                 :basis 0 :grow 1))
                                          (when approval-p (list approval-layout))
                                          (list composer-row))))
+                     (:job
+                      (lightfast:make-layout-column
+                       :basis *text-column-width* :grow 0 :shrink 1 :max-width *text-column-width* :gap (spacing 4)
+                       :children (list (lightfast:make-layout-row
+                                        :basis *control-height* :shrink 0 :gap (spacing 3)
+                                        :children (list (lightfast:make-layout-item (workbench--job-label workbench)
+                                                                                    :basis 0 :grow 1)
+                                                        (lightfast:make-layout-item (workbench--job-cancel-button workbench)
+                                                                                    :basis 130 :shrink 0)
+                                                        (lightfast:make-layout-item (workbench--job-back-button workbench)
+                                                                                    :basis 250 :shrink 0)))
+                                       (lightfast:make-layout-item
+                                        (transcript-view-display (workbench--job-view workbench))
+                                        :basis 0 :grow 1)
+                                       composer-row)))
                      (:commands
                       (lightfast:make-layout-column
                        :basis 0 :grow 1 :max-width 900
@@ -396,7 +525,7 @@ open, and the decision row only while an approval waits."
                       (lightfast:make-layout-column
                        :basis 0 :grow 1
                        :children (list (settings-pane-layout (workbench-settings-pane workbench)))))))
-           (centered-p (and (eq (workbench-center-mode workbench) ':transcript) (not inspector-p)))
+           (centered-p (and (member (workbench-center-mode workbench) '(:transcript :job)) (not inspector-p)))
            (body (lightfast:make-layout-row
                   :basis 0 :grow 1 :gap (spacing 6)
                   :children (append (when rail-p (list rail-layout))
@@ -415,6 +544,9 @@ open, and the decision row only while an approval waits."
                                      :basis *status-height* :shrink 0 :gap (spacing 4)
                                      :children (list (lightfast:make-layout-item (workbench--folder-label workbench)
                                                                                  :basis 0 :grow 1)
+                                                     (lightfast:make-layout-item (workbench--context-bar workbench)
+                                                                                 :basis *context-bar-width* :shrink 0
+                                                                                 :align-self ':center)
                                                      (lightfast:make-layout-item (workbench--status-label workbench)
                                                                                  :basis 0 :grow 2)))))))
       (lightfast:apply-layout layout (lightfast:make-rect :width width :height height) :parent window)
@@ -424,8 +556,7 @@ open, and the decision row only while an approval waits."
                                          (when (>= width *rail-breakpoint*)
                                            (list (workbench--model-chip workbench) (workbench--effort-chip workbench)
                                                  (workbench--permission-chip workbench)))
-                                         (list (workbench--state-label workbench)
-                                               (workbench--commands-button workbench)
+                                         (list (workbench--commands-button workbench)
                                                (workbench--settings-button workbench)))
                                  :reference (workbench--commands-button workbench))
       (lightfast:align-baselines (list (workbench--folder-label workbench) (workbench--status-label workbench)))))
@@ -440,10 +571,15 @@ open, and the decision row only while an approval waits."
 runs or the session is not ready yet, the text is queued as a follow-up."
   (let ((text (string-trim '(#\Space #\Newline #\Tab) (lightfast:value (workbench-composer workbench)))))
     (when (plusp (length text))
-      (if (and (eq (workbench-turn-state workbench) ':idle)
-               (eq (workbench-session-state workbench) ':ready))
-          (backend-prompt (workbench-backend workbench) text)
-          (workbench-queue-follow-up workbench text))
+      (cond
+        ((and (eq (workbench-center-mode workbench) ':job) (workbench-viewed-job workbench))
+         (backend-job-action (workbench-backend workbench) (job-entry-id (workbench-viewed-job workbench))
+                             ':send :text text))
+        ((and (eq (workbench-turn-state workbench) ':idle)
+              (eq (workbench-session-state workbench) ':ready))
+         (backend-prompt (workbench-backend workbench) text))
+        (t
+         (workbench-queue-follow-up workbench text)))
       (setf (lightfast:value (workbench-composer workbench)) "")))
   nil)
 
@@ -478,9 +614,12 @@ runs or the session is not ready yet, the text is queued as a follow-up."
 
 (-> workbench-stop (workbench) null)
 (defun workbench-stop (workbench)
-  "Cancel the running turn."
-  (when (member (workbench-turn-state workbench) '(:running :cancelling))
-    (backend-cancel (workbench-backend workbench)))
+  "Cancel the running turn, or the viewed job when the center shows one."
+  (cond
+    ((and (eq (workbench-center-mode workbench) ':job) (workbench-viewed-job workbench))
+     (workbench-cancel-viewed-job workbench))
+    ((member (workbench-turn-state workbench) '(:running :cancelling))
+     (backend-cancel (workbench-backend workbench))))
   nil)
 
 (defparameter *key-enter* #xff0d
@@ -720,13 +859,88 @@ the caret already sits at the end, or from the start of the line to the caret."
 
 (-> workbench--job-chosen (workbench) null)
 (defun workbench--job-chosen (workbench)
-  "Open the inspector on the job selected in the rail."
+  "Show the job selected in the rail in the center of the window."
   (let* ((index (first (lightfast:browser-selected-indices (workbench--jobs-list workbench))))
          (job (and index (nth index (workbench-jobs workbench)))))
     (when job
-      (inspector-show-job (workbench-inspector workbench) job)
-      (setf (workbench-inspector-visible-p workbench) t)
-      (workbench--relayout workbench)))
+      (workbench-show-job workbench job)))
+  nil)
+
+(-> workbench-show-job (workbench job-entry) null)
+(defun workbench-show-job (workbench job)
+  "Show JOB's transcript in the center with the composer addressing it, and
+keep it fresh while the job runs."
+  (unless (and (workbench-viewed-job workbench)
+               (equal (job-entry-id (workbench-viewed-job workbench)) (job-entry-id job)))
+    (transcript-reset (workbench--job-transcript workbench))
+    (setf (workbench--job-content workbench) nil)
+    (transcript-notice (workbench--job-transcript workbench) :severity ':information :key ':loading
+                       :text (format nil "Fetching the transcript of ~A" (job-entry-id job))))
+  (setf (workbench-viewed-job workbench) job
+        (workbench-center-mode workbench) ':job)
+  (workbench--show-job-label workbench)
+  (workbench--relayout workbench)
+  (workbench--poll-job workbench)
+  (unless (workbench--job-timer workbench)
+    (setf (workbench--job-timer workbench)
+          (lightfast:add-timeout *job-poll-interval* (lambda () (workbench--poll-job workbench)) :repeat t)))
+  (workbench-focus-composer workbench)
+  nil)
+
+(-> workbench--show-job-label (workbench) null)
+(defun workbench--show-job-label (workbench)
+  "Describe the viewed job above its transcript."
+  (let ((job (workbench-viewed-job workbench)))
+    (when job
+      (setf (lightfast:label (workbench--job-label workbench))
+            (format nil "~A  ·  ~(~A~)~@[  ·  ~D s~]"
+                    (or (job-entry-role job) (job-entry-id job)) (job-entry-state job) (job-entry-elapsed-seconds job)))
+      (if (member (job-entry-state job) '(:running :pending :waiting))
+          (lightfast:show (workbench--job-cancel-button workbench))
+          (lightfast:hide (workbench--job-cancel-button workbench)))))
+  nil)
+
+(-> workbench--poll-job (workbench) null)
+(defun workbench--poll-job (workbench)
+  "Ask for the viewed job's transcript while it is shown."
+  (let ((job (workbench-viewed-job workbench)))
+    (if (and job (eq (workbench-center-mode workbench) ':job))
+        (backend-job-action (workbench-backend workbench) (job-entry-id job) ':inspect)
+        (workbench--stop-job-timer workbench)))
+  nil)
+
+(-> workbench--stop-job-timer (workbench) null)
+(defun workbench--stop-job-timer (workbench)
+  "Stop refreshing the viewed job."
+  (when (workbench--job-timer workbench)
+    (lightfast:remove-timeout (workbench--job-timer workbench))
+    (setf (workbench--job-timer workbench) nil))
+  nil)
+
+(-> workbench--job-transcript-arrived (workbench list) null)
+(defun workbench--job-transcript-arrived (workbench value)
+  "Render VALUE, a job transcript plist, when it belongs to the viewed job
+and differs from what is shown."
+  (let ((job (workbench-viewed-job workbench))
+        (content (getf value ':content)))
+    (when (and job (equal (job-entry-id job) (getf value ':job-id))
+               (not (equal content (workbench--job-content workbench))))
+      (setf (workbench--job-content workbench) content)
+      (let ((transcript (workbench--job-transcript workbench)))
+        (transcript-reset transcript)
+        (if (plusp (length content))
+            (transcript-append transcript (make-instance 'assistant-text :text content))
+            (transcript-notice transcript :severity ':information :key ':empty
+                               :text "The job has not written anything yet."))
+        (transcript-view-jump-to-end (workbench--job-view workbench)))))
+  nil)
+
+(-> workbench-cancel-viewed-job (workbench) null)
+(defun workbench-cancel-viewed-job (workbench)
+  "Cancel the job shown in the center."
+  (let ((job (workbench-viewed-job workbench)))
+    (when job
+      (backend-job-action (workbench-backend workbench) (job-entry-id job) ':cancel)))
   nil)
 
 (-> workbench--window-key (workbench string) null)
@@ -740,7 +954,9 @@ the caret already sits at the end, or from the start of the line to the caret."
 (-> workbench-show-transcript (workbench) null)
 (defun workbench-show-transcript (workbench)
   "Return the center of the window to the conversation."
-  (setf (workbench-center-mode workbench) ':transcript)
+  (setf (workbench-center-mode workbench) ':transcript
+        (workbench-viewed-job workbench) nil)
+  (workbench--stop-job-timer workbench)
   (workbench--relayout workbench)
   (workbench-focus-composer workbench)
   nil)
@@ -863,6 +1079,8 @@ Autolith process in one folder, so another folder means another window."
     (setf (workbench-closed-p workbench) t)
     (setf *workbenches* (remove workbench *workbenches*))
     (push (workbench-backend workbench) *stopped-backends*)
+    (workbench--animate workbench nil)
+    (workbench--stop-job-timer workbench)
     (backend-stop (workbench-backend workbench)))
   nil)
 
@@ -909,29 +1127,90 @@ session was still opening stays when no draft is kept."
          (pending (workbench-pending-approval workbench))
          (remaining (and pending (approval-deadline pending)
                          (max 0 (- (approval-deadline pending) (get-universal-time)))))
-         (connection (string-downcase (symbol-name (workbench-connection-state workbench))))
-         (turn (string-downcase (symbol-name (workbench-turn-state workbench)))))
+         (connection (string-downcase (symbol-name (workbench-connection-state workbench)))))
     (setf (lightfast:label (workbench--status-label workbench))
-          (format nil "~A · ~A~@[ · context ~D percent~]~:[~; · approval waiting~]~@[ ~D s left~]~[~; · 1 follow-up queued~:; · ~:*~D follow-ups queued~]"
-                  connection turn (and fraction (round (* 100 fraction)))
-                  pending remaining (length (workbench-follow-ups workbench))))
-    (setf (lightfast:label (workbench--state-label workbench))
-          (cond
-            ((member (workbench-connection-state workbench) '(:lost :exited)) connection)
-            ((eq (workbench-connection-state workbench) ':starting) "starting")
-            ((eq (workbench-session-state workbench) ':loading) "loading")
-            ((eq (workbench-turn-state workbench) ':running) "working")
-            ((eq (workbench-turn-state workbench) ':cancelling) "stopping")
-            ((eq (workbench-turn-state workbench) ':interrupted) "interrupted")
-            (t "")))
-    (let ((color (case (workbench-turn-state workbench)
-                   (:running (accent ':green))
-                   (:cancelling (accent ':orange))
-                   (:interrupted (accent ':red))
-                   (t *ink*))))
-      (destructuring-bind (red green blue) color
-        (lightfast:set-label-color-rgb (workbench--state-label workbench) :red red :green green :blue blue))))
+          (format nil "~{~A~^ · ~}"
+                  (append (when pending
+                            (list (format nil "approval waiting~@[, ~D s left~]" remaining)))
+                          (let ((count (length (workbench-follow-ups workbench))))
+                            (when (plusp count)
+                              (list (format nil "~D follow-up~:P queued" count)))))))
+    (let ((bar (workbench--context-bar workbench)))
+      (cond
+        (fraction
+         (setf (lightfast:value bar) (format nil "~,2F" (* 100 fraction)))
+         (lightfast:set-tooltip bar (format nil "Context ~D percent full" (round (* 100 fraction))))
+         (lightfast:show bar))
+        (t
+         (lightfast:hide bar))))
+    ;; The header shows the state as a mark, not a word: a turning spinner
+    ;; while something runs, a still dot when something went wrong, nothing
+    ;; when idle. The word lives in the mark's tooltip.
+    (destructuring-bind (kind color word)
+        (cond
+          ((member (workbench-connection-state workbench) '(:lost :exited)) (list ':trouble (accent ':red) connection))
+          ((eq (workbench-connection-state workbench) ':starting) (list ':busy *ink* "starting"))
+          ((eq (workbench-session-state workbench) ':loading) (list ':busy *ink* "loading"))
+          ((eq (workbench-turn-state workbench) ':running) (list ':busy (accent ':green) "working"))
+          ((eq (workbench-turn-state workbench) ':cancelling) (list ':busy (accent ':orange) "stopping"))
+          ((eq (workbench-turn-state workbench) ':interrupted) (list ':trouble (accent ':red) "interrupted"))
+          (t (list ':idle *ink* "")))
+      (setf (workbench--state-kind workbench) kind
+            (workbench--state-color workbench) color)
+      (lightfast:set-tooltip (workbench--state-mark workbench) word)
+      (lightfast:redraw (workbench--state-mark workbench))
+      (workbench--animate workbench (eq kind ':busy))))
   nil)
+
+(-> workbench--draw-state-mark (workbench t) null)
+(defun workbench--draw-state-mark (workbench canvas)
+  "Draw the state mark on CANVAS: a ring of dots with a lit head chasing
+around while busy, a still dot in trouble, nothing when idle."
+  (let* ((x (lightfast:widget-x canvas))
+         (y (lightfast:widget-y canvas))
+         (size (lightfast:widget-width canvas))
+         (center-x (+ x (floor size 2)))
+         (center-y (+ y (floor size 2)))
+         (ring (floor (- size 8) 2))
+         (dot 3))
+    (destructuring-bind (red green blue) *paper*
+      (lightfast:draw-color-rgb :red red :green green :blue blue))
+    (lightfast:draw-filled-rect x y size size)
+    (destructuring-bind (red green blue) (workbench--state-color workbench)
+      (lightfast:draw-color-rgb :red red :green green :blue blue))
+    (ecase (workbench--state-kind workbench)
+      (:idle nil)
+      (:trouble
+       (lightfast:draw-filled-circle center-x center-y (+ dot 2)))
+      (:busy
+       (let ((head (mod (workbench--animation-phase workbench) *spinner-dots*)))
+         (dotimes (index *spinner-dots*)
+           (let* ((angle (* 2 pi (/ index *spinner-dots*)))
+                  (dot-x (round (+ center-x (* ring (sin angle)))))
+                  (dot-y (round (- center-y (* ring (cos angle)))))
+                  (distance (mod (- head index) *spinner-dots*)))
+             ;; The head and two trailing dots are lit; the tail fades to the
+             ;; mark tier of the same hue, and the rest stay unlit.
+             (cond
+               ((= distance 0)
+                (lightfast:draw-filled-circle dot-x dot-y dot))
+               ((<= distance 2)
+                (destructuring-bind (red green blue) (workbench--state-tail-color workbench)
+                  (lightfast:draw-color-rgb :red red :green green :blue blue))
+                (lightfast:draw-filled-circle dot-x dot-y (1- dot))
+                (destructuring-bind (red green blue) (workbench--state-color workbench)
+                  (lightfast:draw-color-rgb :red red :green green :blue blue)))))))))
+    nil))
+
+(-> workbench--state-tail-color (workbench) list)
+(defun workbench--state-tail-color (workbench)
+  "Return the lighter tier of the state color for the spinner's tail."
+  (let ((color (workbench--state-color workbench)))
+    (cond
+      ((equal color (accent ':green)) (accent ':green :tier ':mark))
+      ((equal color (accent ':orange)) (accent ':orange :tier ':mark))
+      ((equal color (accent ':red)) (accent ':red :tier ':mark))
+      (t color))))
 
 (-> workbench--show-approval (workbench approval) null)
 (defun workbench--show-approval (workbench approval)
@@ -1027,6 +1306,47 @@ with a filled mark and others with their folder name."
                                        (job-entry-elapsed-seconds job)))))
   nil)
 
+(-> workbench--show-plan (workbench) null)
+(defun workbench--show-plan (workbench)
+  "Show the agent's plan in the rail, one line per entry with a state glyph,
+or hide the section when there is no plan."
+  (let* ((block (transcript-last-block (workbench-transcript workbench) 'plan-block))
+         (entries (and block (plan-block-entries block)))
+         (view (workbench--plan-view workbench))
+         (runs (loop for (text . status) in entries
+                     for index from 1
+                     collect (cons (plan-entry-marker status)
+                                   (ecase status (:pending 1) (:in-progress 2) (:completed 3)))
+                     collect (cons (format nil "~A~:[~%~;~]" text (= index (length entries))) 0))))
+    (lightfast:text-replace-styled view 0 (lightfast:text-length view) runs)
+    (let ((lines (loop for (text) in entries
+                       sum (max 1 (ceiling (lightfast:measure-text text :font (font ':prose) :size *prose-size*)
+                                           (max 1 (- *rail-width* *plan-indent*)))))))
+      (unless (= lines (workbench--plan-lines workbench))
+        (setf (workbench--plan-lines workbench) lines)
+        (if entries
+            (progn (lightfast:show view) (lightfast:show (workbench--plan-label workbench)))
+            (progn (lightfast:hide view) (lightfast:hide (workbench--plan-label workbench))))
+        (workbench--relayout workbench))))
+  nil)
+
+(-> workbench--animate (workbench t) null)
+(defun workbench--animate (workbench active-p)
+  "Run the state word's animation while ACTIVE-P, stop it otherwise."
+  (cond
+    ((and active-p (null (workbench--animation-timer workbench)))
+     (setf (workbench--animation-timer workbench)
+           (lightfast:add-timeout *animation-interval*
+                                  (lambda ()
+                                    (incf (workbench--animation-phase workbench))
+                                    (workbench--refresh-status workbench))
+                                  :repeat t)))
+    ((and (not active-p) (workbench--animation-timer workbench))
+     (lightfast:remove-timeout (workbench--animation-timer workbench))
+     (setf (workbench--animation-timer workbench) nil
+           (workbench--animation-phase workbench) 0)))
+  nil)
+
 (-> workbench--apply-snapshot (workbench state-snapshot) null)
 (defun workbench--apply-snapshot (workbench snapshot)
   "Show SNAPSHOT in the header."
@@ -1114,6 +1434,10 @@ with a filled mark and others with their folder name."
 
 (defmethod apply-ui-event ((event transcript-event) (workbench workbench))
   (transcript-event-apply event (workbench-transcript workbench))
+  (when (or (member (transcript-event-operation event) '(:replace-plan :reset))
+            (and (eq (transcript-event-operation event) ':append)
+                 (eq (getf (transcript-event-arguments event) ':class) 'plan-block)))
+    (workbench--show-plan workbench))
   (let ((subject (inspector-subject (workbench-inspector workbench))))
     (when (and (typep subject 'tool-call)
                (eq (transcript-event-operation event) ':update-tool-call)
@@ -1156,6 +1480,12 @@ with a filled mark and others with their folder name."
                             (workbench-jobs workbench))))
        (setf (workbench-jobs workbench) (append jobs (jobs-event-jobs event))))))
   (workbench--show-jobs workbench)
+  (let ((viewed (workbench-viewed-job workbench)))
+    (when viewed
+      (let ((current (find (job-entry-id viewed) (workbench-jobs workbench) :key #'job-entry-id :test #'equal)))
+        (when current
+          (setf (workbench-viewed-job workbench) current)
+          (workbench--show-job-label workbench)))))
   (let ((subject (inspector-subject (workbench-inspector workbench))))
     (when (typep subject 'job-entry)
       (let ((current (find (job-entry-id subject) (workbench-jobs workbench) :key #'job-entry-id :test #'equal)))
@@ -1180,6 +1510,7 @@ with a filled mark and others with their folder name."
     (:ok
      (let ((value (result-event-value event)))
        (when (and (consp value) (eq (first value) ':job-id) (getf value ':content))
+         (workbench--job-transcript-arrived workbench value)
          (inspector-show-job-transcript (workbench-inspector workbench) value))))
     (:condition
      (transcript-notice (workbench-transcript workbench) :severity ':failure

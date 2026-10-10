@@ -46,10 +46,12 @@ of Autolith instead of the one on the path. The design is in
 | Ctrl+Enter | send the composer |
 | Escape | stop the running turn |
 | Ctrl+1 to Ctrl+9 | answer the pending approval with that option |
-| Ctrl+K | command palette |
-| Ctrl+, | settings sheet |
+| Ctrl+K | commands pane |
+| Ctrl+, | settings pane |
 | Ctrl+I | inspector pane |
+| Escape | leave the commands or settings pane; stop a turn otherwise |
 | End | follow the end of the transcript again |
 
 Clicking a block's header line expands or collapses it; a right click offers
-expand, inspect and copy.
+expand, inspect and copy. The model, effort and permission chips in the header
+open menus.

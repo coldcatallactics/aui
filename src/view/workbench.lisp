@@ -65,10 +65,11 @@
    (settings-button     :reader workbench--settings-button)
    (inspector           :reader workbench-inspector)
    (inspector-visible-p :initform nil :accessor workbench-inspector-visible-p :type boolean)
-   (sheet               :initform nil :accessor workbench--sheet
-                        :documentation "The SETTINGS-SHEET once opened, or NIL.")
-   (palette             :initform nil :accessor workbench--palette
-                        :documentation "The PALETTE once opened, or NIL.")
+   (center-mode         :initform ':transcript :accessor workbench-center-mode
+                        :type (member :transcript :commands :settings)
+                        :documentation "Which pane the center of the window shows.")
+   (settings-pane       :reader workbench-settings-pane)
+   (palette             :reader workbench-palette)
    (settings            :initform nil :accessor workbench-settings
                         :documentation "The SETTING-ENTRYs of the latest settings catalog.")
    (models              :initform nil :accessor workbench-models
@@ -242,6 +243,8 @@ backend so the first events have somewhere to land."
       (setf (transcript-view-on-context transcript-view)
             (lambda (block-id) (workbench--block-menu workbench block-id)))
       (setf (slot-value workbench 'inspector) (make-inspector workbench window))
+      (setf (slot-value workbench 'palette) (make-palette workbench window)
+            (slot-value workbench 'settings-pane) (make-settings-pane workbench window))
       (setf approval-row (lightfast:make-group :parent window :width 600 :height *control-height*))
       (setf approval-label (workbench--make-label approval-row "" ':prose-bold))
       (setf composer (lightfast:make-text-editor :parent window :width 600 :height *composer-height*))
@@ -303,6 +306,19 @@ open, and the decision row only while an approval waits."
     (if inspector-p
         (lightfast:show (inspector-group (workbench-inspector workbench)))
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
+    (let ((mode (workbench-center-mode workbench)))
+      (dolist (widget (list (transcript-view-display (workbench-transcript-view workbench))
+                            (workbench-composer workbench) (workbench--send-button workbench)
+                            (workbench--stop-button workbench)))
+        (if (eq mode ':transcript) (lightfast:show widget) (lightfast:hide widget)))
+      (when (and approval-p (not (eq mode ':transcript)))
+        (lightfast:hide approval-row))
+      (if (eq mode ':commands)
+          (lightfast:show (palette-group (workbench-palette workbench)))
+          (lightfast:hide (palette-group (workbench-palette workbench))))
+      (if (eq mode ':settings)
+          (lightfast:show (settings-pane-group (workbench-settings-pane workbench)))
+          (lightfast:hide (settings-pane-group (workbench-settings-pane workbench)))))
     (dolist (chip (list (workbench--model-chip workbench) (workbench--effort-chip workbench)
                         (workbench--permission-chip workbench)))
       (if (>= width *rail-breakpoint*) (lightfast:show chip) (lightfast:hide chip)))
@@ -343,13 +359,23 @@ open, and the decision row only while an approval waits."
                                                                                        :basis *control-height* :shrink 0)
                                                            (lightfast:make-layout-item (workbench--stop-button workbench)
                                                                                        :basis *control-height* :shrink 0))))))
-           (center (lightfast:make-layout-column
-                    :basis 0 :grow 1 :max-width *text-column-width* :gap (spacing 4)
-                    :children (append (list (lightfast:make-layout-item
-                                             (transcript-view-display (workbench-transcript-view workbench))
-                                             :basis 0 :grow 1))
-                                      (when approval-p (list approval-layout))
-                                      (list composer-row))))
+           (center (ecase (workbench-center-mode workbench)
+                     (:transcript
+                      (lightfast:make-layout-column
+                       :basis 0 :grow 1 :max-width *text-column-width* :gap (spacing 4)
+                       :children (append (list (lightfast:make-layout-item
+                                                (transcript-view-display (workbench-transcript-view workbench))
+                                                :basis 0 :grow 1))
+                                         (when approval-p (list approval-layout))
+                                         (list composer-row))))
+                     (:commands
+                      (lightfast:make-layout-column
+                       :basis 0 :grow 1 :max-width 900
+                       :children (list (palette-layout (workbench-palette workbench)))))
+                     (:settings
+                      (lightfast:make-layout-column
+                       :basis 0 :grow 1
+                       :children (list (settings-pane-layout (workbench-settings-pane workbench)))))))
            (body (lightfast:make-layout-row
                   :basis 0 :grow 1 :gap (spacing 6)
                   :children (append (when rail-p (list rail-layout))
@@ -443,6 +469,9 @@ or NIL and 0 when VALUE is not a key event."
   (cond
     ((null key)
      nil)
+    ((and (eql key *key-escape*) (not (eq (workbench-center-mode workbench) ':transcript)))
+     (workbench-show-transcript workbench)
+     t)
     ((and control-p (<= (char-code #\1) key (char-code #\9)))
      (workbench-decide workbench (- key (char-code #\0)))
      t)
@@ -514,23 +543,31 @@ or NIL and 0 when VALUE is not a key event."
       (lightfast:consume-event)))
   nil)
 
+(-> workbench-show-transcript (workbench) null)
+(defun workbench-show-transcript (workbench)
+  "Return the center of the window to the conversation."
+  (setf (workbench-center-mode workbench) ':transcript)
+  (workbench--relayout workbench)
+  (workbench-focus-composer workbench)
+  nil)
+
 (-> workbench-show-settings (workbench &optional (or null setting-entry)) null)
 (defun workbench-show-settings (workbench &optional entry)
-  "Open the settings sheet, on ENTRY when given."
-  (let ((sheet (or (workbench--sheet workbench)
-                   (setf (workbench--sheet workbench) (make-settings-sheet workbench)))))
-    (settings-sheet-refresh sheet)
+  "Show the settings pane, on ENTRY's group when given."
+  (let ((pane (workbench-settings-pane workbench)))
+    (setf (workbench-center-mode workbench) ':settings)
+    (workbench--relayout workbench)
+    (settings-pane-refresh pane)
     (when entry
-      (settings-sheet--show-entry sheet entry))
-    (lightfast:show (settings-sheet-window sheet)))
+      (settings-pane-show-entry pane entry)))
   nil)
 
 (-> workbench-show-palette (workbench) null)
 (defun workbench-show-palette (workbench)
-  "Open the command palette."
-  (let ((palette (or (workbench--palette workbench)
-                     (setf (workbench--palette workbench) (make-palette workbench)))))
-    (palette-open palette))
+  "Show the command palette pane."
+  (setf (workbench-center-mode workbench) ':commands)
+  (workbench--relayout workbench)
+  (palette-open (workbench-palette workbench))
   nil)
 
 (-> workbench-invoke (workbench operation-entry) null)
@@ -905,8 +942,8 @@ with a filled mark and others with their folder name."
      (workbench--show-conversations workbench (catalog-event-items event)))
     (:settings
      (setf (workbench-settings workbench) (catalog-event-items event))
-     (when (workbench--sheet workbench)
-       (settings-sheet-refresh (workbench--sheet workbench))))
+     (when (eq (workbench-center-mode workbench) ':settings)
+       (settings-pane-refresh (workbench-settings-pane workbench))))
     (:models
      (setf (workbench-models workbench) (catalog-event-items event)))
     (:operations

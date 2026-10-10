@@ -2,8 +2,9 @@
 
 ;;;; -- Command Palette --
 
-;;; One field and one list: type, see operations, conversations and settings
-;;; that match, press Enter to act on the first or chosen match.
+;;; A pane inside the main window: one field and one list. Type, see the
+;;; operations, conversations, settings, models and actions that match, press
+;;; Enter to act on the chosen match. Escape returns to the transcript.
 
 (defstruct (palette-item (:constructor make-palette-item (kind label detail object)))
   "One thing the palette can find."
@@ -13,13 +14,15 @@
   (object nil))
 
 (defclass palette ()
-  ((window    :reader palette-window)
-   (workbench :initarg :workbench :reader palette-workbench :type workbench)
+  ((workbench :initarg :workbench :reader palette-workbench :type workbench)
+   (group     :reader palette-group
+              :documentation "The Lightfast group holding the pane.")
    (input     :reader palette--input)
    (list      :reader palette--list)
+   (hint      :reader palette--hint)
    (matches   :initform nil :accessor palette-matches
               :documentation "The PALETTE-ITEMs shown, in list order."))
-  (:documentation "The command palette of one workbench."))
+  (:documentation "The command palette pane of one workbench."))
 
 (-> fuzzy-score (string string) (or null integer))
 (defun fuzzy-score (query text)
@@ -55,7 +58,7 @@ and matches at word starts score more."
          (list (if (workbench-inspector-visible-p workbench) "Hide inspector" "Show inspector")
                "the pane for tool calls and jobs, Ctrl+I"
                (lambda () (workbench-toggle-inspector workbench)))
-         (list "Settings" "the settings sheet, Ctrl+,"
+         (list "Settings" "every Autolith setting, Ctrl+,"
                (lambda () (workbench-show-settings workbench))))
    (when (member (workbench-connection-state workbench) '(:lost :exited))
      (list (list "Restart Autolith" "start the process again and reopen this conversation"
@@ -116,19 +119,25 @@ An empty QUERY returns the first LIMIT items unsorted."
         (mapcar #'rest (subseq (stable-sort scored #'> :key #'first)
                                0 (min limit (length scored)))))))
 
-(-> make-palette (workbench &key (:width integer) (:height integer)) palette)
-(defun make-palette (workbench &key (width 720) (height 480))
-  "Create the palette window for WORKBENCH and return it, unshown."
+(-> make-palette (workbench t) palette)
+(defun make-palette (workbench parent)
+  "Create the palette pane under PARENT for WORKBENCH, hidden."
   (let* ((palette (make-instance 'palette :workbench workbench))
-         (window (lightfast:make-window :width width :height height :label "autolith - palette" :app-id "aui"))
-         (input (lightfast:make-input :parent window :height (+ *control-height* 8)))
-         (list (lightfast:make-browser :parent window :height 300 :column-widths '(260 0))))
-    (setf (slot-value palette 'window) window
+         (group (lightfast:make-group :parent parent :width 600 :height 400))
+         (input (lightfast:make-input :parent group :height (+ *control-height* 6)))
+         (list (lightfast:make-browser :parent group :height 300 :column-widths '(300 0)))
+         (hint (workbench--make-label group "Type to search commands, conversations, settings and models. Enter runs the choice, Escape returns." ':prose-italic)))
+    (setf (slot-value palette 'group) group
           (slot-value palette 'input) input
-          (slot-value palette 'list) list)
+          (slot-value palette 'list) list
+          (slot-value palette 'hint) hint)
+    (lightfast:set-box group lightfast:+box-no-box+)
     (lightfast:set-text-font input (font ':prose))
-    (lightfast:set-text-size input (+ *prose-size* 2))
+    (lightfast:set-text-size input *heading-size*)
     (lightfast:set-text-font list (font ':prose))
+    (lightfast:set-text-size list *prose-size*)
+    (lightfast:set-box list lightfast:+box-no-box+)
+    (lightfast:set-label-size hint *meta-size*)
     (lightfast:set-when input ':changed ':enter-key)
     (lightfast:on input (lambda (widget event value)
                           (declare (ignore widget event value))
@@ -141,21 +150,23 @@ An empty QUERY returns the first LIMIT items unsorted."
                          (when (plusp (lightfast:event-clicks))
                            (palette-run palette)))
                   :event lightfast:+event-change+)
-    (lightfast:layout-on-resize
-     window
-     (lightfast:make-layout-column
-      :padding (spacing 4) :gap (spacing 3)
-      :children (list (lightfast:make-layout-item input :basis (+ *control-height* 8) :shrink 0)
-                      (lightfast:make-layout-item list :basis 0 :grow 1))))
-    (palette-refresh palette)
+    (lightfast:hide group)
     palette))
+
+(-> palette-layout (palette) t)
+(defun palette-layout (palette)
+  "Return the layout node placing the palette's widgets inside its group."
+  (lightfast:make-layout-column
+   :target (palette-group palette) :basis 0 :grow 1 :gap (spacing 3)
+   :children (list (lightfast:make-layout-item (palette--input palette) :basis (+ *control-height* 6) :shrink 0)
+                   (lightfast:make-layout-item (palette--hint palette) :basis *control-height* :shrink 0)
+                   (lightfast:make-layout-item (palette--list palette) :basis 0 :grow 1))))
 
 (-> palette-open (palette) null)
 (defun palette-open (palette)
-  "Show the palette with an empty query and focus its field."
+  "Clear the query, refresh the matches and focus the field."
   (setf (lightfast:value (palette--input palette)) "")
   (palette-refresh palette)
-  (lightfast:show (palette-window palette))
   (lightfast:take-focus (palette--input palette))
   nil)
 
@@ -175,12 +186,12 @@ An empty QUERY returns the first LIMIT items unsorted."
 
 (-> palette-run (palette) null)
 (defun palette-run (palette)
-  "Act on the selected match, else the first, and hide the palette."
+  "Act on the selected match, else the first, and return to the transcript."
   (let* ((index (or (first (lightfast:browser-selected-indices (palette--list palette))) 0))
          (item (nth index (palette-matches palette)))
          (workbench (palette-workbench palette)))
     (when item
-      (lightfast:hide (palette-window palette))
+      (workbench-show-transcript workbench)
       (ecase (palette-item-kind item)
         (:action
          (funcall (palette-item-object item)))

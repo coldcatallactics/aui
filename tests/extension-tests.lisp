@@ -246,6 +246,8 @@ catalog bootstrap that follows session readiness."
         (job (json->job-entry (acp:json-object "id" "j" "state" "weird")))
         (snapshot (json->state-snapshot (acp:json-object "usage" (acp:json-object)) "/w/")))
     (fiveam:is (eq ':model (setting-entry-name setting)))
+    (fiveam:is (eq ':command-line (setting-entry-source (json->setting-entry (acp:json-object "name" "x" "source" "command-line")))))
+    (fiveam:is (null (setting-entry-source (json->setting-entry (acp:json-object "name" "x" "source" "not a word!")))))
     (fiveam:is (null (setting-entry-value setting)))
     (fiveam:is (eq ':string (setting-entry-type setting)))
     (fiveam:is (eq ':running (job-entry-state job)))

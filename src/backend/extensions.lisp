@@ -46,6 +46,17 @@
   "Return T when KEY in OBJECT is true; false, null and absence are NIL."
   (and (agentcomms:json-object-p object) (agentcomms:json-get object key) t))
 
+(-> json-word (t string) (or null keyword))
+(defun json-word (object key)
+  "Return the short lowercase word at KEY in OBJECT as a keyword, or NIL.
+Only letters, digits and hyphens are accepted, at most 32 of them, so a peer
+cannot intern arbitrary text."
+  (let ((value (json-string object key)))
+    (and value
+         (<= 1 (length value) 32)
+         (every (lambda (character) (or (alphanumericp character) (char= character #\-))) value)
+         (intern (string-upcase value) :keyword))))
+
 (-> json-items (t) list)
 (defun json-items (object)
   "Return the items array of a catalog value as a list."
@@ -84,8 +95,7 @@ as they are, arrays as lists of plain values, objects encoded as text."
                  :options (let ((options (agentcomms:json-get item "options")))
                             (if (vectorp options) (mapcar #'json-plain-value (agentcomms:json-sequence->list options)) nil))
                  :value (json-plain-value (agentcomms:json-get item "value"))
-                 :source (acp-data-keyword (agentcomms:json-get item "source")
-                                           '(:override :environment :file :default :session))
+                 :source (json-word item "source")
                  :scope (acp-data-keyword (agentcomms:json-get item "scope")
                                           '(:process :durable :session :derived))
                  :adjustable-p (json-boolean item "adjustable")

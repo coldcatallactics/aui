@@ -83,6 +83,14 @@
                               (cons (transcript-block-id first-plan) ':replaced))
                         (recorded-changes listener))))))
 
+(fiveam:test empty-plans-stay-out-until-one-exists
+  (let ((transcript (make-transcript)))
+    (fiveam:is (null (transcript-replace-plan transcript nil)))
+    (fiveam:is (zerop (transcript-length transcript)))
+    (transcript-replace-plan transcript '(("a" . :pending)))
+    (fiveam:is (not (null (transcript-replace-plan transcript nil))))
+    (fiveam:is (= 1 (transcript-length transcript)))))
+
 (fiveam:test approvals-decide-once
   (let* ((transcript (make-transcript))
          (approval (transcript-append transcript

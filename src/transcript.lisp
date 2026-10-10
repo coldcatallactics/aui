@@ -305,16 +305,19 @@ Signals TRANSCRIPT-MISSING-BLOCK when no such call exists."
     (transcript--notify transcript block ':updated)
     block))
 
-(-> transcript-replace-plan (transcript list) plan-block)
+(-> transcript-replace-plan (transcript list) (or null plan-block))
 (defun transcript-replace-plan (transcript entries)
   "Make ENTRIES the current plan, replacing the existing plan block in place or
-appending one, and return the block."
+appending one, and return the block. An empty plan with no block yet shows
+nothing and returns NIL."
   (let ((block (transcript-last-block transcript 'plan-block)))
     (cond
       (block
        (setf (plan-block-entries block) entries)
        (transcript--notify transcript block ':replaced)
        block)
+      ((null entries)
+       nil)
       (t
        (transcript-append transcript (make-instance 'plan-block :entries entries))))))
 

@@ -61,18 +61,39 @@ Autolith process outlives the application."
           (make-welcome :entries (recent-conversations)
                         :on-open (lambda (directory conversation-id)
                                    (open-workspace directory :conversation-id conversation-id)
-                                   (lightfast:hide (welcome-window welcome)))))
+                                   (lightfast:hide (welcome-window welcome))
+                                   (setf *welcome* nil))))
+    (setf *welcome* welcome)
     (lightfast:show (welcome-window welcome))
     welcome))
 
+(defvar *welcome* nil
+  "The welcome window while it is open, so that it can be captured.")
+
+(-> capture-window-to (string) null)
+(defun capture-window-to (path)
+  "Write the newest application window to PATH through FLTK's own rendering.
+A path ending in .png is converted from the PPM FLTK produces with magick;
+any other path receives the PPM itself."
+  (let* ((window (cond
+                   (*workbenches* (workbench-window (first *workbenches*)))
+                   (*welcome* (welcome-window *welcome*))
+                   (t nil)))
+         (png-p (and (> (length path) 4) (string-equal ".png" (subseq path (- (length path) 4)))))
+         (ppm (if png-p (concatenate 'string (subseq path 0 (- (length path) 4)) ".ppm") path)))
+    (when window
+      (lightfast:capture-window window ppm)
+      (when png-p
+        (uiop:run-program (list "magick" ppm path) :ignore-error-status t :error-output *error-output*)
+        (ignore-errors (delete-file ppm)))))
+  nil)
+
 (-> screenshot-after (real string) null)
 (defun screenshot-after (seconds path)
-  "Capture the AUI window to PATH with script/shot after SECONDS, then quit."
+  "Capture the newest application window to PATH after SECONDS, then quit."
   (lightfast:add-timeout seconds
                          (lambda ()
-                           (uiop:run-program (list (namestring (asdf:system-relative-pathname :aui "script/shot"))
-                                                   path)
-                                             :ignore-error-status t :error-output *error-output*)
+                           (capture-window-to path)
                            (lightfast:quit)))
   nil)
 

@@ -4,10 +4,18 @@
 
 set -euo pipefail
 path=${1:?usage: script/shot PATH}
+newest=$(niri msg --json windows | jq -r '[.[] | select(.app_id == "aui")] | sort_by(.id) | last | .id')
+if [[ -z "$newest" || "$newest" == "null" ]]; then
+  echo "no aui window" >&2
+  exit 1
+fi
+# A tiled window may sit outside the scrolling view; bring our own window in.
+niri msg action focus-window --id "$newest" >/dev/null 2>&1 || true
+sleep 0.4
 window=$(niri msg --json windows \
-  | jq -c '[.[] | select(.app_id == "aui" and .layout.tile_pos_in_workspace_view != null)] | sort_by(.id) | last')
+  | jq -c ".[] | select(.id == $newest and .layout.tile_pos_in_workspace_view != null)")
 if [[ -z "$window" || "$window" == "null" ]]; then
-  echo "no visible aui window" >&2
+  echo "aui window $newest is not visible" >&2
   exit 1
 fi
 workspace=$(jq -r '.workspace_id' <<<"$window")

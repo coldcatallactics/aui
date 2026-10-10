@@ -67,7 +67,7 @@ Autolith process outlives the application."
 (-> parse-arguments (list) list)
 (defun parse-arguments (arguments)
   "Return a plist from command line ARGUMENTS: :DIRECTORY, :CONVERSATION-ID,
-:DEMO-P, :SHOT-PATH, :SHOT-AFTER, :DEMO-PROMPT and :OPEN-VIEW."
+:DEMO-P, :SHOT-PATH, :SHOT-AFTER, :SIZE, :DEMO-PROMPT and :OPEN-VIEW."
   (let ((result nil))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -77,12 +77,28 @@ Autolith process outlives the application."
                  ((string= argument "--shot") (setf (getf result ':shot-path) (pop arguments)))
                  ((string= argument "--shot-after")
                   (setf (getf result ':shot-after) (parse-integer (pop arguments))))
+                 ((string= argument "--size")
+                  (let* ((text (pop arguments))
+                         (separator (position #\x text)))
+                    (unless separator
+                      (error "--size wants WIDTHxHEIGHT, not ~A." text))
+                    (setf (getf result ':size) (list (parse-integer text :end separator)
+                                                     (parse-integer text :start (1+ separator))))))
                  ((string= argument "--demo-prompt") (setf (getf result ':demo-prompt) (pop arguments)))
                  ((string= argument "--open") (setf (getf result ':open-view) (intern (string-upcase (pop arguments)) :keyword)))
                  ((and (plusp (length argument)) (char= #\- (char argument 0)))
                   (error "Unknown option ~A." argument))
                  (t (setf (getf result ':directory) argument)))))
     result))
+
+(-> fix-window-size (t integer integer) null)
+(defun fix-window-size (window width height)
+  "Pin WINDOW to WIDTH by HEIGHT. A tiling compositor keeps a window with equal
+minimum and maximum sizes at that size, which is how other widths are inspected."
+  (lightfast:set-size-range window :min-width width :min-height height
+                                   :max-width width :max-height height)
+  (lightfast:resize-widget window :width width :height height)
+  nil)
 
 (-> open-view (workbench keyword) null)
 (defun open-view (workbench view)
@@ -101,9 +117,10 @@ Autolith process outlives the application."
   "Run AUI. With a directory argument, open a workspace there at once;
 otherwise show the welcome window. --conversation ID resumes a conversation,
 --demo uses the scripted backend, --open settings, palette or inspector opens
-that view, --demo-prompt TEXT sends TEXT once the session is ready, and
---shot PATH captures the window and exits after --shot-after SECONDS."
-  (destructuring-bind (&key directory conversation-id demo-p shot-path shot-after demo-prompt open-view)
+that view, --demo-prompt TEXT sends TEXT once the session is ready, --size
+WIDTHxHEIGHT pins the window size for layout inspection, and --shot PATH
+captures the window and exits after --shot-after SECONDS."
+  (destructuring-bind (&key directory conversation-id demo-p shot-path shot-after size demo-prompt open-view)
       (parse-arguments arguments)
     (lightfast:load-library)
     (lightfast:enable-thread-wakeups)
@@ -115,6 +132,8 @@ that view, --demo-prompt TEXT sends TEXT once the session is ready, and
         (directory
          (let ((workbench (open-workspace (namestring (uiop:ensure-directory-pathname directory))
                                           :conversation-id conversation-id)))
+           (when size
+             (fix-window-size (workbench-window workbench) (first size) (second size)))
            (when demo-prompt
              (setf (workbench-queued-prompt workbench) demo-prompt))
            (when open-view

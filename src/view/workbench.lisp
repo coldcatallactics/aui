@@ -450,7 +450,7 @@ backend so the first events have somewhere to land."
                                       (operation-entry-name operation))))
     ((not (operation-entry-admitted-p operation))
      (transcript-notice (workbench-transcript workbench) :severity ':warning
-                        :text (format nil "~A cannot run while Autolith is busy." (operation-entry-name operation))))
+                        :text (format nil "~A is unavailable through this interface." (operation-entry-name operation))))
     (t
      (let ((arguments (if (operation-needs-arguments-p operation)
                           (lightfast:input-dialog

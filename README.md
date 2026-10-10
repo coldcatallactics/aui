@@ -33,8 +33,9 @@ script/check                    # the test suite, headless
 ```
 
 `--open settings`, `--open palette` and `--open inspector` open that view at
-start; `--shot PATH` captures the window and exits after `--shot-after`
-seconds. Set `AUI_AUTOLITH=/path/to/bin/autolith` to run a development build
+start; `--size WIDTHxHEIGHT` pins the window size so other layouts can be
+inspected under a tiling compositor; `--shot PATH` captures the window and
+exits after `--shot-after` seconds. Set `AUI_AUTOLITH=/path/to/bin/autolith` to run a development build
 of Autolith instead of the one on the path. The design is in
 `docs/superpowers/specs/2026-10-09-aui-design.md`.
 

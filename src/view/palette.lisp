@@ -85,7 +85,7 @@ and matches at word starts score more."
                                        (format nil "~A~A" (operation-entry-description operation)
                                                (cond
                                                  ((operation-entry-terminal-owning-p operation) "  (needs a terminal)")
-                                                 ((not (operation-entry-admitted-p operation)) "  (not now)")
+                                                 ((not (operation-entry-admitted-p operation)) "  (unavailable)")
                                                  (t "")))
                                        operation))
                   (workbench-operations workbench))

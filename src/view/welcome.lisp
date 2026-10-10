@@ -43,7 +43,7 @@
 (defun conversation-entry-line (entry now)
   "Return the welcome list line for ENTRY."
   (format nil "~A~C~A~C~@[~A~]~C~A"
-          (or (conversation-entry-title entry) (conversation-entry-id entry)) #\Tab
+          (conversation-entry-name entry) #\Tab
           (conversation-entry-directory entry) #\Tab
           (conversation-entry-model entry) #\Tab
           (age-text (conversation-entry-activity-key entry) now)))
@@ -74,7 +74,7 @@
            (conversations-heading (welcome--heading window "Recent conversations"))
            (conversations-list (lightfast:make-browser :parent window :height 200
                                                        :column-widths '(420 300 200 0)))
-           (resume (lightfast:make-button :parent window :label "Resume" :height *control-height*
+           (resume (lightfast:make-button :parent window :label "Resume ▸" :height *control-height*
                                           :callback (lambda (widget event value)
                                                       (declare (ignore widget event value))
                                                       (welcome--resume welcome))))
@@ -86,14 +86,16 @@
             (slot-value welcome 'folders-list) folders-list)
       (lightfast:set-label-align wordmark ':left ':inside)
       (lightfast:set-label-font wordmark (font ':prose))
-      (lightfast:set-label-size wordmark 36)
+      (lightfast:set-label-size wordmark *display-size*)
       (lightfast:set-label-align lead ':left ':inside)
       (lightfast:set-label-font lead (font ':prose-italic))
       (lightfast:set-label-size lead *prose-size*)
       (lightfast:set-text-font path-input (font ':prose))
       (lightfast:set-text-size path-input *prose-size*)
-      (lightfast:set-text-font conversations-list (font ':prose))
-      (lightfast:set-text-font folders-list (font ':prose))
+      (dolist (list (list conversations-list folders-list))
+        (lightfast:set-text-font list (font ':prose))
+        (lightfast:set-text-size list *prose-size*)
+        (lightfast:set-box list lightfast:+box-no-box+))
       (lightfast:set-when path-input ':enter-key)
       (lightfast:on path-input (lambda (widget event value)
                                  (declare (ignore widget event value))
@@ -117,20 +119,20 @@
       (lightfast:layout-on-resize
        window
        (lightfast:make-layout-column
-        :padding (spacing 6) :gap (spacing 3)
-        :children (list (lightfast:make-layout-item wordmark :basis 44 :shrink 0)
+        :padding (list (spacing 6) (spacing 5) (spacing 6) (spacing 5)) :gap (spacing 4)
+        :children (list (lightfast:make-layout-item wordmark :basis 48 :shrink 0)
                         (lightfast:make-layout-item lead :basis *control-height* :shrink 0)
                         (lightfast:make-layout-row
-                         :basis *control-height* :shrink 0 :gap (spacing 3)
+                         :basis *control-height* :shrink 0 :gap (spacing 4) :max-width 900
                          :children (list (lightfast:make-layout-item path-input :basis 0 :grow 1)
-                                         (lightfast:make-layout-item browse :basis 110 :shrink 0)
-                                         (lightfast:make-layout-item start :basis 130 :shrink 0)))
-                        (lightfast:make-layout-item conversations-heading :basis (+ *control-height* (spacing 4)) :shrink 0)
+                                         (lightfast:make-layout-item browse :basis 120 :shrink 0)
+                                         (lightfast:make-layout-item start :basis 140 :shrink 0)))
+                        (lightfast:make-layout-item conversations-heading :basis (+ *control-height* (spacing 5)) :shrink 0)
                         (lightfast:make-layout-item conversations-list :basis 0 :grow 3)
                         (lightfast:make-layout-row
-                         :basis *control-height* :shrink 0 :justify :end
-                         :children (list (lightfast:make-layout-item resume :basis 130 :shrink 0)))
-                        (lightfast:make-layout-item folders-heading :basis (+ *control-height* (spacing 4)) :shrink 0)
+                         :basis *control-height* :shrink 0 :justify :start
+                         :children (list (lightfast:make-layout-item resume :basis 140 :shrink 0)))
+                        (lightfast:make-layout-item folders-heading :basis (+ *control-height* (spacing 5)) :shrink 0)
                         (lightfast:make-layout-item folders-list :basis 0 :grow 2)))))
     welcome))
 

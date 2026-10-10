@@ -46,7 +46,7 @@
 (defparameter *context-bar-height* 8
   "Height of the context occupancy bar.")
 
-(defparameter *plan-view-max-height* 260
+(defparameter *plan-view-max-height* 420
   "Tallest the plan section of the rail grows before it scrolls.")
 
 (defparameter *plan-indent* 40
@@ -139,7 +139,6 @@
                         :documentation "The TRANSCRIPT-VIEW showing the viewed child job.")
    (job-label           :reader workbench--job-label)
    (job-back-button     :reader workbench--job-back-button)
-   (job-cancel-button   :reader workbench--job-cancel-button)
    (viewed-job          :initform nil :accessor workbench-viewed-job
                         :documentation "The JOB-ENTRY whose transcript the center shows, or NIL.")
    (job-content         :initform nil :accessor workbench--job-content
@@ -297,16 +296,11 @@ backend so the first events have somewhere to land."
             (lightfast:make-button :parent window :label "Back to the conversation" :height *control-height*
                                    :callback (lambda (widget event value)
                                                (declare (ignore widget event value))
-                                               (workbench-show-transcript workbench)))
-            (slot-value workbench 'job-cancel-button)
-            (lightfast:make-button :parent window :label "Cancel job" :height *control-height*
-                                   :callback (lambda (widget event value)
-                                               (declare (ignore widget event value))
-                                               (workbench-cancel-viewed-job workbench))))
+                                               (workbench-show-transcript workbench))))
       (lightfast:set-label-align (workbench--job-label workbench) ':left ':inside ':clip)
       (lightfast:set-tooltip (workbench--job-back-button workbench) "Escape")
       (dolist (widget (list (transcript-view-display (workbench--job-view workbench)) (workbench--job-label workbench)
-                            (workbench--job-back-button workbench) (workbench--job-cancel-button workbench)))
+                            (workbench--job-back-button workbench)))
         (lightfast:hide widget))
       (setf rail (lightfast:make-group :parent window :width *rail-width* :height 400))
       (lightfast:set-box rail lightfast:+box-no-box+)
@@ -353,7 +347,8 @@ backend so the first events have somewhere to land."
       (setf (slot-value workbench 'inspector) (make-inspector workbench window))
       (setf (slot-value workbench 'palette) (make-palette workbench window)
             (slot-value workbench 'settings-pane) (make-settings-pane workbench window))
-      (setf approval-row (lightfast:make-group :parent window :width 600 :height *control-height*))
+      (setf approval-row (lightfast:make-group :parent window :width 600 :height (* 2 *control-height*)))
+      (lightfast:set-box approval-row lightfast:+box-no-box+)
       (setf approval-label (workbench--make-label approval-row "" ':prose-bold))
       (setf (slot-value workbench 'composer-frame)
             (lightfast:make-group :parent window :width 600 :height *composer-height*))
@@ -426,10 +421,14 @@ open, and the decision row only while an approval waits."
         (lightfast:hide (inspector-group (workbench-inspector workbench))))
     (let ((mode (workbench-center-mode workbench)))
       (dolist (widget (list (transcript-view-display (workbench--job-view workbench)) (workbench--job-label workbench)
-                            (workbench--job-back-button workbench) (workbench--job-cancel-button workbench)))
+                            (workbench--job-back-button workbench)))
         (if (eq mode ':job) (lightfast:show widget) (lightfast:hide widget)))
-      (when (eq mode ':job)
-        (workbench--show-job-label workbench))
+      (cond
+        ((eq mode ':job)
+         (workbench--show-job-label workbench))
+        (t
+         (setf (lightfast:label (workbench--send-button workbench)) "Send"
+               (lightfast:label (workbench--stop-button workbench)) "Stop")))
       (dolist (widget (list (workbench--composer-frame workbench) (workbench--send-button workbench)
                             (workbench--stop-button workbench)))
         (if (member mode '(:transcript :job)) (lightfast:show widget) (lightfast:hide widget)))
@@ -462,7 +461,9 @@ open, and the decision row only while an approval waits."
                                     (list (lightfast:make-layout-item (workbench--conversations-label workbench)
                                                                      :basis *control-height* :shrink 0)
                                          (lightfast:make-layout-item (workbench--conversations-list workbench)
-                                                                     :basis 0 :grow 3))
+                                                                     :basis (list-height (length (workbench-conversations workbench))
+                                                                                         (floor height 3))
+                                                                     :shrink 0))
                                     (when (plusp (workbench--plan-lines workbench))
                                       (list (lightfast:make-layout-item (workbench--plan-label workbench)
                                                                         :basis (+ *control-height* (spacing 4)) :shrink 0)
@@ -476,14 +477,22 @@ open, and the decision row only while an approval waits."
                                     (list (lightfast:make-layout-item (workbench--jobs-label workbench)
                                                                      :basis (+ *control-height* (spacing 4)) :shrink 0)
                                          (lightfast:make-layout-item (workbench--jobs-list workbench)
-                                                                     :basis 0 :grow 2)))))
-           (approval-layout (lightfast:make-layout-row
-                             :target approval-row :basis *control-height* :shrink 0 :gap (spacing 3)
-                             :children (cons (lightfast:make-layout-item (workbench--approval-label workbench)
-                                                                         :basis 90 :shrink 0)
-                                             (mapcar (lambda (button)
-                                                       (lightfast:make-layout-item button :basis 0 :grow 1))
-                                                     (workbench--approval-buttons workbench)))))
+                                                                     :basis (list-height (length (workbench-jobs workbench))
+                                                                                         (floor height 3))
+                                                                     :shrink 0)))))
+           ;; The question on one line, the choices on the next, each button
+           ;; as wide as its label so that no choice is cut short.
+           (approval-layout (lightfast:make-layout-column
+                             :target approval-row :basis (+ (* 2 *control-height*) (spacing 2)) :shrink 0 :gap (spacing 2)
+                             :children (list (lightfast:make-layout-item (workbench--approval-label workbench)
+                                                                         :basis *control-height* :shrink 0)
+                                             (lightfast:make-layout-row
+                                              :basis *control-height* :shrink 0 :gap (spacing 3) :justify ':start
+                                              :children (mapcar (lambda (button)
+                                                                  (lightfast:make-layout-item
+                                                                   button :shrink 0
+                                                                   :basis (+ (spacing 5) (label-width (lightfast:label button)))))
+                                                                (workbench--approval-buttons workbench))))))
            (composer-row (lightfast:make-layout-row
                           :basis *composer-height* :shrink 0 :gap (spacing 3)
                           :children (list (lightfast:make-layout-column
@@ -492,7 +501,10 @@ open, and the decision row only while an approval waits."
                                            :children (list (lightfast:make-layout-item (workbench-composer workbench)
                                                                                        :basis 0 :grow 1)))
                                           (lightfast:make-layout-column
-                                           :basis 120 :shrink 0 :gap (spacing 3)
+                                           :basis (max 120 (+ (spacing 5)
+                                                              (max (label-width (lightfast:label (workbench--send-button workbench)))
+                                                                   (label-width (lightfast:label (workbench--stop-button workbench))))))
+                                           :shrink 0 :gap (spacing 3)
                                            :children (list (lightfast:make-layout-item (workbench--send-button workbench)
                                                                                        :basis *control-height* :shrink 0)
                                                            (lightfast:make-layout-item (workbench--stop-button workbench)
@@ -513,8 +525,6 @@ open, and the decision row only while an approval waits."
                                         :basis *control-height* :shrink 0 :gap (spacing 3)
                                         :children (list (lightfast:make-layout-item (workbench--job-label workbench)
                                                                                     :basis 0 :grow 1)
-                                                        (lightfast:make-layout-item (workbench--job-cancel-button workbench)
-                                                                                    :basis 130 :shrink 0)
                                                         (lightfast:make-layout-item (workbench--job-back-button workbench)
                                                                                     :basis 250 :shrink 0)))
                                        (lightfast:make-layout-item
@@ -957,9 +967,13 @@ keep it fresh while the job runs."
       (setf (lightfast:label (workbench--job-label workbench))
             (format nil "~A  ·  ~(~A~)~@[  ·  ~D s~]"
                     (or (job-entry-role job) (job-entry-id job)) (job-entry-state job) (job-entry-elapsed-seconds job)))
+      ;; The composer's buttons say whom they address while a job is shown.
+      (setf (lightfast:label (workbench--send-button workbench))
+            (format nil "Send to ~A" (or (job-entry-role job) (job-entry-id job)))
+            (lightfast:label (workbench--stop-button workbench)) "Cancel job")
       (if (member (job-entry-state job) '(:running :pending :waiting))
-          (lightfast:show (workbench--job-cancel-button workbench))
-          (lightfast:hide (workbench--job-cancel-button workbench)))))
+          (lightfast:show (workbench--stop-button workbench))
+          (lightfast:hide (workbench--stop-button workbench)))))
   nil)
 
 (-> workbench--poll-job (workbench) null)
@@ -1284,20 +1298,25 @@ around while busy, a still dot in trouble, nothing when idle."
         (append
          (loop for option in (approval-options approval)
                for number from 1
-               collect (let ((number number))
-                         (lightfast:make-button :parent (workbench--approval-row workbench)
-                                                :label (approval-option-text option number)
-                                                :height *control-height*
-                                                :callback (lambda (widget event value)
-                                                            (declare (ignore widget event value))
-                                                            (workbench-decide workbench number)))))
-         (list (lightfast:make-button :parent (workbench--approval-row workbench)
-                                      :label "Full access from now"
-                                      :height *control-height*
-                                      :callback (lambda (widget event value)
-                                                  (declare (ignore widget event value))
-                                                  (workbench-grant-full-access workbench))))))
-  (setf (lightfast:label (workbench--approval-label workbench)) "Approve?")
+               collect (let* ((number number)
+                              (button (lightfast:make-button :parent (workbench--approval-row workbench)
+                                                             :label (second option)
+                                                             :height *control-height*
+                                                             :callback (lambda (widget event value)
+                                                                         (declare (ignore widget event value))
+                                                                         (workbench-decide workbench number)))))
+                         (lightfast:set-tooltip button (format nil "Ctrl+~D" number))
+                         button))
+         (list (let ((button (lightfast:make-button :parent (workbench--approval-row workbench)
+                                                    :label "Full access"
+                                                    :height *control-height*
+                                                    :callback (lambda (widget event value)
+                                                                (declare (ignore widget event value))
+                                                                (workbench-grant-full-access workbench)))))
+                 (lightfast:set-tooltip button "Allow this and switch the session to full access, asking no more")
+                 button))))
+  (setf (lightfast:label (workbench--approval-label workbench))
+        (format nil "Approve ~A?" (approval-title approval)))
   (workbench--relayout workbench)
   (workbench--refresh-status workbench)
   (unless (workbench--countdown-timer workbench)
@@ -1353,7 +1372,9 @@ with a filled mark and others with their folder name."
                                          here-p
                                          (conversation-entry-name entry)
                                          (and (not here-p) (folder-tail (conversation-entry-directory entry)))
-                                         (and (conversation-entry-live-p entry) "live"))))))
+                                         (and (conversation-entry-live-p entry) "live")))))
+    ;; The rail allots the list the height of its rows.
+    (workbench--relayout workbench))
   nil)
 
 (-> workbench--show-jobs (workbench) null)
@@ -1365,8 +1386,15 @@ with a filled mark and others with their folder name."
       (lightfast:add-item list (format nil "~A  ·  ~(~A~)~@[  ·  ~D s~]"
                                        (or (job-entry-role job) (job-entry-id job))
                                        (job-entry-state job)
-                                       (job-entry-elapsed-seconds job)))))
+                                       (job-entry-elapsed-seconds job))))
+    (workbench--relayout workbench))
   nil)
+
+(-> list-height (integer integer) integer)
+(defun list-height (rows cap)
+  "Return the height a list of ROWS rows wants, at least one row and at most
+CAP, so that the rail's sections follow each other in reading order."
+  (min cap (+ (spacing 2) (* (max 1 rows) (+ *prose-size* *list-line-spacing* 6)))))
 
 (-> workbench--show-plan (workbench) null)
 (defun workbench--show-plan (workbench)
@@ -1375,15 +1403,21 @@ or hide the section when there is no plan."
   (let* ((block (transcript-last-block (workbench-transcript workbench) 'plan-block))
          (entries (and block (plan-block-entries block)))
          (view (workbench--plan-view workbench))
-         (runs (loop for (text . status) in entries
+         (width (- *rail-width* *plan-indent*))
+         (indent (make-string (plan-indent-spaces) :initial-element #\Space))
+         (wrapped (loop for (text) in entries collect (wrap-words text width)))
+         (runs (loop for (nil . status) in entries
+                     for lines in wrapped
                      for index from 1
                      collect (cons (plan-entry-marker status)
                                    (ecase status (:pending 1) (:in-progress 2) (:completed 3)))
-                     collect (cons (format nil "~A~:[~%~;~]" text (= index (length entries))) 0))))
+                     collect (cons (format nil "~{~A~^~%~}~:[~%~;~]"
+                                           (cons (first lines)
+                                                 (mapcar (lambda (line) (concatenate 'string indent line)) (rest lines)))
+                                           (= index (length entries)))
+                                   0))))
     (lightfast:text-replace-styled view 0 (lightfast:text-length view) runs)
-    (let ((lines (loop for (text) in entries
-                       sum (max 1 (ceiling (lightfast:measure-text text :font (font ':prose) :size *prose-size*)
-                                           (max 1 (- *rail-width* *plan-indent*)))))))
+    (let ((lines (loop for lines in wrapped sum (length lines))))
       (unless (= lines (workbench--plan-lines workbench))
         (setf (workbench--plan-lines workbench) lines)
         (if entries
@@ -1391,6 +1425,44 @@ or hide the section when there is no plan."
             (progn (lightfast:hide view) (lightfast:hide (workbench--plan-label workbench))))
         (workbench--relayout workbench))))
   nil)
+
+(-> plan-indent-spaces () integer)
+(defun plan-indent-spaces ()
+  "Return how many prose spaces are as wide as a plan marker and its space,
+so that wrapped plan lines hang under the text, not the mark."
+  (let ((marker (lightfast:measure-text (plan-entry-marker ':pending) :font (font ':marker) :size *marker-size*))
+        (space (max 1 (lightfast:measure-text " " :font (font ':prose) :size *prose-size*))))
+    (max 1 (round marker space))))
+
+(-> wrap-words (string integer) list)
+(defun wrap-words (text width)
+  "Break TEXT at spaces into lines no wider than WIDTH pixels of prose,
+measured; a word wider than WIDTH stands on its own line."
+  (let ((lines nil)
+        (line ""))
+    (dolist (word (split-words text))
+      (let ((candidate (if (string= line "") word (format nil "~A ~A" line word))))
+        (if (or (string= line "")
+                (<= (lightfast:measure-text candidate :font (font ':prose) :size *prose-size*) width))
+            (setf line candidate)
+            (progn (push line lines) (setf line word)))))
+    (push line lines)
+    (nreverse lines)))
+
+(-> split-words (string) list)
+(defun split-words (text)
+  "Return the space-separated words of TEXT, empty ones dropped."
+  (loop with start = 0
+        for end = (position #\Space text :start start)
+        for word = (subseq text start end)
+        when (plusp (length word)) collect word
+        while end
+        do (setf start (1+ end))))
+
+(-> label-width (string) integer)
+(defun label-width (text)
+  "Return the width of TEXT set as a label in the prose face."
+  (lightfast:measure-text text :font (font ':prose) :size *prose-size*))
 
 (-> workbench--animate (workbench t) null)
 (defun workbench--animate (workbench active-p)

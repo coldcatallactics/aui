@@ -313,7 +313,11 @@ headings, 32 px display and 24 px Adwaita Mono markers (12 px shapes from the
 cap height down, under the heading's line height so the pitch stays); the
 text column is capped at 780 px. Lists have 10 px between rows; tool rows set
 the name bold and the arguments in mono, cut at 48 characters; a heading
-opens with a blank line; setting provenance follows the documentation line. The recurring
+opens with a blank line; setting provenance follows the documentation line. The approval row asks "Approve <request>?" on one line and sets the choices
+on the next, each button as wide as its label with the key in its tooltip; in
+the child job view the composer's buttons read "Send to <role>" and "Cancel
+job"; plan lines wrap by measurement with a hanging indent; the rail allots
+each list the height of its rows so sections follow in reading order. The recurring
 off-baseline marks were FLTK's: its Cairo driver places text by line height
 minus descent, so a face with a line gap (Times New Roman MT Std carries
 410/2048 em) is drawn the gap above the baseline. Lightfast's

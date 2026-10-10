@@ -20,7 +20,9 @@
    (cancelled :initform nil :accessor extension-test-agent-cancelled
               :documentation "Job ids cancelled through the fixture.")
    (invoked :initform nil :accessor extension-test-agent-invoked
-            :documentation "Operations invoked through the fixture."))
+            :documentation "Operations invoked through the fixture.")
+   (cancel-requests :initform 0 :accessor extension-test-agent-cancel-requests
+                    :documentation "How many session/cancel requests arrived."))
   (:documentation "An ACP agent that also serves the _autolith/* contract."))
 
 (-> extension-ok (t) hash-table)
@@ -77,6 +79,28 @@
                                           (acp:json-object "name" "/settings" "kind" "command"
                                                            "description" "picker" "admitted" t
                                                            "terminalOwning" t)))))
+    ((and (string= method "_autolith/invoke")
+          (equal "server-turn" (acp:json-get params "operation")))
+     (let ((session (acp:json-get params "sessionId"))
+           (connection (acp:acp-agent-connection agent)))
+       (flet ((turn (state outcome)
+                (acp:connection-notify connection "_autolith/event"
+                                       (acp:json-object "sessionId" session "sequence" 9 "kind" "turn"
+                                                        "data" (acp:json-object "state" state "epoch" 7
+                                                                                "source" "invoke"
+                                                                                "outcome" (or outcome :null))))))
+         (turn "running" nil)
+         (acp:agent-send-update agent session (acp:acp-update-agent-message (acp:acp-text-content "continuing")))
+         (multiple-value-bind (outcome option)
+             (acp:agent-request-permission
+              agent session
+              (acp:acp-tool-call "server-call" "Run server step" :name "shell.run" :kind :execute :status :pending
+                                 :raw-input (acp:json-object "command" "true"))
+              (list (acp:acp-permission-option "allow-once" "Allow once" :allow-once)
+                    (acp:acp-permission-option "reject-once" "Reject once" :reject-once)))
+           (declare (ignore option))
+           (turn "idle" (if (eq outcome :selected) "end-turn" "cancelled"))
+           (extension-ok (acp:json-object "text" "" "data" :null))))))
     ((string= method "_autolith/invoke")
      (push (list (acp:json-get params "operation")
                  (acp:json-object-p (acp:json-get params "arguments"))
@@ -98,6 +122,13 @@
      (extension-ok (acp:json-object)))
     (t
      (call-next-method))))
+
+(defmethod acp:peer-handle-notification ((agent extension-test-agent) connection method params)
+  "Count session/cancel notifications before the library handles them."
+  (declare (ignore connection params))
+  (when (string= method "session/cancel")
+    (incf (extension-test-agent-cancel-requests agent)))
+  (call-next-method))
 
 (-> extension-test-launcher (acp-backend) t)
 (defun extension-test-launcher (backend)
@@ -288,3 +319,38 @@ catalog bootstrap that follows session readiness."
       (fiveam:is (string= "hello" (getf transcript ':content)))
       (fiveam:is (= 50 (getf transcript ':total)))
       (fiveam:is (not (getf transcript ':complete-p))))))
+
+
+(fiveam:test server-owned-turns-admit-approvals-and-finish
+  (with-extension-fixture (backend queue)
+    (backend-test-events-until queue (lambda (event) (typep event 'jobs-event)))
+    (backend-invoke backend "server-turn" "")
+    (let ((events (backend-test-events-until queue (lambda (event) (typep event 'approval-event)))))
+      (fiveam:is (not (null events)))
+      (fiveam:is (event-of events 'turn-event (lambda (event) (eq ':running (turn-event-state event)))))
+      (let ((approval (event-of events 'approval-event)))
+        (fiveam:is (backend-decide-approval backend (approval-event-request-id approval) "allow-once"))))
+    (let ((events (backend-test-events-until
+                   queue (lambda (event) (and (typep event 'turn-event) (eq ':idle (turn-event-state event)))))))
+      (fiveam:is (not (null events)))
+      (fiveam:is (eq ':end-turn (turn-event-stop-reason
+                                 (event-of events 'turn-event (lambda (event) (eq ':idle (turn-event-state event)))))))
+      (fiveam:is (event-of events 'transcript-event
+                           (lambda (event) (eq ':decide-approval (transcript-event-operation event))))))
+    (fiveam:is (null (acp-backend--external-turn backend)))
+    (fiveam:is (eq ':idle (acp-backend--turn backend)))))
+
+(fiveam:test server-owned-turns-can-be-stopped
+  (with-extension-fixture (backend queue)
+    (backend-test-events-until queue (lambda (event) (typep event 'jobs-event)))
+    (backend-invoke backend "server-turn" "")
+    (fiveam:is (backend-test-events-until queue (lambda (event) (typep event 'approval-event))))
+    (backend-cancel backend)
+    (let ((events (backend-test-events-until
+                   queue (lambda (event) (and (typep event 'turn-event) (eq ':idle (turn-event-state event)))))))
+      (fiveam:is (not (null events)))
+      (fiveam:is (event-of events 'turn-event (lambda (event) (eq ':cancelling (turn-event-state event)))))
+      (fiveam:is (eq ':cancelled (turn-event-stop-reason
+                                  (event-of events 'turn-event (lambda (event) (eq ':idle (turn-event-state event))))))))
+    (fiveam:is (plusp (extension-test-agent-cancel-requests (first *backend-test-servers*))))
+    (fiveam:is (eq ':idle (acp-backend--turn backend)))))

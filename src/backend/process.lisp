@@ -49,7 +49,10 @@
    (loaded-p :initform nil :accessor acp-backend--loaded-p
              :documentation "Whether durable model choices may differ from launch defaults.")
    (extension-methods :initform nil :accessor acp-backend--extension-methods
-                      :documentation "The _autolith/* methods the connected Autolith advertised."))
+                      :documentation "The _autolith/* methods the connected Autolith advertised.")
+   (external-turn :initform nil :accessor acp-backend--external-turn
+                  :documentation "The server epoch of a turn the server owns, such as an automatic
+continuation or an invocation, while it runs; NIL otherwise."))
   (:documentation "One pristine Autolith process with an independent cancellation path."))
 
 (defparameter *acp-event-generation* nil

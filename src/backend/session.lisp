@@ -201,8 +201,9 @@
 
 (-> acp-backend--send-cancel (acp-backend) null)
 (defun acp-backend--send-cancel (backend)
-  "Start one cancellation sender under the state lock, after prompt transmission."
-  (when (and (acp-backend--prompt-wire-id backend)
+  "Start one cancellation sender under the state lock: after prompt
+transmission for a local prompt, or at once for a turn the server owns."
+  (when (and (or (acp-backend--prompt-wire-id backend) (acp-backend--external-turn backend))
              (null (acp-backend--cancel-worker backend)))
     (let ((client (acp-backend--client backend))
           (session (acp-backend--session backend))
@@ -214,8 +215,9 @@
                (let ((*acp-event-generation* generation))
                  (handler-case
                      (progn
-                       (agentcomms:connection-cancel-request
-                        (agentcomms:acp-client-connection client) wire-id)
+                       (when wire-id
+                         (agentcomms:connection-cancel-request
+                          (agentcomms:acp-client-connection client) wire-id))
                        (agentcomms:client-cancel client session))
                    (error (condition)
                      (acp-backend--failure backend (acp-backend--identifier backend) condition)))))
@@ -244,6 +246,7 @@
     (when sender (bordeaux-threads:join-thread sender)))
   (bordeaux-threads:with-lock-held ((acp-backend--lock backend))
     (setf (acp-backend--cancel-worker backend) nil
+          (acp-backend--external-turn backend) nil
           (acp-backend--turn backend)
           (if (eq (acp-backend--state backend) ':ready) ':idle ':interrupted))
     (acp-backend--post backend 'turn-event :state (acp-backend--turn backend)

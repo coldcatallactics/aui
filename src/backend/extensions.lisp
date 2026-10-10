@@ -406,15 +406,60 @@ control path, send on the serialized path."
 
 ;;; Server events
 
+(-> acp-backend--turn-started (acp-backend integer) null)
+(defun acp-backend--turn-started (backend epoch)
+  "Admit a turn the server owns, identified by EPOCH, when nothing else runs."
+  (let ((admitted
+          (bordeaux-threads:with-lock-held ((acp-backend--lock backend))
+            (when (and (eq (acp-backend--state backend) ':ready)
+                       (eq (acp-backend--turn backend) ':idle))
+              (setf (acp-backend--turn backend) ':running
+                    (acp-backend--turn-token backend) (format nil "server:~D" epoch)
+                    (acp-backend--external-turn backend) epoch)
+              t))))
+    (when admitted
+      (acp-backend--post backend 'turn-event :state ':running)))
+  nil)
+
+(-> acp-backend--turn-finished (acp-backend integer t) null)
+(defun acp-backend--turn-finished (backend epoch outcome)
+  "Finish the server-owned turn EPOCH off the reader thread, so that joining
+the cancellation sender never blocks the connection it waits on."
+  (when (bordeaux-threads:with-lock-held ((acp-backend--lock backend))
+          (eql (acp-backend--external-turn backend) epoch))
+    (acp-backend--control backend "AUI server turn finish"
+                          (lambda () (acp-backend--finish-turn backend outcome))))
+  nil)
+
+(-> acp-backend--turn-event (backend-client t) null)
+(defun acp-backend--turn-event (client data)
+  "Apply one turn event: server-owned turns are admitted and finished here,
+prompt turns only mark text boundaries since the local prompt owns them."
+  (let* ((backend (backend-client-backend client))
+         (state (json-string data "state"))
+         (source (json-string data "source"))
+         (epoch (json-integer data "epoch"))
+         (outcome (acp-data-keyword (agentcomms:json-get data "outcome")
+                                    '(:end-turn :cancelled :condition) ':end-turn)))
+    (bordeaux-threads:with-lock-held ((acp-backend--projection-lock backend))
+      (backend-client--boundary client))
+    (when (and epoch (member source '("completion" "invoke") :test #'equal))
+      (cond
+        ((equal state "running") (acp-backend--turn-started backend epoch))
+        ((equal state "idle") (acp-backend--turn-finished backend epoch outcome)))))
+  nil)
+
 (defmethod agentcomms:client-extension-notification ((client backend-client) method params)
-  "Turn _autolith/event notifications into refreshes and notices."
+  "Turn _autolith/event notifications into turn transitions, refreshes and notices."
   (let ((backend (backend-client-backend client)))
     (when (and (string= method "_autolith/event")
-               (backend-client--current-p client)
-               (agentcomms:json-object-p params))
+               (agentcomms:json-object-p params)
+               (backend-client--current-p client (json-string params "sessionId")))
       (let ((*acp-event-generation* (backend-client-generation client))
             (kind (json-string params "kind")))
         (cond
+          ((equal kind "turn")
+           (acp-backend--turn-event client (agentcomms:json-get params "data")))
           ((equal kind "jobs")
            (acp-backend--extension-refresh backend (acp-backend--identifier backend) ':jobs))
           ((equal kind "state")

@@ -232,9 +232,11 @@ size, used to inspect other layouts under a tiling compositor; NIL normally.")
     chip))
 
 (-> workbench--set-chip (t string) null)
-(defun workbench--set-chip (chip text)
-  "Show TEXT on CHIP with the dropdown mark."
+(defun workbench--set-chip (workbench chip text)
+  "Show TEXT on CHIP with the dropdown mark, and give the chip the width the
+new text wants."
   (setf (lightfast:label chip) (format nil "~A ▾" text))
+  (workbench--relayout workbench)
   nil)
 
 (-> workbench-choose-model (workbench) null)
@@ -648,8 +650,8 @@ open, and the decision row only while an approval waits."
 
 (-> chip-width (t) integer)
 (defun chip-width (chip)
-  "Return the width CHIP wants for its label."
-  (+ (spacing 4) (label-width (lightfast:label chip))))
+  "Return the width CHIP wants for its italic label."
+  (+ (spacing 4) (lightfast:measure-text (lightfast:label chip) :font (font ':prose-italic) :size *prose-size*)))
 
 (-> composer-height-for (integer) integer)
 (defun composer-height-for (lines)
@@ -1657,9 +1659,9 @@ measured; a word wider than WIDTH stands on its own line."
   (setf (workbench-snapshot workbench) snapshot)
   (when (state-snapshot-title snapshot)
     (setf (lightfast:label (workbench--title-label workbench)) (state-snapshot-title snapshot)))
-  (workbench--set-chip (workbench--model-chip workbench) (or (state-snapshot-model snapshot) "model"))
-  (workbench--set-chip (workbench--effort-chip workbench) (or (state-snapshot-effort snapshot) "effort"))
-  (workbench--set-chip (workbench--permission-chip workbench)
+  (workbench--set-chip workbench (workbench--model-chip workbench) (or (state-snapshot-model snapshot) "model"))
+  (workbench--set-chip workbench (workbench--effort-chip workbench) (or (state-snapshot-effort snapshot) "effort"))
+  (workbench--set-chip workbench (workbench--permission-chip workbench)
                        (if (state-snapshot-permission-mode snapshot)
                            (string-downcase (symbol-name (state-snapshot-permission-mode snapshot)))
                            "permissions"))

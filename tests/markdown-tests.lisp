@@ -78,8 +78,8 @@
   (fiveam:is (equal '(("│ " . :quote) ("wise words" . :quote) ("
 " . :body))
                     (styles-of (markdown-runs "> wise words"))))
-  (fiveam:is (equal '(("☑ " . :bullet) ("done" . :body) ("
-" . :body) ("☐ " . :bullet) ("todo" . :body) ("
+  (fiveam:is (equal '(("☑ " . :marker) ("done" . :body) ("
+" . :body) ("☐ " . :marker) ("todo" . :body) ("
 " . :body))
                     (styles-of (markdown-runs (format nil "- [x] done~%- [ ] todo")))))
   (let ((runs (markdown-runs (format nil "| a | bb |~%|---|---|~%| 1 | 2 |"))))

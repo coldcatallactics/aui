@@ -40,6 +40,16 @@ lightness and is used only for small fills carrying black labels.")
   '("CMU Typewriter Text" "IBM Plex Mono" "Berkeley Mono" "Liberation Mono")
   "Monospace families for code, first installed one wins.")
 
+(defparameter *marker-families*
+  '("Iosevka Term" "Adwaita Mono" "Unifont")
+  "Families for marker glyphs the serif lacks: boxes, triangles, circles and
+check marks. Chosen by measurement: at *MARKER-SIZE* beside 18 px prose their
+descent equals the prose descent, so FLTK draws them on the prose baseline,
+and their shapes stand one x-height tall.")
+
+(defparameter *marker-size* 20
+  "Pixel size of marker glyphs beside prose.")
+
 (defparameter *prose-size* 18
   "Pixel size of prose, labels and controls.")
 
@@ -181,12 +191,14 @@ read against paper, or :MARK for small fills that carry black labels."
 (defun theme-fonts-load ()
   "Load the four prose faces and four code faces and return them as a plist
 keyed by :PROSE, :PROSE-BOLD, :PROSE-ITALIC, :PROSE-BOLD-ITALIC, :CODE,
-:CODE-BOLD, :CODE-ITALIC and :CODE-BOLD-ITALIC. Needs a display."
+:CODE-BOLD, :CODE-ITALIC, :CODE-BOLD-ITALIC and :MARKER. Needs a display."
   (let* ((installed (lightfast:system-font-names))
          (prose (or (theme--first-installed-family *prose-families* installed)
                     (first *prose-families*)))
          (code (or (theme--first-installed-family *code-families* installed)
-                   (first *code-families*))))
+                   (first *code-families*)))
+         (marker (or (theme--first-installed-family *marker-families* installed)
+                     (first *marker-families*))))
     (flet ((face (family style)
              (let ((name (theme--face-name family style)))
                ;; CMU Typewriter spells its bold italic as one word.
@@ -205,7 +217,8 @@ keyed by :PROSE, :PROSE-BOLD, :PROSE-ITALIC, :PROSE-BOLD-ITALIC, :CODE,
                   ':code (face code ':regular)
                   ':code-bold (face code ':bold)
                   ':code-italic (face code ':italic)
-                  ':code-bold-italic (face code ':bold-italic))))))
+                  ':code-bold-italic (face code ':bold-italic)
+                  ':marker (lightfast:load-font marker))))))
 
 (-> font (keyword) integer)
 (defun font (face)

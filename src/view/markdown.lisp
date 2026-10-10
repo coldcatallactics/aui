@@ -9,7 +9,7 @@
 (deftype markdown-style ()
   "The typographic roles Markdown itself produces; the document adds more."
   '(member :body :bold :italic :bold-italic :code :code-block :code-bold :code-italic
-    :heading-1 :heading-2 :heading-3 :link :bullet :list-number :quote :strike :table))
+    :heading-1 :heading-2 :heading-3 :link :bullet :list-number :quote :strike :table :marker))
 
 (defstruct (run (:constructor make-run (text style &optional url)))
   "One stretch of text in one style named by a keyword; URL is set for links."
@@ -258,10 +258,10 @@ goes through MARKDOWN-INLINE-RUNS."
                     (multiple-value-bind (marker indent label) (markdown-list-marker line)
                       (let* ((rest (subseq line marker))
                              (task (markdown-task-marker rest)))
-                        (push (make-run (concatenate 'string
-                                                     (make-string indent :initial-element #\Space)
-                                                     (or task label))
-                                        (cond (task ':bullet)
+                        (when (plusp indent)
+                          (push (make-run (make-string indent :initial-element #\Space) ':body) runs))
+                        (push (make-run (or task label)
+                                        (cond (task ':marker)
                                               ((string= label "• ") ':bullet)
                                               (t ':list-number)))
                               runs)

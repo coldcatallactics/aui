@@ -6,7 +6,7 @@
 ;;; the chosen group's settings on the right, each with its own control, its
 ;;; documentation and where its value came from.
 
-(defparameter *settings-row-height* 64
+(defparameter *settings-row-height* 76
   "Height of one setting row: a control line and a documentation line.")
 
 (defclass settings-pane ()
@@ -189,7 +189,7 @@
                               :event lightfast:+event-activate+)
                 input)))))
     (lightfast:set-label-align label ':left ':inside ':clip)
-    (lightfast:set-label-font label (font ':prose))
+    (lightfast:set-label-font label (font ':prose-bold))
     (lightfast:set-label-size label *prose-size*)
     (lightfast:set-label-align documentation ':left ':inside ':clip)
     (lightfast:set-label-font documentation (font ':prose-italic))

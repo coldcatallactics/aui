@@ -36,16 +36,18 @@
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
          (stack-top  (- composer-y 10 notice-h pending-h approval-h)))
-    (list :docked-p docked-p
-          :drawer-p drawer-p
-          :sidebar  (list 0 0 (min *sidebar-width* (- width 40)) height)
-          :header   (list main-x 0 main-width *header-height*)
-          :document (list main-x *header-height* main-width (max 40 (- stack-top *header-height*)))
-          :approval (list column-x stack-top column approval-h)
-          :pending  (list column-x (+ stack-top approval-h) column pending-h)
-          :notice   (list column-x (+ stack-top approval-h pending-h) column notice-h)
-          :composer (list column-x composer-y column composer-h)
-          :status   (list (+ column-x 2) status-y (- column 4) *status-height*))))
+    (list :docked-p   docked-p
+          :drawer-p   drawer-p
+          :sidebar    (list 0 0 (min *sidebar-width* (- width 40)) height)
+          :header     (list main-x 0 main-width *header-height*)
+          :document   (list main-x *header-height* main-width (max 40 (- stack-top *header-height*)))
+          :completion (let ((height (completion-height workbench)))
+                        (list column-x (- composer-y height 4) column height))
+          :approval   (list column-x stack-top column approval-h)
+          :pending    (list column-x (+ stack-top approval-h) column pending-h)
+          :notice     (list column-x (+ stack-top approval-h pending-h) column notice-h)
+          :composer   (list column-x composer-y column composer-h)
+          :status     (list (+ column-x 2) status-y (- column 4) *status-height*))))
 
 
 ;;;; -- Painting --
@@ -96,6 +98,9 @@
       (destructuring-bind (x y width height) (box :status)
         (declare (ignore height))
         (status-paint workbench stage :x x :y y :width width))
+      (destructuring-bind (x y width height) (box :completion)
+        (when (plusp height)
+          (completion-paint workbench stage :x x :y y :width width)))
       (when (getf layout :drawer-p)
         (destructuring-bind (x y width height) (box :sidebar)
           (paint-dither (+ x width) 0 :width (- (stage-width stage) width) :height (stage-height stage) :step 3)
@@ -229,7 +234,16 @@
   (let* ((key     (key-event-key event))
          (empty-p (zerop (length (string-trim '(#\Space #\Newline) (composer-text workbench))))))
     (cond
+      ((completion-key workbench event)
+       t)
       ((window--shortcut workbench event)
+       t)
+      ;; The arrows recall what was sent, from an empty composer or while stepping through.
+      ((and (eq key ':up) (or empty-p (workbench-history-index workbench))
+            (composer-recall workbench 1))
+       t)
+      ((and (eq key ':down) (workbench-history-index workbench)
+            (composer-recall workbench -1))
        t)
       ((and (member key '(:enter :keypad-enter))
             (not (key-event-shift-p event))

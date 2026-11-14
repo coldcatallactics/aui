@@ -146,6 +146,26 @@
     :initform      nil
     :accessor      workbench-overlay
     :documentation "The view laid over the window, such as the command list, or NIL.")
+   (completion-index
+    :initform      0
+    :accessor      workbench-completion-index
+    :type          integer
+    :documentation "Which of the composer's completions is highlighted.")
+   (completion-dismissed
+    :initform      nil
+    :accessor      workbench-completion-dismissed
+    :type          (or null string)
+    :documentation "The draft for which the person put the completions away, or NIL.")
+   (history
+    :initform      nil
+    :accessor      workbench-history
+    :type          list
+    :documentation "What the person sent from this window, newest first, for recall with the arrow keys.")
+   (history-index
+    :initform      nil
+    :accessor      workbench-history-index
+    :type          (or null integer)
+    :documentation "Which sent text the composer is showing while the person steps through them, or NIL.")
    (demo-entries
     :initform      nil
     :accessor      workbench-demo-entries
@@ -290,6 +310,16 @@
   "Open a new channel in DIRECTORY, by default the directory of the channel shown."
   (workbench-open workbench :directory (or directory (workbench-directory workbench)) :new-p t))
 
+(-> workbench-new-channel-elsewhere (workbench) null)
+(defun workbench-new-channel-elsewhere (workbench)
+  "Let the person choose a folder and open a new channel there."
+  (let ((directory (lightfast:choose-directory :title       "A folder for the new channel"
+                                               :preset-path (workbench-directory workbench))))
+    (when (and directory (plusp (length directory)))
+      (workbench-new-channel workbench
+                             :directory (namestring (uiop:ensure-directory-pathname directory)))))
+  nil)
+
 (-> workbench-load-earlier (workbench) null)
 (defun workbench-load-earlier (workbench)
   "Fetch the page of history before the earliest entry shown."
@@ -351,7 +381,10 @@ agent takes it up."
          (unless (workbench--command-p trimmed)
            (setf (workbench-pending workbench)
                  (append (workbench-pending workbench) (list (list identifier trimmed steer-p)))))
-         (setf (workbench-notice workbench) nil)
+         (setf (workbench-notice workbench)        nil
+               (workbench-history-index workbench) nil)
+         (unless (equal trimmed (first (workbench-history workbench)))
+           (push trimmed (workbench-history workbench)))
          (session-submit session trimmed
                          :images     images
                          :steer-p    steer-p

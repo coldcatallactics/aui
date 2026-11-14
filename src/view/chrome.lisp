@@ -37,10 +37,12 @@
   (let ((choice (lightfast:popup-menu
                  '("New channel here" "Rename the agent…" "Copy channel identifier" "-"
                    "Show status" "Compact the context now" "Show the agenda" "-"
-                   "Copy the conversation"))))
+                   "Copy the conversation" "New channel in another folder…"))))
     (case choice
       (0
        (workbench-new-channel workbench))
+      (9
+       (workbench-new-channel-elsewhere workbench))
       (1
        (let ((name (lightfast:input-dialog "A new name for this channel's agent")))
          (when name
@@ -319,7 +321,13 @@
                        :height    38
                        :primary-p t
                        :mark      ':plus
-                       :action    (lambda () (workbench-new-channel workbench)))))
+                       :action    (lambda () (workbench-new-channel workbench)))
+         (paint-button stage ':empty-choose "Choose another folder…"
+                       :x      (+ left (floor (- column 340) 2))
+                       :y      (+ below 70)
+                       :width  340
+                       :height 38
+                       :action (lambda () (workbench-new-channel-elsewhere workbench)))))
       (:attached
        (let ((below (chrome--paint-centered "What shall we work on?" (text-style ':display)
                                             :x     left

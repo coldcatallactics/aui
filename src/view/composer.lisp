@@ -39,6 +39,38 @@
       (workbench-redraw workbench)))
   text)
 
+(-> composer-caret-to-end (workbench) null)
+(defun composer-caret-to-end (workbench)
+  "Put the composer's caret after its last character."
+  (let ((editor (workbench-editor workbench)))
+    (when editor
+      (setf (lightfast:text-insert-position editor) (lightfast:text-length editor))))
+  nil)
+
+(-> composer-recall (workbench integer) boolean)
+(defun composer-recall (workbench step)
+  "Show the text sent STEP places earlier, or later when negative, and return whether there was one to show.
+
+Stepping past the newest returns to an empty composer."
+  (let* ((history (workbench-history workbench))
+         (index   (workbench-history-index workbench))
+         (target  (if index (+ index step) (if (plusp step) 0 -1))))
+    (cond
+      ((null history)
+       nil)
+      ((minusp target)
+       (when index
+         (setf (workbench-history-index workbench) nil
+               (composer-text workbench)           ""))
+       (and index t))
+      ((>= target (length history))
+       nil)
+      (t
+       (setf (workbench-history-index workbench) target
+             (composer-text workbench)           (nth target history))
+       (composer-caret-to-end workbench)
+       t))))
+
 (-> composer-text-height (workbench integer) integer)
 (defun composer-text-height (workbench width)
   "Return the height the composer's text needs at WIDTH, between one line and the most it grows to."

@@ -47,6 +47,7 @@
        (:file "workbench")
        (:file "sidebar")
        (:file "composer")
+       (:file "completion")
        (:file "chrome")
        (:file "overlay")
        (:file "window")

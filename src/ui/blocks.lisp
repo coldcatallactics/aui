@@ -210,54 +210,63 @@
 
 (-> code-block--header-height (code-block) integer)
 (defun code-block--header-height (block)
-  "Return the height of BLOCK's header row."
-  (declare (ignore block))
-  (text-style-line-height (text-style ':meta)))
+  "Return the height of BLOCK's header row, zero when it has no label."
+  (if (code-block-label block)
+      (+ 6 (text-style-line-height (text-style ':meta)))
+      0))
+
+(-> code-block--copy-height () integer)
+(defun code-block--copy-height ()
+  "Return the height of the row beneath a code frame that holds its copy action."
+  (+ 2 (text-style-line-height (text-style ':meta))))
 
 (defmethod block-layout ((block code-block) width)
-  "The frame holds a header row and the wrapped code."
+  "The frame holds the label, when there is one, and the wrapped code; the copy action sits beneath it."
   (+ (* 2 *code-padding*)
      (code-block--header-height block)
-     4
-     (paragraph-layout (code-block-paragraph block) (max 1 (- width (* 2 *code-padding*))))))
+     (paragraph-layout (code-block-paragraph block) (max 1 (- width (* 2 *code-padding*))))
+     (code-block--copy-height)))
 
 (defmethod block-paint ((block code-block) x y)
-  "Draw the frame, the label and copy action, and the code."
+  "Draw the frame, the label, the code, and the copy action under the frame's right corner."
   (let* ((width   (block-width block))
          (meta    (text-style ':meta))
          (header  (code-block--header-height block))
+         (frame-h (- (block-height block) (code-block--copy-height)))
          (copy-w  (+ (text-width "copy" meta) 12))
-         (copy-x  (- (+ x width) copy-w *code-padding* -6))
+         (copy-h  (code-block--copy-height))
+         (copy-x  (- (+ x width) copy-w))
+         (copy-y  (+ y frame-h))
          (copy-id (list ':copy (code-block-identifier block)))
          (hot-p   (and *paint-stage* (stage-hot-p *paint-stage* copy-id))))
-    (paint-frame x y :width width :height (block-height block))
+    (paint-frame x y :width width :height frame-h)
     (when (code-block-label block)
       (paint-text-in (code-block-label block) (text-style ':meta-bold)
                      :x      (+ x *code-padding*)
-                     :y      (+ y 8)
-                     :width  (- width copy-w (* 2 *code-padding*))
-                     :height header))
+                     :y      (+ y 7)
+                     :width  (- width (* 2 *code-padding*))
+                     :height (- header 6)))
     (if hot-p
-        (with-inversion (copy-x (+ y 8) copy-w header)
-          (paint-text-in "copy" meta :x copy-x :y (+ y 8) :width copy-w :height header :align ':center))
-        (paint-text-in "copy" meta :x copy-x :y (+ y 8) :width copy-w :height header :align ':center))
+        (with-inversion (copy-x copy-y copy-w copy-h)
+          (paint-text-in "copy" meta :x copy-x :y copy-y :width copy-w :height copy-h :align ':center))
+        (paint-text-in "copy" meta :x copy-x :y copy-y :width copy-w :height copy-h :align ':center))
     (when *paint-stage*
       (stage-region *paint-stage* copy-id
                     :x       copy-x
-                    :y       (+ y 8)
+                    :y       copy-y
                     :width   copy-w
-                    :height  header
+                    :height  copy-h
                     :action  (lambda ()
                                (lightfast:copy-text (paragraph-text (code-block-paragraph block))))
                     :tooltip "Copy this block"))
     (block--paint-paragraph (code-block-paragraph block)
-                            (+ x *code-padding*) (+ y *code-padding* header 4))))
+                            (+ x *code-padding*) (+ y *code-padding* header))))
 
 (defmethod block-leaves ((block code-block))
-  "The code, inside the frame's padding and below its header."
+  "The code, inside the frame's padding and below its label."
   (list (list (code-block-paragraph block)
               *code-padding*
-              (+ *code-padding* (code-block--header-height block) 4))))
+              (+ *code-padding* (code-block--header-height block)))))
 
 
 ;;;; -- Table --

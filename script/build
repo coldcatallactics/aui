@@ -12,14 +12,17 @@ if [[ ! -f "$lightfast/lightfast.asd" ]]; then
 fi
 make -s -C "$lightfast" native
 mkdir -p "$root/build"
-rm -f "$root/build/aui"
+# The image is saved beside the one in use and moved over it only once it
+# exists, so a build that fails leaves the last good image in place.
+rm -f "$root/build/aui.new"
 "$root/script/lisp" \
   --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
-  --eval '(aui::save-image (uiop:native-namestring (merge-pathnames "build/aui" (asdf:system-source-directory :aui))))' \
+  --eval '(aui::save-image (uiop:native-namestring (merge-pathnames "build/aui.new" (asdf:system-source-directory :aui))))' \
   >"$root/build/build.log" 2>&1 || { tail -40 "$root/build/build.log" >&2; exit 1; }
-if [[ ! -x "$root/build/aui" ]]; then
+if [[ ! -x "$root/build/aui.new" ]]; then
   tail -40 "$root/build/build.log" >&2
   echo "The image was not saved." >&2
   exit 1
 fi
+mv -f "$root/build/aui.new" "$root/build/aui"
 echo "Built $root/build/aui"

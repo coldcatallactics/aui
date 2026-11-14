@@ -52,6 +52,22 @@
                       (stringp (getf participant :name)))
               collect (getf participant :name)))))
 
+(-> chrome--sign-in (workbench) null)
+(defun chrome--sign-in (workbench)
+  "Open a terminal running autolith auth, which is where a provider is signed in to until Autolith offers that to its clients."
+  (handler-case
+      (if (uiop:os-macosx-p)
+          (uiop:launch-program
+           (list "osascript" "-e" "tell application \"Terminal\" to do script \"autolith auth\""
+                 "-e" "tell application \"Terminal\" to activate"))
+          (uiop:launch-program
+           (list "sh" "-c"
+                 "for t in \"$TERMINAL\" xdg-terminal-exec foot alacritty kitty wezterm gnome-terminal konsole xterm; do command -v \"$t\" >/dev/null 2>&1 && exec \"$t\" -e autolith auth; done; exit 1")))
+    (error ()
+      (setf (workbench-notice workbench) "Run autolith auth in a terminal to sign in.")))
+  (workbench-redraw workbench)
+  nil)
+
 (-> chrome--channel-menu (workbench) null)
 (defun chrome--channel-menu (workbench)
   "Offer what can be done with the channel shown and its agent, and do what is chosen."
@@ -90,6 +106,8 @@
                       (lambda () (workbench-submit workbench (format nil "(move ~S)" name)))))
               (chrome--other-agents workbench))
       (list nil
+            (list "Sign in to a model provider…"
+                  (lambda () (chrome--sign-in workbench)))
             (list "Copy channel identifier"
                   (lambda ()
                     (when (workbench-channel workbench)

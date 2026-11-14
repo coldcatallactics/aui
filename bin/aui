@@ -32,6 +32,12 @@ elif autolith=$(command -v autolith 2>/dev/null); then
 fi
 if [[ $stale == true ]]; then
   echo "Building AUI; this takes a minute the first time." >&2
-  "$root/script/build" >&2
+  if ! "$root/script/build" >&2; then
+    if [[ -x "$image" ]]; then
+      echo "The build failed; starting the last image that built." >&2
+    else
+      exit 1
+    fi
+  fi
 fi
 exec "$image" "$@"

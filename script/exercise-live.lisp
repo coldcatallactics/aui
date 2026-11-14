@@ -503,6 +503,19 @@ which may happen to a person's own world."
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (search "short title" (workbench-title workbench)))))
+             ;; The chips under the composer change the channel itself.
+             (workbench-set-setting workbench "reasoning-effort" "low")
+             (exercise-expect "the effort chip changes the channel's effort"
+                              (exercise-live--until workbench
+                                                    (lambda ()
+                                                      (equal "low" (workbench-effort workbench)))
+                                                    :seconds 30))
+             (workbench-set-mode workbench ':sandboxed)
+             (exercise-expect "the permission chip changes the channel's mode"
+                              (exercise-live--until workbench
+                                                    (lambda ()
+                                                      (eq ':sandboxed (workbench-permission-mode workbench)))
+                                                    :seconds 30))
              ;; The same channel again, from its history.
              (let ((channel (workbench-channel workbench)))
                (workbench-open workbench :channel channel)

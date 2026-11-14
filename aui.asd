@@ -19,7 +19,8 @@
       :components
       ((:file "transcript")
        (:file "events")
-       (:file "markdown")))
+       (:file "markdown")
+       (:file "lisp-format")))
      (:module "client"
       :serial t
       :components

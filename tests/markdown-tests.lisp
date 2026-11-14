@@ -82,3 +82,21 @@
   ;; Text without anything of the kind is returned as it is.
   (let ((plain "nothing to clean"))
     (fiveam:is (eq plain (text-clean plain)))))
+
+(fiveam:test a-long-form-is-set-out-and-keeps-its-spelling
+  (let ((source "(let ((suffix (if (uiop:os-macosx-p) \"dylib\" \"so\"))) (format nil \"build/liblightfast.~A\" suffix) (list #'car '(a b) #p\"/tmp/x\" #\\( `(x ,y ,@z)))"))
+    (let ((formatted (lisp-format source)))
+      ;; Several lines, every atom as it was spelled.
+      (fiveam:is (find #\Newline formatted))
+      (fiveam:is (search "uiop:os-macosx-p" formatted))
+      (fiveam:is (search "#p\"/tmp/x\"" formatted))
+      (fiveam:is (search "#\\(" formatted))
+      (fiveam:is (search "`(x ,y ,@z)" formatted))
+      (fiveam:is (string= (remove-if (lambda (character) (member character '(#\Space #\Newline))) source)
+                          (remove-if (lambda (character) (member character '(#\Space #\Newline))) formatted)))))
+  ;; Short forms, forms with line breaks, comments and broken forms are left alone.
+  (fiveam:is (string= "(+ 1 2)" (lisp-format "(+ 1 2)")))
+  (let ((commented "(progn (foo) ; a comment that must stay where it is, whatever the length of the line is"))
+    (fiveam:is (eq commented (lisp-format commented))))
+  (let ((broken "(this form is never closed (and is long enough to be worth formatting (if it were whole)"))
+    (fiveam:is (eq broken (lisp-format broken)))))

@@ -147,9 +147,14 @@
   nil)
 
 (-> header-paint
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:sidebar-toggle-p boolean)) null)
-(defun header-paint (workbench stage &key x y width sidebar-toggle-p)
-  "Draw the header: the channel's title, a line about it in the interface's voice, and its menu."
+    (workbench stage &key (:x integer) (:y integer) (:width integer) (:sidebar-toggle-p boolean)
+               (:band-p boolean))
+    null)
+(defun header-paint (workbench stage &key x y width sidebar-toggle-p (band-p t))
+  "Draw the header: the channel's title, a line about it in the interface's voice, and the buttons for the settings, the commands and the channel's menu.
+
+BAND-P draws the band of dither that parts the header from a conversation
+beneath it."
   (let* ((left  (+ x 24 (if sidebar-toggle-p 38 0)))
          (right (- (+ x width) 20))
          (title (text-style ':heading-2))
@@ -167,25 +172,38 @@
                                      (not (workbench-sidebar-shown-p workbench)))
                                (workbench-redraw workbench))
                     :tooltip "Show the channels (Ctrl+T)"))
-    (when (workbench-channel workbench)
-      (paint-button stage ':channel-menu ""
-                    :x       (- right 30)
-                    :y       (+ y 15)
-                    :width   30
-                    :height  30
-                    :mark    ':more
-                    :action  (lambda ()
-                               (chrome--channel-menu workbench :x (- right 30) :y (+ y 47)))
-                    :tooltip "This channel")
-      (decf right 44))
+    (flet ((button (identifier mark action tooltip)
+             (paint-button stage identifier ""
+                           :x       (- right 30)
+                           :y       (+ y 15)
+                           :width   30
+                           :height  30
+                           :mark    mark
+                           :action  action
+                           :tooltip tooltip)
+             (decf right 36)))
+      (when (workbench-channel workbench)
+        (let ((menu-x (- right 30)))
+          (button ':channel-menu ':more
+                  (lambda ()
+                    (chrome--channel-menu workbench :x menu-x :y (+ y 47)))
+                  "This channel")))
+      (button ':open-commands ':slash
+              (lambda () (workbench-show-overlay workbench ':commands))
+              "Commands (Ctrl+K)")
+      (button ':open-settings ':cog
+              (lambda () (workbench-show-overlay workbench ':settings))
+              "Settings (Ctrl+,)")
+      (decf right 8))
     (paint-text (text-fit (workbench-title workbench) title (- right left)) left (+ y 30) :style title)
     (let ((line (format nil "~@[~A · ~]~A"
                         (and (workbench-channel workbench)
                              (channel-display-name (workbench-channel workbench)))
                         (short-directory (workbench-directory workbench)))))
       (paint-text (text-fit line meta (- right left)) left (+ y 50) :style meta))
-    ;; The header parts from the conversation with a dither band, not a rule.
-    (paint-dither x (+ y *header-height* -3) :width width :height 3 :step 3))
+    ;; Over a conversation the header ends on a band of dither, not a rule.
+    (when band-p
+      (paint-dither x (+ y *header-height* -3) :width width :height 3 :step 3)))
   nil)
 
 (-> chrome--count (integer) string)

@@ -131,7 +131,8 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
       (destructuring-bind (x y width height) (box :header)
         (declare (ignore height))
         (header-paint workbench stage :x x :y y :width width
-                                      :sidebar-toggle-p (and (not side-p) (not (getf layout :docked-p)))))
+                                      :sidebar-toggle-p (and (not side-p) (not (getf layout :docked-p)))
+                                      :band-p           (not side-p)))
       (destructuring-bind (x y width height) (box :activity)
         (when (plusp height)
           (activity-paint workbench stage :x x :y y :width width :height height)))

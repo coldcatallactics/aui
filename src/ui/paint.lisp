@@ -215,6 +215,23 @@ they look the same whatever faces the system has."
       (:panel
        (lightfast:draw-rect left top (- right left) (- bottom top))
        (lightfast:draw-filled-rect left top (max 2 (floor (- right left) 3)) (- bottom top)))
+      (:cog
+       (let ((radius (max 2 (- middle inset 1))))
+         (lightfast:draw-line-style :width 2)
+         (lightfast:draw-circle (+ x middle) (+ y middle) radius)
+         (dotimes (index 8)
+           (let* ((angle (* 2 pi (/ index 8)))
+                  (near  (+ radius 1))
+                  (far   (+ radius 3)))
+             (lightfast:draw-line (+ x middle (round (* near (sin angle))))
+                                  (- (+ y middle) (round (* near (cos angle))))
+                                  (+ x middle (round (* far (sin angle))))
+                                  (- (+ y middle) (round (* far (cos angle)))))))
+         (lightfast:draw-line-style)))
+      (:slash
+       (lightfast:draw-line-style :width 2)
+       (lightfast:draw-line (- right 1) top (+ left 1) bottom)
+       (lightfast:draw-line-style))
       (:search
        (lightfast:draw-line-style :width 2)
        (lightfast:draw-circle (+ left (floor (- right left) 3)) (+ top (floor (- bottom top) 3))

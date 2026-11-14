@@ -222,10 +222,10 @@
 
 (-> sidebar-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sidebar-paint (workbench stage &key x y width height)
-  "Draw the channel list in the box, with its heading above and the way to the settings and commands below."
+  "Draw the channel list in the box under its heading: the wordmark, the button that puts the list away, the way to a new channel and the field that narrows the list."
   (let* ((entries     (sidebar--visible-entries workbench))
          (top         (+ y 150))
-         (bottom      (- (+ y height) 46))
+         (bottom      (- (+ y height) 12))
          (list-height (max 0 (- bottom top)))
          (content     (* *sidebar-row-height* (length entries)))
          (scroll      (max 0 (min (workbench-sidebar-scroll workbench) (max 0 (- content list-height))))))
@@ -291,16 +291,5 @@
                        :x      (+ x 14)
                        :y      top
                        :width  (- width 28)
-                       :height 40)))
-    ;; Foot: the settings and the commands.
-    (paint-chip stage ':open-settings "Settings"
-                :x      (+ x 8)
-                :y      (- (+ y height) 36)
-                :height 24
-                :action (lambda () (workbench-show-overlay workbench ':settings)))
-    (paint-chip stage ':open-commands "Commands"
-                :x      (+ x 8 (chip-width "Settings") 4)
-                :y      (- (+ y height) 36)
-                :height 24
-                :action (lambda () (workbench-show-overlay workbench ':commands))))
+                       :height 40))))
   nil)

@@ -523,11 +523,12 @@ which may happen to a person's own world."
                                                     (lambda ()
                                                       (equal "low" (workbench-effort workbench)))
                                                     :seconds 30))
-             (workbench-set-mode workbench ':sandboxed)
+             ;; Full access is a mode every platform has; a sandbox is not.
+             (workbench-set-mode workbench ':full-access)
              (exercise-expect "the permission chip changes the channel's mode"
                               (exercise-live--until workbench
                                                     (lambda ()
-                                                      (eq ':sandboxed (workbench-permission-mode workbench)))
+                                                      (eq ':full-access (workbench-permission-mode workbench)))
                                                     :seconds 30))
              ;; A setting whose values are keywords on the server is set by its spelling.
              (workbench-set-setting workbench "permission-mode" "auto")

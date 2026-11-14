@@ -16,11 +16,30 @@
 (defvar *window-natives* nil
   "The native fields of the window being built: a property list of :EDITOR, :FILTER and :QUERY.")
 
-(defparameter *console-minimum-reading* 600
+(defparameter *console-minimum-reading* 520
   "The narrowest the conversation may become for the console to stand beside it.")
 
-(defparameter *console-width* '(400 . 460)
-  "The (LEAST . MOST) width of the console beside the conversation.")
+(defparameter *console-minimum-width* 380
+  "The narrowest the console may become.")
+
+(defparameter *console-default-share* 42/100
+  "The part of the width beside the channel list that the console takes until the person drags its edge.")
+
+(-> window-console-share (workbench) real)
+(defun window-console-share (workbench)
+  "Return the part of the width beside the channel list that the console takes: where the person dragged it in this window, else what was remembered, else the default."
+  (let ((share (or (workbench-console-share workbench)
+                   (preference ':console-share))))
+    (if (and (realp share) (< 0 share 1))
+        share
+        *console-default-share*)))
+
+(-> (setf window-console-share) (real workbench) real)
+(defun (setf window-console-share) (share workbench)
+  "Take SHARE as the console's part of the width, for this window now and for the next run once the drag ends."
+  (setf (workbench-console-share workbench) (max 1/10 (min 9/10 share)))
+  (workbench-redraw workbench)
+  share)
 
 (-> window--layout (workbench integer integer) list)
 (defun window--layout (workbench width height)
@@ -38,10 +57,11 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
          (side-width (if docked-p *sidebar-width* 0))
          (main-x     side-width)
          (main-width (- width side-width))
-         (side-p     (>= main-width (+ *console-minimum-reading* (first *console-width*))))
+         (side-p     (>= main-width (+ *console-minimum-reading* *console-minimum-width* 60)))
          (console-w  (if side-p
-                         (max (first *console-width*)
-                              (min (rest *console-width*) (floor (* main-width 34/100))))
+                         (max *console-minimum-width*
+                              (min (- main-width *console-minimum-reading*)
+                                   (round (* main-width (window-console-share workbench)))))
                          0))
          (reading-w  (- main-width console-w))
          (console-x  (+ main-x reading-w))
@@ -110,9 +130,31 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
             (empty-paint workbench stage :x x :y y :width width :height height))
         (cond
           ;; Beside the console the conversation runs the window's whole
-          ;; height, and a band of dither parts the two.
+          ;; height, and a band of dither parts the two. The band can be
+          ;; dragged, and where it is left is remembered.
           (side-p
-           (paint-dither (+ x width) y :width 3 :height height :step 3)
+           (paint-dither (+ x width) y
+                         :width  3
+                         :height height
+                         :step   (if (or (stage-hot-p stage ':console-edge)
+                                         (stage-pressed-p stage ':console-edge))
+                                     2
+                                     3))
+           (let ((main-x     (if (getf layout :docked-p) *sidebar-width* 0))
+                 (main-width (- (stage-width stage) (if (getf layout :docked-p) *sidebar-width* 0))))
+             (stage-region stage ':console-edge
+                           :x      (+ x width -3)
+                           :y      y
+                           :width  10
+                           :height height
+                           :drag   (lambda (phase drag-x drag-y)
+                                     (declare (ignore drag-y))
+                                     (setf (window-console-share workbench)
+                                           (/ (- (+ main-x main-width) drag-x) main-width))
+                                     (when (eq phase ':end)
+                                       (setf (preference ':console-share)
+                                             (float (workbench-console-share workbench)))))
+                           :cursor ':west-east))
            (unless (getf layout :docked-p)
              (paint-button stage ':toggle-sidebar ""
                            :x       (+ x 14)

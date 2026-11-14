@@ -180,7 +180,26 @@
     :initform      nil
     :accessor      workbench-demo-entries
     :type          list
-    :documentation "The channel tree shown by the scripted demonstration, in place of a world's."))
+    :documentation "The channel tree shown by the scripted demonstration, in place of a world's.")
+   (waiting
+    :initform      nil
+    :accessor      workbench--waiting
+    :type          list
+    :documentation "What the channel's own snapshot says it has not taken up yet, each as (TEXT STEER-P).")
+   (waiting-pathname
+    :initform      nil
+    :accessor      workbench--waiting-pathname
+    :documentation "The file of the channel's snapshot of waiting messages, :NONE when it has none, or NIL before it was looked for.")
+   (waiting-read-at
+    :initform      0
+    :accessor      workbench--waiting-read-at
+    :type          integer
+    :documentation "When the snapshot of waiting messages was last read, in internal time units.")
+   (console-share
+    :initform      nil
+    :accessor      workbench-console-share
+    :type          (or null real)
+    :documentation "The part of the width beside the channel list that the console takes, as the person left it, or NIL for what was remembered."))
   (:documentation "One AUI window and everything it knows."))
 
 (-> workbench-redraw (workbench) null)

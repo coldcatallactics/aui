@@ -99,6 +99,9 @@ reports them, not the moment before it answered."
   (lightfast:load-library)
   (lightfast:enable-thread-wakeups)
   (theme-install)
+  ;; A window that is only a picture or a demonstration remembers nothing.
+  (unless (or (launch-demo-p launch) (launch-shot launch))
+    (setf *preferences-pathname* (preferences-default-pathname)))
   (let* ((queue     (make-ui-queue :wakeup #'lightfast:awake))
          (workbench (make-instance 'workbench :launch launch :world (launch-world launch) :queue queue))
          (started   (get-internal-real-time)))

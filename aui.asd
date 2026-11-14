@@ -20,6 +20,7 @@
       ((:file "transcript")
        (:file "events")
        (:file "markdown")
+       (:file "preferences")
        (:file "lisp-format")))
      (:module "client"
       :serial t

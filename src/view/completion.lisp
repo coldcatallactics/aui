@@ -36,7 +36,7 @@
         for name = (portable-get row "name")
         when (and (stringp name)
                   (equal (portable-get row "kind") "command")
-                  (not (portable-true-p (portable-get row "terminalOwning")))
+                  (not (member name *terminal-only-commands* :test #'string=))
                   (>= (length name) (length prefix))
                   (string-equal prefix name :end2 (length prefix)))
           collect (make-completion

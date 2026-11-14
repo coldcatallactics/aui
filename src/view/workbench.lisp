@@ -371,6 +371,56 @@
          (member (char trimmed 0) '(#\/ #\( #\?))
          t)))
 
+(defparameter *interface-commands* '("settings" "model" "effort" "permissions" "open" "new")
+  "Commands that, given no argument, open a picker in the terminal and a view of its own in the window.")
+
+(defparameter *terminal-only-commands*
+  '("onboard" "quit" "exit" "detach" "rollback" "auth" "complain" "wtf")
+  "Commands that need a terminal and have no counterpart in the window yet; they are not offered.")
+
+(-> command-text-name (string) (values (or null string) boolean))
+(defun command-text-name (text)
+  "Return the name of the command TEXT invokes and whether it gives the command arguments.
+
+TEXT is a slash command such as /model or a Lisp form such as (model). The
+name is NIL when TEXT is neither."
+  (let* ((trimmed (string-trim '(#\Space #\Newline #\Tab) text))
+         (length  (length trimmed)))
+    (if (and (> length 1) (member (char trimmed 0) '(#\/ #\()))
+        (let* ((end  (or (position-if (lambda (character)
+                                        (member character '(#\Space #\Newline #\Tab #\))))
+                                      trimmed :start 1)
+                         length))
+               (rest (string-trim '(#\Space #\Newline #\Tab #\)) (subseq trimmed end))))
+          (values (string-downcase (subseq trimmed 1 end))
+                  (plusp (length rest))))
+        (values nil nil))))
+
+(-> workbench-run-interface-command (workbench string) boolean)
+(defun workbench-run-interface-command (workbench name)
+  "Show the window's own view for the command NAME and return whether it has one."
+  (cond
+    ((equal name "settings")
+     (workbench-show-overlay workbench ':settings)
+     t)
+    ((equal name "model")
+     (composer--choose-model workbench)
+     t)
+    ((equal name "effort")
+     (composer--choose-effort workbench)
+     t)
+    ((equal name "permissions")
+     (composer--choose-mode workbench)
+     t)
+    ((equal name "open")
+     (window-focus-filter workbench)
+     t)
+    ((equal name "new")
+     (workbench-new-channel workbench)
+     t)
+    (t
+     nil)))
+
 (-> workbench-submit (workbench string &key (:steer-p boolean) (:images list)) boolean)
 (defun workbench-submit (workbench text &key steer-p images)
   "Send TEXT with IMAGES to the channel and return whether it went.
@@ -383,6 +433,13 @@ agent takes it up."
     (cond
       ((and (zerop (length trimmed)) (null images))
        nil)
+      ;; A command that would open a terminal picker opens the window's view instead.
+      ((multiple-value-bind (name arguments-p) (command-text-name trimmed)
+         (and name
+              (not arguments-p)
+              (member name *interface-commands* :test #'string=)
+              (workbench-run-interface-command workbench name)))
+       t)
       ((not (and session (workbench-attached-p workbench)))
        (setf (workbench-notice workbench) "Not attached to a channel yet.")
        (workbench-redraw workbench)

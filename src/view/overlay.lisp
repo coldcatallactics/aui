@@ -46,22 +46,11 @@
 
 ;;;; -- Commands --
 
-(defparameter *overlay-interface-commands*
-  '("model" "effort" "permissions" "settings" "open" "new")
-  "Commands whose terminal pickers the window answers with a view of its own.")
-
-(defparameter *overlay-terminal-only-commands*
-  '("onboard" "quit" "exit" "detach" "memories" "memory" "why" "rollback" "auth" "complain" "wtf")
-  "Commands that need a terminal and have no counterpart in the window yet; they are not offered.")
-
 (-> overlay--command-rows (workbench string) list)
 (defun overlay--command-rows (workbench query)
   "Return the operations to list for QUERY: commands first, then tools, those not usable from a window left out."
   (let ((rows (remove-if (lambda (row)
-                           (let ((name (portable-get row "name")))
-                             (or (member name *overlay-terminal-only-commands* :test #'equal)
-                                 (and (portable-true-p (portable-get row "terminalOwning"))
-                                      (not (member name *overlay-interface-commands* :test #'equal))))))
+                           (member (portable-get row "name") *terminal-only-commands* :test #'equal))
                          (workbench-operations workbench))))
     (stable-sort
      (remove-if-not (lambda (row)
@@ -80,19 +69,9 @@
         (choices (mapcar #'princ-to-string (portable-items (portable-get row "choices")))))
     (workbench-show-overlay workbench nil)
     (cond
-      ((equal name "model")
-       (composer--choose-model workbench))
-      ((equal name "effort")
-       (composer--choose-effort workbench))
-      ((equal name "permissions")
-       (composer--choose-mode workbench))
-      ((equal name "settings")
-       (workbench-show-overlay workbench ':settings))
-      ((equal name "new")
-       (workbench-new-channel workbench))
-      ((equal name "open")
-       (setf (workbench-sidebar-shown-p workbench) t)
-       (window-focus-filter workbench))
+      ((and (member name *interface-commands* :test #'equal)
+            (workbench-run-interface-command workbench name))
+       nil)
       ((not (equal (portable-get row "kind") "command"))
        (setf (composer-text workbench) (format nil "(~A )" name))
        (window-focus-composer workbench))

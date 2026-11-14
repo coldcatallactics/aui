@@ -152,3 +152,16 @@
     (fiveam:is (equal '(1 2) (portable-items (portable-get object "list"))))
     (fiveam:is (portable-true-p t))
     (fiveam:is (not (portable-true-p ':false)))))
+
+(fiveam:test command-text-names-its-command
+  (dolist (case '(("/model" "model" nil)
+                  ("(model)" "model" nil)
+                  ("  (settings )" "settings" nil)
+                  ("/model gpt-6" "model" t)
+                  ("(open \"b-6\")" "open" t)
+                  ("hello there" nil nil)
+                  ("(" nil nil)))
+    (destructuring-bind (text name arguments-p) case
+      (multiple-value-bind (found found-arguments-p) (command-text-name text)
+        (fiveam:is (equal name found) "~S names ~S" text found)
+        (fiveam:is (eq arguments-p found-arguments-p) "~S arguments ~S" text found-arguments-p)))))

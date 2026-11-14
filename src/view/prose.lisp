@@ -3,8 +3,8 @@
 ;;;; -- Prose --
 
 ;;; Markdown's nodes given their typography: the blocks an answer is drawn
-;;; from. Emphasis is weight and slope, never color; code is the typewriter
-;;; face; a link is underlined ink.
+;;; from. Emphasis is weight and slope; code among prose is the typewriter
+;;; face in blue; a link is underlined blue.
 
 (defparameter *prose-paragraph-gap* 12
   "Space between two paragraphs of an answer.")
@@ -39,6 +39,8 @@
                      (face-variant face
                                    :bold-p   (and (or bold-p base-bold-p) t)
                                    :italic-p (and (or italic-p base-italic-p) t))))))
+          (when (or link code-p)
+            (setf (text-style-color style) *blue*))
           (when link
             (setf (text-style-underline-p style) t))
           (when strike-p
@@ -129,8 +131,8 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 ;;;; -- Code Highlighting --
 
-;;; Highlighting is weight and slope only, as Interlisp Paper asks: defining
-;;; words bold, comments italic. No colors.
+;;; Highlighting is light: defining words bold in plum, strings green,
+;;; comments italic.
 
 (defparameter *code-defining-words*
   '("defun" "defmacro" "defgeneric" "defmethod" "defclass" "defstruct" "defvar" "defparameter"
@@ -156,11 +158,24 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
       (t
        (search "//" line)))))
 
+(-> code--string-end (string integer) integer)
+(defun code--string-end (source start)
+  "Return the position after the string literal that opens at START in SOURCE, the end of SOURCE when it is not closed."
+  (let ((quote (char source start)))
+    (loop for index from (1+ start) below (length source)
+          do (cond
+               ((char= (char source index) #\\)
+                (incf index))
+               ((char= (char source index) quote)
+                (return (1+ index))))
+          finally (return (length source)))))
+
 (-> code-spans (string (or null string)) list)
 (defun code-spans (code language)
-  "Return the spans of CODE in LANGUAGE: comments italic, defining words bold, the rest plain."
-  (let ((bold   (text-style ':code :face ':mono-bold))
+  "Return the spans of CODE in LANGUAGE: comments italic, defining words bold plum, strings green, the rest plain."
+  (let ((bold   (text-style ':code :face ':mono-bold :color *plum*))
         (italic (text-style ':code :face ':mono-italic))
+        (quoted (text-style ':code :color *green*))
         (spans  nil))
     (flet ((emit (text style)
              ;; Neighbours in one style join, so a line of code is a few runs, not one a word.
@@ -174,7 +189,11 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
                       (source  (subseq line 0 comment))
                       (index   0))
                  (loop while (< index (length source))
-                       do (let* ((word-start (position-if #'alpha-char-p source :start index))
+                       do (let* ((next       (position-if (lambda (character)
+                                                            (or (alpha-char-p character) (char= character #\")))
+                                                          source :start index))
+                                 (string-p   (and next (char= (char source next) #\")))
+                                 (word-start (and next (not string-p) next))
                                  (word-end   (and word-start
                                                   (or (position-if-not
                                                        (lambda (character)
@@ -182,9 +201,14 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
                                                        source :start word-start)
                                                       (length source)))))
                             (cond
-                              ((null word-start)
+                              ((null next)
                                (emit (subseq source index) nil)
                                (setf index (length source)))
+                              (string-p
+                               (let ((end (code--string-end source next)))
+                                 (emit (subseq source index next) nil)
+                                 (emit (subseq source next end) quoted)
+                                 (setf index end)))
                               (t
                                (emit (subseq source index word-start) nil)
                                (let ((word (subseq source word-start word-end)))

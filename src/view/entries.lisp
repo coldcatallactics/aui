@@ -167,47 +167,51 @@
 
 ;;;; -- Tools --
 
-(-> entries--plan-blocks (tool-entry) list)
-(defun entries--plan-blocks (entry)
-  "Return the blocks of a plan update: its explanation and its steps as a checklist."
+(-> entries--plan-steps (tool-entry) list)
+(defun entries--plan-steps (entry)
+  "Return the blocks of what a plan update holds: its explanation, then its steps as a checklist with the one in hand set apart."
   (let* ((arguments   (tool-entry-arguments entry))
          (explanation (rest (assoc "explanation" arguments :test #'string=)))
          (steps       (rest (or (assoc "plan" arguments :test #'string=)
                                 (assoc "steps" arguments :test #'string=))))
          (style       (text-style ':list)))
-    (list
-     (make-instance
-      'box-block
-      :padding-x     14
-      :padding-y     10
-      :margin-top    10
-      :margin-bottom 10
-      :children
-      (append
-       (list (make-text-block (spans (list "Plan" (text-style ':label-bold)))
-                              :style (text-style ':label-bold) :margin-bottom 4))
-       (when (and (stringp explanation) (plusp (length explanation)))
-         (list (make-text-block (list (make-span explanation nil))
-                                :style (text-style ':small :face ':serif-italic) :margin-bottom 6)))
-       (loop for step in (and (listp steps) steps)
-             for text = (and (consp step)
-                             (rest (or (assoc "step" step :test #'string=)
-                                       (assoc "text" step :test #'string=))))
-             for status = (and (consp step) (rest (assoc "status" step :test #'string=)))
-             when (stringp text)
-               collect (make-text-block
-                        (list (make-span text
-                                         (cond
-                                           ((member status '("in_progress" "doing") :test #'equal)
-                                            (text-style ':list-bold))
-                                           ((member status '("completed" "done") :test #'equal)
-                                            (text-style ':list :strike-p t))
-                                           (t
-                                            nil))))
-                        :style  style
-                        :indent 26
-                        :marker (if (member status '("completed" "done") :test #'equal) ':done ':open)
-                        :margin-top 2 :margin-bottom 2)))))))
+    (append
+     (when (and (stringp explanation) (plusp (length explanation)))
+       (list (make-text-block (list (make-span explanation nil))
+                              :style (text-style ':small :face ':serif-italic) :margin-bottom 6)))
+     (loop for step in (and (listp steps) steps)
+           for text = (and (consp step)
+                           (rest (or (assoc "step" step :test #'string=)
+                                     (assoc "text" step :test #'string=))))
+           for status = (and (consp step) (rest (assoc "status" step :test #'string=)))
+           when (stringp text)
+             collect (make-text-block
+                      (list (make-span text
+                                       (cond
+                                         ((member status '("in_progress" "doing") :test #'equal)
+                                          (text-style ':list-bold :color *blue*))
+                                         ((member status '("completed" "done") :test #'equal)
+                                          (text-style ':list :strike-p t))
+                                         (t
+                                          nil))))
+                      :style  style
+                      :indent 26
+                      :marker (if (member status '("completed" "done") :test #'equal) ':done ':open)
+                      :margin-top 2 :margin-bottom 2)))))
+
+(-> entries--plan-blocks (tool-entry) list)
+(defun entries--plan-blocks (entry)
+  "Return the blocks of a plan update in the conversation: a framed box headed Plan."
+  (list
+   (make-instance
+    'box-block
+    :padding-x     14
+    :padding-y     10
+    :margin-top    10
+    :margin-bottom 10
+    :children      (cons (make-text-block (spans (list "Plan" (text-style ':label-bold)))
+                                          :style (text-style ':label-bold) :margin-bottom 4)
+                         (entries--plan-steps entry)))))
 
 (defparameter *diff-preview-lines* 40
   "How many lines of each side of an edit an opened row shows.")
@@ -216,9 +220,9 @@
 (defun entries--diff-spans (old new)
   "Return the spans of an edit as a diff: the lines of OLD marked removed, then the lines of NEW marked added.
 
-The marks carry the color; the text stays ink, as Interlisp Paper has it."
-  (let ((removed (text-style ':code :face ':mono-bold :color *red*))
-        (added   (text-style ':code :face ':mono-bold :color *green*))
+What is removed is red and what is added green, marks and text alike."
+  (let ((removed (text-style ':code :color *red*))
+        (added   (text-style ':code :color *green*))
         (spans   nil))
     (flet ((side (text mark style)
              (let ((lines (markdown-lines (string-right-trim '(#\Newline) text))))
@@ -330,7 +334,9 @@ The marks carry the color; the text stays ink, as Interlisp Paper has it."
                                         (:failed
                                          ':cross))
                           :mark-color (and (eq status ':failed) *red*)
-                          :title      (spans (list (tool-entry-name entry) (text-style ':label-bold))
+                          :title      (spans (list (tool-entry-name entry)
+                                                   (text-style ':label-bold
+                                                               :color (if (eq status ':failed) *red* *amber*)))
                                              (list (format nil "  ~A" (tool-entry-preview entry))
                                                    (text-style ':label)))
                           :trailing   (and seconds (entries--duration seconds))
@@ -343,41 +349,86 @@ The marks carry the color; the text stays ink, as Interlisp Paper has it."
 
 ;;;; -- Notices, Output and Markers --
 
+(-> entries--detail-sections (string) (values list (or null string)))
+(defun entries--detail-sections (detail)
+  "Return the sections a notice's DETAIL shows and the status line it opens with.
+
+What a finished job reports is a shell result, read as a tool's is; anything
+else is one section."
+  (if (and (> (length detail) 5) (string= "exit " detail :end2 5))
+      (tool-result-sections "shell.run" detail)
+      (values (list (cons "detail" detail)) nil)))
+
+(-> entries--last-line (string) string)
+(defun entries--last-line (text)
+  "Return the last line of TEXT that says anything."
+  (or (find-if (lambda (line)
+                 (plusp (length (string-trim '(#\Space #\Tab) line))))
+               (markdown-lines text)
+               :from-end t)
+      ""))
+
 (defmethod entry-blocks ((entry notice-entry) toggle)
-  "A quiet line in the interface's voice, with its detail beneath when it has one."
-  (declare (ignore toggle))
-  (let* ((tone   (notice-entry-tone entry))
-         (detail (notice-entry-detail entry))
-         (row    (make-instance 'row-block
-                                :identifier (list ':entry (entry-identifier entry))
-                                :mark       (ecase tone
-                                              (:quiet
-                                               ':point)
-                                              (:success
-                                               ':check)
-                                              ((:warning :failure)
-                                               ':cross))
-                                :mark-color (ecase tone
-                                              (:quiet
-                                               nil)
-                                              (:success
-                                               *green*)
-                                              ((:warning :failure)
-                                               *red*))
-                                :title      (spans (list (notice-entry-text entry) (text-style ':label)))
-                                :trailing   (and (entry-time entry) (entries--clock (entry-time entry)))
-                                :style      (text-style ':label)
-                                :margin-top 4)))
-    (if detail
-        (list row
-              (make-instance 'box-block
-                             :children      (list (make-text-block (list (make-span detail nil))
-                                                                   :style (text-style ':small)))
-                             :frame-p       nil
-                             :padding-x     28
-                             :padding-y     0
-                             :margin-bottom 8))
-        (list row))))
+  "A quiet line in the interface's voice. What it has to add stays closed behind the line, which shows its last word and opens on a click."
+  (let* ((tone       (notice-entry-tone entry))
+         (detail     (notice-entry-detail entry))
+         (expanded-p (and detail (entry-expanded-p entry)))
+         (color      (ecase tone
+                       (:quiet
+                        nil)
+                       (:success
+                        *green*)
+                       (:warning
+                        *amber*)
+                       (:failure
+                        *red*))))
+    (multiple-value-bind (sections status) (if detail (entries--detail-sections detail) (values nil nil))
+      (let* ((preview (and detail
+                           (not expanded-p)
+                           (format nil "~@[~A  ~]~A" status
+                                   (entries--one-line
+                                    (entries--last-line (or (rest (first (last sections))) ""))))))
+             (row     (make-instance 'row-block
+                                     :identifier (list ':entry (entry-identifier entry))
+                                     :mark       (cond
+                                                   (expanded-p
+                                                    ':open)
+                                                   (detail
+                                                    ':closed)
+                                                   (t
+                                                    (ecase tone
+                                                      (:quiet
+                                                       ':point)
+                                                      (:success
+                                                       ':check)
+                                                      ((:warning :failure)
+                                                       ':cross))))
+                                     :mark-color color
+                                     :title      (spans (list (notice-entry-text entry)
+                                                              (text-style ':label :color color))
+                                                        (and preview
+                                                             (list (format nil "  ~A" preview)
+                                                                   (text-style ':label :face ':mono-italic))))
+                                     :trailing   (and (entry-time entry) (entries--clock (entry-time entry)))
+                                     :style      (text-style ':label)
+                                     :action     (and detail toggle)
+                                     :margin-top 4)))
+        (if expanded-p
+            (list row
+                  (make-instance 'box-block
+                                 :children      (loop for (label . text) in sections
+                                                      for first-p = t then nil
+                                                      collect (make-code-block
+                                                               (entries--preview text)
+                                                               :label         (if (and first-p status)
+                                                                                  (format nil "~A · ~A" label status)
+                                                                                  label)
+                                                               :margin-bottom 4))
+                                 :frame-p       nil
+                                 :padding-x     28
+                                 :padding-y     2
+                                 :margin-bottom 8))
+            (list row))))))
 
 (defmethod entry-blocks ((entry output-entry) toggle)
   "What a command printed, in the typewriter face under the form that printed it."

@@ -164,6 +164,9 @@
         :kind    ':command
         :title   "run gh run watch"
         :entry   "gh run watch --exit-status 123456789"
-        :options (list (list :value "once" :description "Allow this command this once")
+        :options (list (list :value "auto" :description "Classify automatically this session")
+                       (list :value "once" :description "Allow this command this once")
                        (list :value "always" :description "Always allow this exact command here")
-                       (list :value "deny" :description "Refuse"))))
+                       (list :value "sandbox" :description "Allow sandboxed commands for this session")
+                       (list :value "full" :description "Full user privileges for this session")
+                       (list :value "deny" :description "Do not run the command"))))

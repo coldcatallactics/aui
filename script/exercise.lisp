@@ -125,6 +125,29 @@
       (exercise-expect "an approval offers its choices"
                        (and (exercise--region workbench '(:approval "once"))
                             (exercise--region workbench '(:approval "deny"))))
+      (exercise-expect "the choices read in order and stay inside the window"
+                       (let ((first (exercise--region workbench '(:approval "auto")))
+                             (last  (exercise--region workbench '(:approval "deny"))))
+                         (and first last
+                              (or (< (region-x first) (region-x last))
+                                  (< (region-y first) (region-y last)))
+                              (every (lambda (region)
+                                       (let ((identifier (region-identifier region)))
+                                         (or (not (and (consp identifier) (eq (first identifier) ':approval)))
+                                             (and (>= (region-x region) 0)
+                                                  (<= (+ (region-x region) (region-width region))
+                                                      (stage-width stage))))))
+                                     (stage--regions stage)))))
+      ;; The same card in a narrow window, where the choices take two rows.
+      (stage-resize stage 620 800)
+      (exercise--draw workbench)
+      (exercise-expect "a narrow window wraps the choices"
+                       (let ((first (exercise--region workbench '(:approval "auto")))
+                             (last  (exercise--region workbench '(:approval "deny"))))
+                         (and first last
+                              (< (region-y first) (region-y last))
+                              (<= (+ (region-x last) (region-width last)) (stage-width stage)))))
+      (stage-resize stage 1200 800)
       (setf (workbench-approval workbench) nil)
       ;; Completion.
       (setf (composer-text workbench) "/st")

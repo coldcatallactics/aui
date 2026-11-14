@@ -246,6 +246,39 @@
       (t
        (string-capitalize (substitute #\Space #\- (or value "choose")))))))
 
+(defparameter *approval-button-height* 34
+  "The height of one approval choice.")
+
+(-> approval--rows (list integer) list)
+(defun approval--rows (options width)
+  "Return the approval OPTIONS as rows that fit WIDTH, in the order they are numbered.
+
+Each row is a list of (INDEX LABEL BUTTON-WIDTH OPTION)."
+  (let ((rows  nil)
+        (row   nil)
+        (taken 0))
+    (loop for option in options
+          for index from 0
+          do (let* ((label    (format nil "~D  ~A" (1+ index) (approval--label option)))
+                    (button-w (+ 28 (text-width label (text-style ':label-bold)))))
+               (when (and row (> (+ taken button-w) width))
+                 (push (nreverse row) rows)
+                 (setf row   nil
+                       taken 0))
+               (push (list index label button-w option) row)
+               (incf taken (+ button-w 8))))
+    (when row
+      (push (nreverse row) rows))
+    (nreverse rows)))
+
+(-> approval--buttons-height (list integer) integer)
+(defun approval--buttons-height (options width)
+  "Return the height the choices among OPTIONS take when laid out in WIDTH."
+  (let ((rows (length (approval--rows options width))))
+    (if (zerop rows)
+        0
+        (- (* rows (+ *approval-button-height* 8)) 8))))
+
 (-> approval-height (workbench integer) integer)
 (defun approval-height (workbench width)
   "Return the height the approval card needs at WIDTH, zero when nothing waits for approval."
@@ -256,7 +289,9 @@
                                      :style (text-style ':code) :wrap ':anywhere)))
           (+ 28 14
              (min 160 (paragraph-layout entry (- width 44)))
-             14 34 14 *shadow-offset* 10)))))
+             14
+             (approval--buttons-height (getf approval :options) (- width 28))
+             14 *shadow-offset* 10)))))
 
 (-> approval-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun approval-paint (workbench stage &key x y width height)
@@ -269,27 +304,26 @@
                                        :title  (format nil "Approve: ~A" (or (getf approval :title) "request"))))
          (entry    (make-paragraph (list (make-span (or (getf approval :entry) "") nil))
                                    :style (text-style ':code) :wrap ':anywhere))
-         (button-y (- (+ y box-h) 48))
-         (cursor   (- (+ x width) 14)))
+         (rows     (approval--rows (getf approval :options) (- width 28)))
+         (button-y (- (+ y box-h) 14 (approval--buttons-height (getf approval :options) (- width 28)))))
     (paragraph-layout entry (- width 44))
     (lightfast:with-clip ((+ x 14) (+ y bar 14) (- width 28) (max 0 (- button-y y bar 20)))
       (paragraph-paint entry (+ x 22) (+ y bar 14)))
-    ;; Choices right to left, so the first and safest sits at the right edge, filled.
-    (loop for option in (getf approval :options)
-          for index from 0
-          do (let* ((choice   (getf option :value))
-                    (label    (format nil "~D  ~A" (1+ index) (approval--label option)))
-                    (button-w (+ 28 (text-width label (text-style ':label-bold)))))
-               (decf cursor button-w)
-               (paint-button stage (list ':approval choice) label
-                             :x         cursor
-                             :y         button-y
-                             :width     button-w
-                             :height    34
-                             :primary-p (zerop index)
-                             :action    (lambda () (workbench-answer workbench choice))
-                             :tooltip   (getf option :description))
-               (decf cursor 8))))
+    ;; Choices in the order they are numbered, the first of them filled.
+    (loop for row in rows
+          for row-y from button-y by (+ *approval-button-height* 8)
+          do (let ((cursor (+ x 14)))
+               (loop for (index label button-w option) in row
+                     do (let ((choice (getf option :value)))
+                          (paint-button stage (list ':approval choice) label
+                                        :x         cursor
+                                        :y         row-y
+                                        :width     button-w
+                                        :height    *approval-button-height*
+                                        :primary-p (zerop index)
+                                        :action    (lambda () (workbench-answer workbench choice))
+                                        :tooltip   (getf option :description))
+                          (incf cursor (+ button-w 8)))))))
   nil)
 
 

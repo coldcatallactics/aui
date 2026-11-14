@@ -418,9 +418,9 @@
 A window that is only to be photographed at a given size is never shown: it
 is drawn offscreen at exactly that size, whatever the window system would
 have made of it."
-  (let* ((window  (workbench-window workbench))
-         (stage   (workbench-stage workbench))
-         (launch  (workbench-launch workbench))
+  (let* ((window   (workbench-window workbench))
+         (stage    (workbench-stage workbench))
+         (launch   (workbench-launch workbench))
          (unseen-p (and (launch-shot launch) (launch-size launch))))
     (unless unseen-p
       (lightfast:show window)

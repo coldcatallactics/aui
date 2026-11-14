@@ -237,4 +237,3 @@
   (fiveam:is (string= (format nil "Planning the deadline capture~2%Checking Lisp apropos")
                       (projector--reasoning-summary
                        (format nil "◇ reasoning summary~%  │ Planning the deadline~%  │ capture~%  │~%  │ Checking Lisp apropos")))))
-

@@ -134,6 +134,20 @@ Text wider than the box is cut at the box's edge with an ellipsis."
                 do (return candidate)
               finally (return ellipsis)))))
 
+(-> text-fit-tail (string text-style integer) string)
+(defun text-fit-tail (text style width)
+  "Return TEXT, or an ellipsis followed by its longest ending that fits WIDTH in STYLE.
+
+A path says most at its end, so that is the end kept."
+  (if (<= (text-width text style) width)
+      text
+      (let ((ellipsis "…"))
+        (loop for start from 1 below (length text)
+              for candidate = (concatenate 'string ellipsis (subseq text start))
+              when (<= (text-width candidate style) width)
+                do (return candidate)
+              finally (return ellipsis)))))
+
 
 ;;;; -- Marks --
 

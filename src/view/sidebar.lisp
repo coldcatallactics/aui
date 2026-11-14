@@ -164,7 +164,7 @@
                                                :y      y
                                                :height height))))
                (when (> (- right end) 60)
-                 (paint-text-in (text-fit (or (getf entry :path) "") meta (- right end 12)) meta
+                 (paint-text-in (text-fit-tail (or (getf entry :path) "") meta (- right end 12)) meta
                                 :x      (+ end 12)
                                 :y      y
                                 :width  (- right end 12)

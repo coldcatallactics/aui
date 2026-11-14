@@ -53,6 +53,12 @@
     :accessor      stage-key-handler
     :type          (or null function)
     :documentation "Called with a key event when the stage has the keyboard; returns true when it used the key.")
+   (drop-handler
+    :initarg       :drop-handler
+    :initform      nil
+    :accessor      stage-drop-handler
+    :type          (or null function)
+    :documentation "Called with what was dropped on the stage: the dragged text, or file names one to a line.")
    (regions
     :initform      nil
     :accessor      stage--regions
@@ -349,10 +355,12 @@ otherwise."
   "Return T when the platform's command modifier was held: Command on a Mac, Control elsewhere."
   (logtest (if (uiop:os-macosx-p) #x400000 #x40000) (key-event-state event)))
 
-(-> make-stage (t &key (:painter function) (:key-handler (or null function))) stage)
-(defun make-stage (window &key painter key-handler)
-  "Fill WINDOW with a stage drawn by PAINTER, sending keys to KEY-HANDLER, and return it."
-  (let* ((stage  (make-instance 'stage :window window :painter painter :key-handler key-handler))
+(-> make-stage
+    (t &key (:painter function) (:key-handler (or null function)) (:drop-handler (or null function))) stage)
+(defun make-stage (window &key painter key-handler drop-handler)
+  "Fill WINDOW with a stage drawn by PAINTER, sending keys to KEY-HANDLER and drops to DROP-HANDLER, and return it."
+  (let* ((stage  (make-instance 'stage :window window :painter painter :key-handler key-handler
+                                       :drop-handler drop-handler))
          (canvas (lightfast:make-canvas
                   :parent   window
                   :x        0
@@ -380,6 +388,14 @@ otherwise."
       (lightfast:on canvas (pointer ':move) :event lightfast:+event-move+)
       (lightfast:on canvas (pointer ':enter) :event lightfast:+event-enter+)
       (lightfast:on canvas (pointer ':leave) :event lightfast:+event-leave+))
+    (lightfast:on canvas
+                  (lambda (widget event value)
+                    (declare (ignore widget event))
+                    (let ((handler (stage-drop-handler stage)))
+                      (when handler
+                        (with-stage-guard ("A drop")
+                          (funcall handler value)))))
+                  :event lightfast:+event-drop+)
     (lightfast:on canvas
                   (lambda (widget event value)
                     (declare (ignore widget event))

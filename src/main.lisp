@@ -51,7 +51,10 @@
         ((equal view "settings")
          (workbench-show-overlay workbench ':settings))
         ((equal view "channels")
-         (setf (workbench-sidebar-shown-p workbench) t)))))
+         (setf (workbench-sidebar-shown-p workbench) t))
+        ((equal view "top")
+         (setf (document-following-p (workbench-document workbench)) nil
+               (document-scroll (workbench-document workbench))      0)))))
   nil)
 
 (-> run-interface (launch) null)

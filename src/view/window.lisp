@@ -304,6 +304,40 @@
      nil)))
 
 
+;;;; -- Drops --
+
+(defparameter *image-types* '("png" "jpg" "jpeg" "gif" "webp")
+  "The file types the composer takes as image attachments.")
+
+(-> window--drop (workbench string) null)
+(defun window--drop (workbench dropped)
+  "Take what was dropped on the window: image files become attachments, anything else goes into the composer as text."
+  (let ((images nil)
+        (others nil))
+    (dolist (line (markdown-lines dropped))
+      (let* ((trimmed (string-trim '(#\Space #\Return) line))
+             (path    (if (and (> (length trimmed) 7) (string= "file://" trimmed :end2 7))
+                          (subseq trimmed 7)
+                          trimmed)))
+        (cond
+          ((zerop (length trimmed))
+           nil)
+          ((and (member (pathname-type path) *image-types* :test #'string-equal)
+                (probe-file path))
+           (push path images))
+          (t
+           (push trimmed others)))))
+    (when images
+      (setf (workbench-attachments workbench)
+            (remove-duplicates (append (workbench-attachments workbench) (nreverse images))
+                               :test #'string=)))
+    (when others
+      (setf (composer-text workbench)
+            (format nil "~A~{~A~^ ~}" (composer-text workbench) (nreverse others))))
+    (workbench-redraw workbench))
+  nil)
+
+
 ;;;; -- Construction --
 
 (-> window--make-natives (workbench t) list)
@@ -398,8 +432,9 @@
                                         :label  "Autolith"
                                         :app-id "aui"))
          (stage  (make-stage window
-                             :painter     (lambda (stage) (window--paint workbench stage))
-                             :key-handler (lambda (event) (window--stage-key workbench event)))))
+                             :painter      (lambda (stage) (window--paint workbench stage))
+                             :key-handler  (lambda (event) (window--stage-key workbench event))
+                             :drop-handler (lambda (dropped) (window--drop workbench dropped)))))
     (setf (workbench-window workbench) window
           (workbench-stage workbench)  stage)
     ;; A size given on the command line is pinned, so a tiling compositor

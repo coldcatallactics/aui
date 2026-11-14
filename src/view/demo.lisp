@@ -49,8 +49,12 @@
                   :arguments '(("command" . "make native && make check"))
                   :output    (format nil "c++: error: unrecognized option~%make: *** [Makefile:39] Error 1"))
    (make-instance 'tool-entry
-                  :call-identifier "demo-3" :name "resource.edit" :status ':completed :seconds 3/10
-                  :arguments '(("uri" . "workspace:Makefile")))
+                  :call-identifier "demo-3" :name "fs.edit" :status ':completed :seconds 3/10
+                  :expanded-p t
+                  :arguments  (list (cons "path" "Makefile")
+                                    (cons "old-text" "BRIDGE := build/liblightfast.so")
+                                    (cons "new-text" (format nil "SUFFIX := $(if $(filter Darwin,$(shell uname -s)),dylib,so)~%BRIDGE := build/liblightfast.$(SUFFIX)")))
+                  :output     "Replaced 1 occurrence in Makefile.")
    (make-instance 'assistant-entry :text *demo-answer*)
    (make-instance 'output-entry
                   :invocation "(status)"

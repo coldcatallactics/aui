@@ -204,16 +204,54 @@
                         :marker (if (member status '("completed" "done") :test #'equal) ':done ':open)
                         :margin-top 2 :margin-bottom 2)))))))
 
-(-> entries--tool-detail (tool-entry function) flow-block)
-(defun entries--tool-detail (entry toggle)
-  "Return the opened detail of ENTRY's call: its arguments and what it returned."
-  (declare (ignore toggle))
+(defparameter *diff-preview-lines* 40
+  "How many lines of each side of an edit an opened row shows.")
+
+(-> entries--diff-spans (string string) list)
+(defun entries--diff-spans (old new)
+  "Return the spans of an edit as a diff: the lines of OLD marked removed, then the lines of NEW marked added.
+
+The marks carry the color; the text stays ink, as Interlisp Paper has it."
+  (let ((removed (text-style ':code :face ':mono-bold :color *red*))
+        (added   (text-style ':code :face ':mono-bold :color *green*))
+        (spans   nil))
+    (flet ((side (text mark style)
+             (let ((lines (markdown-lines (string-right-trim '(#\Newline) text))))
+               (loop for line in lines
+                     for index from 0
+                     while (< index *diff-preview-lines*)
+                     do (push (make-span mark style) spans)
+                        (push (make-span (format nil "~A~%" line) nil) spans))
+               (when (> (length lines) *diff-preview-lines*)
+                 (push (make-span (format nil "  … ~D more lines~%" (- (length lines) *diff-preview-lines*))
+                                  nil)
+                       spans)))))
+      (when (plusp (length old))
+        (side old "- " removed))
+      (when (plusp (length new))
+        (side new "+ " added)))
+    (nreverse spans)))
+
+(-> entries--argument (tool-entry &rest string) t)
+(defun entries--argument (entry &rest names)
+  "Return the value of the first of ENTRY's arguments named by one of NAMES, or NIL."
+  (loop for name in names
+        for member = (assoc name (tool-entry-arguments entry) :test #'string=)
+        when member
+          do (return (rest member))))
+
+(-> entries--tool-detail (tool-entry) flow-block)
+(defun entries--tool-detail (entry)
+  "Return the opened detail of ENTRY's call: what it was asked, as a command, a diff or its arguments, and what it returned."
   (let* ((arguments (tool-entry-arguments entry))
          (output    (tool-entry-output entry))
          (lines     (and output (markdown-lines (string-right-trim '(#\Newline #\Space) output))))
          (shown     (if (> (length lines) *output-preview-lines*)
                         (subseq lines 0 *output-preview-lines*)
-                        lines)))
+                        lines))
+         (command   (entries--argument entry "command"))
+         (old-text  (entries--argument entry "old-text" "old_text" "old"))
+         (new-text  (entries--argument entry "new-text" "new_text" "new" "content")))
     (make-instance
      'box-block
      :frame-p       nil
@@ -222,14 +260,24 @@
      :margin-bottom 10
      :children
      (append
-      (when arguments
-        (list (make-code-block
-               (format nil "~{~A~^~%~}"
-                       (mapcar (lambda (member)
-                                 (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
-                               arguments))
-               :label         "arguments"
-               :margin-bottom 8)))
+      (cond
+        ((stringp command)
+         (list (make-code-block command :label "command" :margin-bottom 8)))
+        ((or (stringp old-text) (stringp new-text))
+         (list (make-code-block ""
+                                :label         (let ((path (entries--argument entry "path" "uri")))
+                                                 (if (stringp path) path "change"))
+                                :spans         (entries--diff-spans (if (stringp old-text) old-text "")
+                                                                    (if (stringp new-text) new-text ""))
+                                :margin-bottom 8)))
+        (arguments
+         (list (make-code-block
+                (format nil "~{~A~^~%~}"
+                        (mapcar (lambda (member)
+                                  (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
+                                arguments))
+                :label         "arguments"
+                :margin-bottom 8))))
       (when shown
         (list (make-code-block
                (format nil "~{~A~^~%~}~@[~%… ~D more lines~]" shown
@@ -261,7 +309,7 @@
                           :style      (text-style ':label)
                           :action     toggle)))
         (if expanded-p
-            (list row (entries--tool-detail entry toggle))
+            (list row (entries--tool-detail entry))
             (list row)))))
 
 

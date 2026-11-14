@@ -113,6 +113,7 @@ reports them, not the moment before it answered."
                            (lambda ()
                              (let ((stage (workbench-stage workbench)))
                                (workbench-poll-jobs workbench)
+                               (workbench-poll-waiting workbench)
                                (when (stage-animating-p stage)
                                  (incf (stage-phase stage))
                                  (stage-redraw stage))))

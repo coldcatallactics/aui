@@ -384,17 +384,20 @@ A choice is taken with its number or a click."
 
 ;;;; -- Pending Messages --
 
+(defparameter *pending-shown* 5
+  "How many waiting messages are listed above the composer, the newest ones.")
+
 (-> pending-height (workbench) integer)
 (defun pending-height (workbench)
   "Return the height the lines for messages not yet taken up need."
-  (* 24 (min 3 (length (workbench-pending workbench)))))
+  (* 24 (min *pending-shown* (length (workbench-waiting workbench)))))
 
 (-> pending-paint (workbench &key (:x integer) (:y integer) (:width integer)) null)
 (defun pending-paint (workbench &key x y width)
   "Draw each message the agent has not taken up yet as one line: a filled label saying whether it steers or follows, then the message."
   (let ((meta (text-style ':meta))
         (bold (text-style ':meta-bold)))
-    (loop for (nil text steer-p) in (last (workbench-pending workbench) 3)
+    (loop for (text steer-p) in (last (workbench-waiting workbench) *pending-shown*)
           for row-y from y by 24
           do (let* ((label   (if steer-p "steering" "follow-up"))
                     (label-w (+ 12 (text-width label bold))))

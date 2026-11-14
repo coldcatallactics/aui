@@ -170,3 +170,50 @@ takes. A conversation with no durable history yet yields no records."
        (autolith::conversation-replay-load configuration identifier))
     (error ()
       nil)))
+
+
+;;;; -- What Waits --
+
+;;; A channel keeps a snapshot of the messages it has not taken up yet: what
+;;; steers the running turn and what follows it. A window that attaches to a
+;;; channel others have written to reads that snapshot, so it shows what
+;;; waits there whoever sent it.
+
+(-> history-pending-pathname (t string) (or null pathname))
+(defun history-pending-pathname (configuration identifier)
+  "Return the file in which channel IDENTIFIER keeps the messages it has not taken up, or NIL when the channel has no history yet."
+  (handler-case
+      (autolith::configuration-pending-inputs-path
+       configuration
+       (autolith::conversation-pathname (autolith::conversation-replay-load configuration identifier)))
+    (error ()
+      nil)))
+
+(-> history--input-text (t) (or null string))
+(defun history--input-text (input)
+  "Return the text of the waiting INPUT, or NIL when it is not a message."
+  (cond
+    ((typep input '(or string autolith::user-message-input))
+     (autolith::user-message-input-text input))
+    ((consp input)
+     (some #'history--input-text input))
+    (t
+     nil)))
+
+(-> history-pending-inputs (pathname string) list)
+(defun history-pending-inputs (pathname identifier)
+  "Return the messages channel IDENTIFIER has not taken up, read from its snapshot at PATHNAME, each as (TEXT STEER-P): those that steer the running turn first, then those that follow it, oldest first."
+  (handler-case
+      (let* ((form  (and (probe-file pathname) (autolith::read-portable-form pathname)))
+             (state (and form (autolith::input-state-from-form form identifier))))
+        (append
+         (loop for entry in (append (getf state :steering-in-flight-items) (getf state :steering-items))
+               for text = (history--input-text entry)
+               when text
+                 collect (list text t))
+         (loop for work in (getf state :work-items)
+               for text = (and (consp work) (history--input-text (second work)))
+               when text
+                 collect (list text nil))))
+    (error ()
+      nil)))

@@ -307,6 +307,9 @@
           (workbench-working-since workbench) nil
           (workbench-approval workbench)      nil
           (workbench-pending workbench)       nil
+          (workbench--waiting workbench)          nil
+          (workbench--waiting-pathname workbench) nil
+          (workbench--waiting-read-at workbench)  0
           (workbench-jobs workbench)          nil
           (workbench-progress workbench)      nil
           (workbench-failure workbench)       nil
@@ -589,6 +592,45 @@ agent takes it up."
   (let ((window (workbench-window workbench)))
     (when window
       (setf (lightfast:label window) (format nil "~A - Autolith" (workbench-title workbench)))))
+  nil)
+
+(defparameter *waiting-poll-seconds* 3/2
+  "How often the channel's snapshot of waiting messages is read again.")
+
+(-> workbench-waiting (workbench) list)
+(defun workbench-waiting (workbench)
+  "Return the messages the channel has not taken up yet, each as (TEXT STEER-P), oldest first.
+
+They are what the channel's own snapshot lists, whoever sent them and from
+where, followed by what this window sent that the snapshot does not show yet."
+  (let ((known (workbench--waiting workbench)))
+    (append known
+            (loop for (nil text steer-p) in (workbench-pending workbench)
+                  unless (find text known :key #'first :test #'equal)
+                    collect (list text steer-p)))))
+
+(-> workbench-poll-waiting (workbench &key (:now-p boolean)) null)
+(defun workbench-poll-waiting (workbench &key now-p)
+  "Read the channel's snapshot of waiting messages again when the last reading is old, or at once when NOW-P."
+  (let ((channel (workbench-channel workbench))
+        (now     (get-internal-real-time)))
+    (when (and channel
+               (workbench-attached-p workbench)
+               (not (workbench-demo-p workbench))
+               (or now-p
+                   (>= (- now (workbench--waiting-read-at workbench))
+                       (* *waiting-poll-seconds* internal-time-units-per-second))))
+      (setf (workbench--waiting-read-at workbench) now)
+      (unless (workbench--waiting-pathname workbench)
+        (setf (workbench--waiting-pathname workbench)
+              (or (history-pending-pathname (world-configuration (workbench-world workbench)) channel)
+                  ':none)))
+      (let ((pathname (workbench--waiting-pathname workbench)))
+        (when (pathnamep pathname)
+          (let ((waiting (history-pending-inputs pathname channel)))
+            (unless (equal waiting (workbench--waiting workbench))
+              (setf (workbench--waiting workbench) waiting)
+              (workbench-redraw workbench)))))))
   nil)
 
 (-> workbench--drop-pending (workbench t) null)

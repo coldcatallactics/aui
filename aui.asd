@@ -66,7 +66,9 @@
     :components
     ((:file "suite")
      (:file "transcript-tests")
-     (:file "records-tests"))))
+     (:file "markdown-tests")
+     (:file "records-tests")
+     (:file "launch-tests"))))
   :perform     (asdf:test-op (operation component)
                  (declare (ignore operation component))
                  (unless (uiop:symbol-call '#:aui '#:run-tests)

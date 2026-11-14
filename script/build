@@ -10,8 +10,11 @@ if [[ ! -f "$lightfast/lightfast.asd" ]]; then
   echo "Lightfast is not at $lightfast. Clone https://github.com/lambda-symbolics/lightfast beside AUI, or set AUI_LIGHTFAST_ROOT." >&2
   exit 64
 fi
-make -s -C "$lightfast" native
 mkdir -p "$root/build"
+# The mark of a build that did not finish; bin/aui reads it so that it does
+# not try the same sources again on every start.
+touch "$root/build/failed"
+make -s -C "$lightfast" native
 # The image is saved beside the one in use and moved over it only once it
 # exists, so a build that fails leaves the last good image in place.
 rm -f "$root/build/aui.new"
@@ -25,4 +28,5 @@ if [[ ! -x "$root/build/aui.new" ]]; then
   exit 1
 fi
 mv -f "$root/build/aui.new" "$root/build/aui"
+rm -f "$root/build/failed"
 echo "Built $root/build/aui"

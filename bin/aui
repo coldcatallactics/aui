@@ -13,10 +13,17 @@ root=$(CDPATH= cd -P "$(dirname "$path")/.." && pwd)
 image=$root/build/aui
 lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 
+# A build that failed is not tried again until something changes after it.
+failed=$root/build/failed
+reference=$image
+if [[ -x "$image" && -f "$failed" && "$failed" -nt "$image" ]]; then
+  reference=$failed
+fi
+
 stale=false
 if [[ ! -x "$image" ]]; then
   stale=true
-elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$image" -print -quit 2>/dev/null) ]]; then
+elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print -quit 2>/dev/null) ]]; then
   stale=true
 elif autolith=$(command -v autolith 2>/dev/null); then
   # An Autolith updated since the build speaks a newer protocol than the image holds.
@@ -26,7 +33,7 @@ elif autolith=$(command -v autolith 2>/dev/null); then
     [[ $autolith == /* ]] || autolith=$directory/$autolith
   done
   version=$(dirname "$(dirname "$autolith")")/VERSION
-  if [[ -f "$version" && "$version" -nt "$image" && -z ${AUI_AUTOLITH_ROOT:-} ]]; then
+  if [[ -f "$version" && "$version" -nt "$reference" && -z ${AUI_AUTOLITH_ROOT:-} ]]; then
     stale=true
   fi
 fi

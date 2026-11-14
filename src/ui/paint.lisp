@@ -25,6 +25,13 @@
   "Return the brand green as it reads on the current ground."
   (if *on-ink-p* *green-light* *green*))
 
+(-> ground-tint (list) list)
+(defun ground-tint (color)
+  "Return COLOR as it reads on the current ground: an accent ink turns to its lighter form on an inverted one."
+  (or (and *on-ink-p*
+           (rest (assoc color *accents-on-ink* :test #'equal)))
+      color))
+
 (-> paint--color (list) null)
 (defun paint--color (color)
   "Make COLOR, a (RED GREEN BLUE) list, the drawing color."
@@ -86,8 +93,8 @@
   "Draw TEXT in STYLE with its baseline at BASELINE and its start at X, and return the X where it ends."
   (let ((width (text-width text style)))
     (when (plusp (length text))
-      (let ((color (or color (text-style-color style) (ink-color))))
-        (paint--color color)
+      (let ((color (or color (text-style-color style))))
+        (paint--color (if color (ground-tint color) (ink-color)))
         (lightfast:draw-font :font (theme-font (text-style-face style)) :size (text-style-size style))
         (lightfast:draw-text text x baseline)
         (when (text-style-underline-p style)
@@ -157,7 +164,7 @@ A path says most at its end, so that is the end kept."
 
 Marks are drawn from lines and polygons rather than taken from a font, so
 they look the same whatever faces the system has."
-  (let* ((color  (or color (ink-color)))
+  (let* ((color  (if color (ground-tint color) (ink-color)))
          (middle (floor size 2))
          (inset  (max 2 (floor size 5)))
          (left   (+ x inset))
@@ -199,6 +206,15 @@ they look the same whatever faces the system has."
        (lightfast:draw-line left (+ y middle) (+ x middle) top)
        (lightfast:draw-line right (+ y middle) (+ x middle) top)
        (lightfast:draw-line-style))
+      (:arrow-down
+       (lightfast:draw-line-style :width 2)
+       (lightfast:draw-line (+ x middle) top (+ x middle) bottom)
+       (lightfast:draw-line left (+ y middle) (+ x middle) bottom)
+       (lightfast:draw-line right (+ y middle) (+ x middle) bottom)
+       (lightfast:draw-line-style))
+      (:panel
+       (lightfast:draw-rect left top (- right left) (- bottom top))
+       (lightfast:draw-filled-rect left top (max 2 (floor (- right left) 3)) (- bottom top)))
       (:search
        (lightfast:draw-line-style :width 2)
        (lightfast:draw-circle (+ left (floor (- right left) 3)) (+ top (floor (- bottom top) 3))

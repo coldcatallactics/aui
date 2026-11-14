@@ -2,11 +2,13 @@
 
 ;;;; -- Theme --
 
-;;; The visual vocabulary: one paper ground, black ink, a green for what is
-;;; alive, a serif for what is said and a typewriter face for what the
-;;; interface says about it. After Interlisp Paper and the Autolith site:
-;;; inversion instead of grey, dither as the only in-between tone, hairlines,
-;;; no rounded corners.
+;;; The visual vocabulary: one paper ground, black ink, a serif for what is
+;;; said and a typewriter face for what the interface says about it. After
+;;; Interlisp Paper and the Autolith site: inversion instead of grey, dither
+;;; as the only in-between tone, hairlines, no rounded corners. A few accent
+;;; inks say what a thing is, as the terminal's colors do: green for what is
+;;; alive or went well, red for what failed, amber for tools and warnings,
+;;; blue for code, links and the step in hand, plum for the words that define.
 
 (defparameter *paper* '(255 254 250)
   "The one ground color.")
@@ -22,6 +24,23 @@
 
 (defparameter *red* '(138 28 28)
   "The mark of failure and of the destructive choice.")
+
+(defparameter *amber* '(140 84 0)
+  "The ink of tools and of what asks for attention without having failed.")
+
+(defparameter *blue* '(22 72 148)
+  "The ink of code among prose, of links and of the step in hand.")
+
+(defparameter *plum* '(112 38 118)
+  "The ink of the words that define, in code.")
+
+(defparameter *accents-on-ink*
+  '(((21 121 95) . (63 182 139))
+    ((138 28 28) . (246 132 120))
+    ((140 84 0) . (244 196 96))
+    ((22 72 148) . (150 196 252))
+    ((112 38 118) . (226 168 232)))
+  "Each accent ink as it reads on an inverted ground.")
 
 (defparameter *serif-families*
   '("Times New Roman MT Std" "Times New Roman" "Tinos" "Liberation Serif" "Nimbus Roman" "DejaVu Serif")

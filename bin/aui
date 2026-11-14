@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start AUI. The saved image is built on first use and again whenever AUI's
-# sources, Lightfast's bridge or the Autolith it was built against are newer.
+# sources or Lightfast's bridge are newer, or the Autolith on the path is not
+# the one it was built against.
 
 set -euo pipefail
 path=${BASH_SOURCE[0]}
@@ -16,8 +17,10 @@ lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 # A build that failed is not tried again until something changes after it.
 failed=$root/build/failed
 reference=$image
+tried=
 if [[ -x "$image" && -f "$failed" && "$failed" -nt "$image" ]]; then
   reference=$failed
+  IFS= read -r tried < "$failed" || true
 fi
 
 stale=false
@@ -25,15 +28,18 @@ if [[ ! -x "$image" ]]; then
   stale=true
 elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print -quit 2>/dev/null) ]]; then
   stale=true
-elif autolith=$(command -v autolith 2>/dev/null); then
-  # An Autolith updated since the build speaks a newer protocol than the image holds.
-  while [[ -L "$autolith" ]]; do
-    directory=$(CDPATH= cd -P "$(dirname "$autolith")" && pwd)
-    autolith=$(readlink "$autolith")
-    [[ $autolith == /* ]] || autolith=$directory/$autolith
-  done
-  version=$(dirname "$(dirname "$autolith")")/VERSION
-  if [[ -f "$version" && "$version" -nt "$reference" && -z ${AUI_AUTOLITH_ROOT:-} ]]; then
+elif [[ -z ${AUI_AUTOLITH_ROOT:-} ]]; then
+  # An Autolith updated since the build speaks a newer protocol than the image
+  # holds. An updated release is a new directory with old files in it, so the
+  # image is compared with the Autolith on the path by name and version, not
+  # by age.
+  # shellcheck source=../script/autolith.sh
+  source "$root/script/autolith.sh"
+  built=
+  if [[ -r "$root/build/autolith" ]]; then
+    IFS= read -r built < "$root/build/autolith" || true
+  fi
+  if [[ -n "$autolith_identity" && "$autolith_identity" != "$built" && "$autolith_identity" != "$tried" ]]; then
     stale=true
   fi
 fi

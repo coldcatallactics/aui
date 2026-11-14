@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build AUI: Lightfast's native bridge, then the saved image build/aui that
 # bin/aui starts. Run it again after updating AUI, Lightfast or Autolith.
+# Autolith is the release or the checkout that script/autolith.sh finds.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -11,9 +12,12 @@ if [[ ! -f "$lightfast/lightfast.asd" ]]; then
   exit 64
 fi
 mkdir -p "$root/build"
-# The mark of a build that did not finish; bin/aui reads it so that it does
-# not try the same sources again on every start.
-touch "$root/build/failed"
+# shellcheck source=autolith.sh
+source "$root/script/autolith.sh"
+# The mark of a build that did not finish, naming the Autolith it was tried
+# against; bin/aui reads it so that it does not try the same sources again on
+# every start.
+printf '%s\n' "$autolith_identity" > "$root/build/failed"
 make -s -C "$lightfast" native
 # The image is saved beside the one in use and moved over it only once it
 # exists, so a build that fails leaves the last good image in place.
@@ -28,5 +32,7 @@ if [[ ! -x "$root/build/aui.new" ]]; then
   exit 1
 fi
 mv -f "$root/build/aui.new" "$root/build/aui"
+# Which Autolith the image holds; bin/aui builds again when another is installed.
+printf '%s\n' "$autolith_identity" > "$root/build/autolith"
 rm -f "$root/build/failed"
 echo "Built $root/build/aui"

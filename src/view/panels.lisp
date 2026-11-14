@@ -17,121 +17,167 @@
   (list (panel--line text :style (text-style ':small :face ':serif-italic))))
 
 
+;;;; -- Cards --
+
+(-> panel--card (list) box-block)
+(defun panel--card (blocks)
+  "Return a card, a framed box, holding BLOCKS."
+  (make-instance 'box-block
+                 :children      blocks
+                 :padding-x     16
+                 :padding-y     12
+                 :margin-bottom 14))
+
+(-> panel--card-head (list) text-block)
+(defun panel--card-head (parts)
+  "Return the line at the head of a card from PARTS, each a string or a (TEXT STYLE) list, set apart by middle dots."
+  (make-text-block (loop for (part . more) on (remove nil parts)
+                         collect (if (consp part)
+                                     (make-span (first part) (second part))
+                                     (make-span part nil))
+                         when more
+                           collect (make-span "  ·  " nil))
+                   :style         (text-style ':meta)
+                   :margin-bottom 6))
+
+(-> panel--tabs (list list function) list)
+(defun panel--tabs (names things card)
+  "Return the tabs of a board over THINGS: one for all of them, then one for each of NAMES, a list of (KEY . LABEL), holding the things whose :STATUS is KEY, each drawn by the function CARD.
+
+A tab with nothing in it says so."
+  (flet ((tab (label members)
+           (list* label
+                  (length members)
+                  (or (mapcar card members)
+                      (panel--empty "Nothing here.")))))
+    (cons (tab "All" things)
+          (loop for (key . label) in names
+                collect (tab label (remove-if-not (lambda (thing)
+                                                    (eq (getf thing :status) key))
+                                                  things))))))
+
+
 ;;;; -- Agenda --
 
-(-> panel--agenda-blocks (list string) list)
-(defun panel--agenda-blocks (items directory)
-  "Return the blocks of the agenda ITEMS of the workspace at DIRECTORY: what is in hand first, then what is to do, blocked and noted, then what is done."
-  (if (null items)
-      (panel--empty "The agenda of this workspace is empty. Ask the agent to put something on it.")
-      (let ((order '(:doing :todo :blocked :note :done)))
-        (cons
-         (panel--line (format nil "~A  ·  ~D item~:P" (short-directory directory) (length items))
-                      :margin-bottom 14)
-         (loop for item in (stable-sort (copy-list items) #'<
-                                        :key (lambda (item)
-                                               (or (position (getf item :status) order) 1)))
-               append (let* ((status (getf item :status))
-                             (style  (ecase status
-                                       (:doing
-                                        (text-style ':list-bold :color *blue*))
-                                       (:blocked
-                                        (text-style ':list :color *red*))
-                                       (:done
-                                        (text-style ':list :strike-p t))
-                                       (:note
-                                        (text-style ':list :face ':serif-italic))
-                                       (:todo
-                                        (text-style ':list)))))
-                        (list
-                         (make-text-block (list (make-span (getf item :text) style))
-                                          :style      (text-style ':list)
-                                          :indent     26
-                                          :marker     (case status
-                                                        (:done
-                                                         ':done)
-                                                        (:note
-                                                         "–")
-                                                        (otherwise
-                                                         ':open))
-                                          :margin-top 6)
-                         (make-text-block
-                          (list (make-span (format nil "~(~A~)  ·  ~A~@[  ·  ~D memor~:@P~]"
-                                                   status
-                                                   (getf item :id)
-                                                   (and (getf item :memories)
-                                                        (length (getf item :memories))))
-                                           nil))
-                          :style         (text-style ':meta)
-                          :indent        26
-                          :margin-bottom 6))))))))
+(-> panel--agenda-card (list) box-block)
+(defun panel--agenda-card (item)
+  "Return the card of the agenda ITEM: what it is and how it stands at its head, its text as Markdown, and the memories attached to it."
+  (let ((status (getf item :status)))
+    (panel--card
+     (append
+      (list (panel--card-head
+             (list (list (ecase status
+                           (:doing
+                            "Doing")
+                           (:todo
+                            "To do")
+                           (:blocked
+                            "Blocked")
+                           (:note
+                            "Note")
+                           (:done
+                            "Done"))
+                         (text-style ':meta-bold
+                                     :color (ecase status
+                                              (:doing
+                                               *blue*)
+                                              (:blocked
+                                               *red*)
+                                              (:done
+                                               *green*)
+                                              (:note
+                                               *plum*)
+                                              (:todo
+                                               nil))))
+                   (getf item :id)
+                   (and (getf item :memories)
+                        (format nil "~D memor~:@P" (length (getf item :memories)))))))
+      (let ((blocks (prose-blocks (or (getf item :text) "") :style (text-style ':list) :breaks-p t)))
+        (when blocks
+          (setf (block-margin-top (first blocks))           0
+                (block-margin-bottom (first (last blocks))) 0))
+        blocks)))))
 
 (-> panel-show-agenda (workbench) null)
 (defun panel-show-agenda (workbench)
-  "Show the agenda of the workspace the channel works in."
+  "Show the agenda of the workspace the channel works in as a board: a tab for each state an item can be in, and the items as cards."
   (let ((directory (workbench-directory workbench)))
-    (workbench-show-panel
-     workbench "Agenda"
-     (handler-case (panel--agenda-blocks (if (workbench-demo-p workbench)
-                                             (demo-agenda)
-                                             (workspace-agenda directory))
-                                         directory)
-       (client-error (condition)
-         (panel--empty (client-error-message condition))))))
+    (handler-case
+        (let ((items (stable-sort (copy-list (if (workbench-demo-p workbench)
+                                                 (demo-agenda)
+                                                 (workspace-agenda directory)))
+                                  #'<
+                                  :key (lambda (item)
+                                         (or (position (getf item :status) '(:doing :todo :blocked :note :done))
+                                             1)))))
+          (workbench-show-board workbench
+                                (format nil "Agenda of ~A" (short-directory directory))
+                                (panel--tabs '((:doing . "Doing") (:todo . "To do") (:blocked . "Blocked")
+                                               (:note . "Notes") (:done . "Done"))
+                                             items
+                                             #'panel--agenda-card)))
+      (client-error (condition)
+        (workbench-show-panel workbench "Agenda" (panel--empty (client-error-message condition))))))
   nil)
 
 
 ;;;; -- Memories --
 
-(-> panel--memory-blocks (list) list)
-(defun panel--memory-blocks (memories)
-  "Return the blocks of MEMORIES: each one's title, why it may no longer hold, what it says, and where it is from."
-  (if (null memories)
-      (panel--empty "Nothing is remembered for this workspace yet. Ask the agent to remember something.")
-      (let ((stale      (count ':stale memories :key (lambda (memory) (getf memory :status))))
-            (unverified (count ':unverified memories :key (lambda (memory) (getf memory :status)))))
-        (cons
-         (panel--line (format nil "~D memor~:@P~[~:;  ·  ~:*~D stale~]~[~:;  ·  ~:*~D unverified~]"
-                              (length memories) stale unverified)
-                      :margin-bottom 14)
-         (loop for memory in memories
-               append (let ((status (getf memory :status)))
-                        (append
-                         (list (make-text-block
-                                (list (make-span (or (getf memory :title) "") nil))
-                                :style      (text-style ':list-bold)
-                                :margin-top 10))
-                         (unless (eq status ':current)
-                           (list (panel--line (format nil "~(~A~): ~A" status
-                                                      (entries--one-line (or (getf memory :summary) "")))
-                                              :style         (text-style ':meta
-                                                                         :color (if (eq status ':stale)
-                                                                                    *red*
-                                                                                    *amber*))
-                                              :margin-bottom 2)))
-                         (let ((blocks (prose-blocks (or (getf memory :content) "")
-                                                     :style (text-style ':small))))
-                           (when blocks
-                             (setf (block-margin-top (first blocks))           2
-                                   (block-margin-bottom (first (last blocks))) 4))
-                           blocks)
-                         (list (panel--line (format nil "~A  ·  ~(~A~)~@[  ·  ~A~]  ·  ~A"
-                                                    (getf memory :id)
-                                                    (getf memory :scope)
-                                                    (getf memory :provenance)
-                                                    (getf memory :date))
-                                            :margin-bottom 8)))))))))
+(-> panel--memory-card (list) box-block)
+(defun panel--memory-card (memory)
+  "Return the card of MEMORY: how it stands and where it is from at its head, its title, why it may no longer hold, and what it says as Markdown."
+  (let ((status (getf memory :status)))
+    (panel--card
+     (append
+      (list (panel--card-head
+             (list (list (ecase status
+                           (:current
+                            "Current")
+                           (:stale
+                            "Stale")
+                           (:unverified
+                            "Unverified"))
+                         (text-style ':meta-bold
+                                     :color (ecase status
+                                              (:current
+                                               *green*)
+                                              (:stale
+                                               *red*)
+                                              (:unverified
+                                               *amber*))))
+                   (string-downcase (princ-to-string (getf memory :scope)))
+                   (getf memory :date)
+                   (getf memory :id)))
+            (make-text-block (list (make-span (or (getf memory :title) "") nil))
+                             :style         (text-style ':list-bold)
+                             :margin-bottom 4))
+      (unless (eq status ':current)
+        (list (panel--line (entries--one-line (or (getf memory :summary) ""))
+                           :style         (text-style ':meta :color (if (eq status ':stale) *red* *amber*))
+                           :margin-bottom 6)))
+      (let ((blocks (prose-blocks (or (getf memory :content) "") :style (text-style ':small))))
+        (when blocks
+          (setf (block-margin-top (first blocks))           0
+                (block-margin-bottom (first (last blocks))) 0))
+        blocks)
+      (when (getf memory :provenance)
+        (list (panel--line (format nil "from ~A" (getf memory :provenance)) :margin-bottom 0)))))))
 
 (-> panel-show-memories (workbench) null)
 (defun panel-show-memories (workbench)
-  "Show what is remembered for the workspace the channel works in."
-  (workbench-show-panel
-   workbench "Memories"
-   (handler-case (panel--memory-blocks (if (workbench-demo-p workbench)
-                                           (demo-memories)
-                                           (workspace-memories (workbench-directory workbench))))
-     (client-error (condition)
-       (panel--empty (client-error-message condition)))))
+  "Show what is remembered for the workspace the channel works in as a board: a tab for each state a memory can be in, and the memories as cards."
+  (handler-case
+      (let ((memories (if (workbench-demo-p workbench)
+                          (demo-memories)
+                          (workspace-memories (workbench-directory workbench)))))
+        (workbench-show-board workbench
+                              "Memories"
+                              (panel--tabs '((:stale . "Stale") (:unverified . "Unverified")
+                                             (:current . "Current"))
+                                           memories
+                                           #'panel--memory-card)))
+    (client-error (condition)
+      (workbench-show-panel workbench "Memories" (panel--empty (client-error-message condition)))))
   nil)
 
 

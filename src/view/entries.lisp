@@ -240,15 +240,22 @@ The marks carry the color; the text stays ink, as Interlisp Paper has it."
         when member
           do (return (rest member))))
 
+(-> entries--preview (string) string)
+(defun entries--preview (text)
+  "Return the first lines of TEXT, as many as a result shows at once, and how many more there are."
+  (let* ((lines (markdown-lines (string-right-trim '(#\Newline #\Space) text)))
+         (shown (if (> (length lines) *output-preview-lines*)
+                    (subseq lines 0 *output-preview-lines*)
+                    lines)))
+    (format nil "~{~A~^~%~}~@[~%… ~D more lines~]" shown
+            (and (> (length lines) (length shown)) (- (length lines) (length shown))))))
+
 (-> entries--tool-detail (tool-entry) flow-block)
 (defun entries--tool-detail (entry)
   "Return the opened detail of ENTRY's call: what it was asked, as a command, a diff or its arguments, and what it returned."
   (let* ((arguments (tool-entry-arguments entry))
          (output    (tool-entry-output entry))
-         (lines     (and output (markdown-lines (string-right-trim '(#\Newline #\Space) output))))
-         (shown     (if (> (length lines) *output-preview-lines*)
-                        (subseq lines 0 *output-preview-lines*)
-                        lines))
+         (failed-p  (eq (tool-entry-status entry) ':failed))
          (command   (entries--argument entry "command"))
          (old-text  (entries--argument entry "old-text" "old_text" "old"))
          (new-text  (entries--argument entry "new-text" "new_text" "new" "content")))
@@ -278,11 +285,27 @@ The marks carry the color; the text stays ink, as Interlisp Paper has it."
                                 arguments))
                 :label         "arguments"
                 :margin-bottom 8))))
-      (when shown
-        (list (make-code-block
-               (format nil "~{~A~^~%~}~@[~%… ~D more lines~]" shown
-                       (and (> (length lines) (length shown)) (- (length lines) (length shown))))
-               :label (if (eq (tool-entry-status entry) ':failed) "failed" "result"))))))))
+      (when output
+        (multiple-value-bind (sections status) (tool-result-sections (tool-entry-name entry) output)
+          (let ((alone-p (null (rest sections))))
+            (or (loop for (label . text) in sections
+                      for first-p = t then nil
+                      collect (make-code-block
+                               (entries--preview text)
+                               ;; One section is the result; several go by what they captured.
+                               :label         (format nil "~A~@[ · ~A~]"
+                                                      (cond
+                                                        ((not alone-p)
+                                                         label)
+                                                        (failed-p
+                                                         "failed")
+                                                        (t
+                                                         "result"))
+                                                      (and first-p status))
+                               :margin-bottom 8))
+                ;; A command that printed nothing still says how it ended.
+                (and status
+                     (list (make-code-block status :label (if failed-p "failed" "result"))))))))))))
 
 (defmethod entry-blocks ((entry tool-entry) toggle)
   "One row naming the tool and what it was asked, opening to its arguments and result; a plan update is drawn as the plan."

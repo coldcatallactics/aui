@@ -237,6 +237,35 @@ holding the text, so a malformed call still shows what was asked."
   (let ((microseconds (getf properties :real-microseconds)))
     (and (realp microseconds) (/ microseconds 1000000))))
 
+(-> tool-result-sections (string string) (values list (or null string)))
+(defun tool-result-sections (name output)
+  "Return what the result OUTPUT of the tool NAME shows a person, and the status line it opens with.
+
+The first value is a list of (LABEL . TEXT). A shell command's result is
+split by the reader Autolith's terminal uses: one section for each capture
+that holds lines, without the byte counts and log references kept for the
+model, then a section for anything it noted, such as a timeout. The second
+value is its exit line. Any other tool's result is one section and no status."
+  (let ((parts (and (string= name "shell.run")
+                    (fboundp 'autolith::application--shell-result-parts)
+                    (handler-case (autolith::application--shell-result-parts output)
+                      (error ()
+                        nil)))))
+    (if (null parts)
+        (values (list (cons "result" output)) nil)
+        (let* ((execution (getf parts :execution))
+               (notes     (append (and execution
+                                       (autolith::application--shell-execution-rows execution)
+                                       (list execution))
+                                  (getf parts :notes)))
+               (sections  (loop for section in (getf parts :sections)
+                                when (getf section :lines)
+                                  collect (cons (getf section :label)
+                                                (format nil "~{~A~^~%~}" (getf section :lines))))))
+          (values (append sections
+                          (and notes (list (cons "note" (format nil "~{~A~^~%~}" notes)))))
+                  (getf parts :exit))))))
+
 (-> projector--settle-tool
     (projector (or null string) &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
 (defun projector--settle-tool (projector call-identifier &key success-p output seconds)

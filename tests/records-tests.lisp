@@ -195,3 +195,16 @@
     (fiveam:is (null (notice-entry-detail (first entries))))
     (fiveam:is (eq ':failure (notice-entry-tone (second entries))))
     (fiveam:is (string= "the provider refused" (notice-entry-detail (second entries))))))
+
+(fiveam:test a-shell-result-shows-its-output-not-its-bookkeeping
+  (multiple-value-bind (sections status)
+      (tool-result-sections
+       "shell.run"
+       (format nil "exit 0~%Execution: exited; timeout no; cancelled no~%combined output: 26 bytes retained, 26 bytes observed; capture-complete yes; status complete~%Log: shell-log:abc/def/output~%hello from the mock~%Linux~%"))
+    (fiveam:is (string= "exit 0" status))
+    (fiveam:is (= 1 (length sections)))
+    (fiveam:is (string= (format nil "hello from the mock~%Linux") (rest (first sections))))
+    (fiveam:is (null (search "bytes retained" (rest (first sections))))))
+  (multiple-value-bind (sections status) (tool-result-sections "resource.read" "the file's text")
+    (fiveam:is (null status))
+    (fiveam:is (equal '(("result" . "the file's text")) sections))))

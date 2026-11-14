@@ -69,11 +69,13 @@
                    :margin-top    *prose-paragraph-gap*
                    :margin-bottom *prose-paragraph-gap*)))
 
-(-> prose-blocks (string &key (:style text-style)) list)
-(defun prose-blocks (text &key (style (text-style ':body)))
-  "Return the blocks of the Markdown TEXT, its running text set in STYLE."
+(-> prose-blocks (string &key (:style text-style) (:breaks-p boolean)) list)
+(defun prose-blocks (text &key (style (text-style ':body)) breaks-p)
+  "Return the blocks of the Markdown TEXT, its running text set in STYLE.
+
+BREAKS-P keeps the line breaks a person typed inside a paragraph."
   (let ((blocks nil))
-    (dolist (node (markdown-blocks text))
+    (dolist (node (markdown-blocks text :breaks-p breaks-p))
       (push
        (ecase (first node)
          (:heading

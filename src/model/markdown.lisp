@@ -257,19 +257,22 @@ stay as text."
             (return))))
     (nreverse lines)))
 
-(-> markdown-blocks (string) list)
-(defun markdown-blocks (text)
+(-> markdown-blocks (string &key (:breaks-p boolean)) list)
+(defun markdown-blocks (text &key breaks-p)
   "Return TEXT's block nodes in order.
 
 A fenced code block still open at the end of TEXT, as while an answer is
-streaming, is returned as a code block of what has arrived."
+streaming, is returned as a code block of what has arrived. BREAKS-P keeps
+the line breaks inside a paragraph, as a person who typed them meant them;
+without it they are spaces, as Markdown has it."
   (let ((lines     (markdown-lines text))
         (blocks    nil)
         (paragraph nil))
     (labels ((flush ()
                (when paragraph
                  (push (list ':paragraph
-                             (markdown-inline (format nil "~{~A~^ ~}" (nreverse paragraph))))
+                             (markdown-inline (format nil (if breaks-p "~{~A~^~%~}" "~{~A~^ ~}")
+                                                      (nreverse paragraph))))
                        blocks)
                  (setf paragraph nil))))
       (loop while lines

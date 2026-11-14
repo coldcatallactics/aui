@@ -61,6 +61,13 @@
 (fiveam:test a-bar-in-prose-is-not-a-table
   (fiveam:is (equal '(:paragraph) (mapcar #'first (markdown-blocks "| just a line with bars |")))))
 
+(fiveam:test typed-line-breaks-are-kept-on-request
+  (let ((soft (markdown-blocks (format nil "one~%two")))
+        (hard (markdown-blocks (format nil "one~%two~2%- a~%- b") :breaks-p t)))
+    (fiveam:is (equal "one two" (first (first (second (first soft))))))
+    (fiveam:is (equal (format nil "one~%two") (first (first (second (first hard))))))
+    (fiveam:is (equal '(:paragraph :item :item) (mapcar #'first hard)))))
+
 (fiveam:test text-for-a-terminal-is-shown-as-the-terminal-would
   ;; A carriage return lets what follows overwrite the line, as git's progress does.
   (fiveam:is (string= (format nil "Rebasing (3/3)~%done")

@@ -105,8 +105,13 @@
                   (mapcar (lambda (pathname)
                             (make-instance 'image-block :pathname pathname :margin-bottom 8))
                           (user-entry-images entry))
+                  ;; What a person typed is Markdown too, and its line breaks are meant.
                   (when (plusp (length text))
-                    (list (make-text-block (list (make-span text nil)) :style (text-style ':body)))))))
+                    (let ((blocks (prose-blocks text :breaks-p t)))
+                      (when blocks
+                        (setf (block-margin-top (first blocks))           0
+                              (block-margin-bottom (first (last blocks))) 0))
+                      blocks)))))
     (list (make-instance 'box-block
                          :children      (or body (list (make-text-block (list (make-span "" nil)))))
                          :align         (if sender ':left ':right)

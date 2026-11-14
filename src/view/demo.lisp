@@ -141,6 +141,12 @@
                                                                       "contextLimit" 272000))
         (workbench-working-p workbench)     t
         (workbench-working-since workbench) (- (get-universal-time) 42)
+        (workbench-jobs workbench)          (list (portable-object "id" "job-1" "role" "review"
+                                                                   "state" "running" "elapsedSeconds" 73
+                                                                   "activity" "resource.read › search.content")
+                                                  (portable-object "id" "job-2" "role" "shell.run"
+                                                                   "state" "pending" "elapsedSeconds" nil
+                                                                   "activity" "queued"))
         (workbench-operations workbench)    (demo--operations)
         (workbench-settings workbench)      (demo--settings)
         (workbench-models workbench)        (list (portable-object "id" "gpt-6.1-sol" "provider" "chatgpt")

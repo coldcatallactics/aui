@@ -113,6 +113,16 @@
     :accessor      workbench-models
     :type          list
     :documentation "The models on offer as portable rows, once fetched.")
+   (jobs
+    :initform      nil
+    :accessor      workbench-jobs
+    :type          list
+    :documentation "The channel's background jobs as portable rows, as last fetched.")
+   (jobs-fetched-at
+    :initform      0
+    :accessor      workbench-jobs-fetched-at
+    :type          integer
+    :documentation "The universal time the jobs were last asked for.")
    (notice
     :initform      nil
     :accessor      workbench-notice
@@ -275,6 +285,7 @@
           (workbench-working-since workbench) nil
           (workbench-approval workbench)      nil
           (workbench-pending workbench)       nil
+          (workbench-jobs workbench)          nil
           (workbench-progress workbench)      nil
           (workbench-failure workbench)       nil
           (workbench-notice workbench)        nil))
@@ -432,6 +443,48 @@ agent takes it up."
   nil)
 
 
+;;;; -- Jobs --
+
+(defparameter *jobs-poll-seconds* 3
+  "How often the jobs are fetched again while any of them is live.")
+
+(-> workbench-live-jobs (workbench) list)
+(defun workbench-live-jobs (workbench)
+  "Return the jobs that are waiting or running, as portable rows."
+  (remove-if-not (lambda (job)
+                   (member (portable-get job "state") '("pending" "running" "blocked" "yielded")
+                           :test #'equal))
+                 (workbench-jobs workbench)))
+
+(-> workbench-refresh-jobs (workbench) null)
+(defun workbench-refresh-jobs (workbench)
+  "Fetch the channel's jobs again."
+  (setf (workbench-jobs-fetched-at workbench) (get-universal-time))
+  (workbench-refresh workbench "_autolith/jobs")
+  nil)
+
+(-> workbench-poll-jobs (workbench) null)
+(defun workbench-poll-jobs (workbench)
+  "Fetch the jobs again when some are live, or the channel says some are, and the last answer is old."
+  (when (and (workbench-attached-p workbench)
+             (or (workbench-live-jobs workbench)
+                 (let ((count (getf (workbench-status workbench) :task-live-count)))
+                   (and (integerp count) (plusp count))))
+             (>= (- (get-universal-time) (workbench-jobs-fetched-at workbench)) *jobs-poll-seconds*))
+    (workbench-refresh-jobs workbench))
+  nil)
+
+(-> workbench-cancel-job (workbench string) null)
+(defun workbench-cancel-job (workbench identifier)
+  "Cancel the job IDENTIFIER and the jobs it started."
+  (let ((session (workbench-session workbench)))
+    (when (and session (workbench-attached-p workbench))
+      (session-operation session "_autolith/job-cancel"
+                         :params  (portable-object "jobId" identifier)
+                         :request (list ':cancel-job identifier))))
+  nil)
+
+
 ;;;; -- Events --
 
 (-> workbench--note-status (workbench list) null)
@@ -492,7 +545,9 @@ agent takes it up."
            (workbench--drop-pending workbench (getf (rest record) :submission)))))
       (:status
        (when (member (getf fields :status) '(:provider-request-completed :compaction-completed))
-         (workbench-refresh workbench "_autolith/state")))))
+         (workbench-refresh workbench "_autolith/state"))
+       (when (eq (getf fields :status) ':tool-call-completed)
+         (workbench-refresh-jobs workbench)))))
   nil)
 
 (-> workbench--attachment-event (workbench attachment-event) null)
@@ -549,6 +604,15 @@ agent takes it up."
       ((equal request "_autolith/models")
        (when ok-p
          (setf (workbench-models workbench) (portable-items (portable-get value "items")))))
+      ((equal request "_autolith/jobs")
+       (when ok-p
+         (setf (workbench-jobs workbench) (portable-items (portable-get value "items")))))
+      ((and (consp request) (eq (first request) ':cancel-job))
+       (workbench-refresh-jobs workbench)
+       (unless ok-p
+         (setf (workbench-notice workbench)
+               (format nil "Could not cancel the job: ~A"
+                       (or (result-event-report event) "the channel refused.")))))
       ((and (consp request) (eq (first request) ':set-setting))
        (if ok-p
            (workbench-refresh workbench "_autolith/state" "_autolith/settings")

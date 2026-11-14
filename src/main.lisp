@@ -70,6 +70,7 @@
     (lightfast:add-timeout *tick-seconds*
                            (lambda ()
                              (let ((stage (workbench-stage workbench)))
+                               (workbench-poll-jobs workbench)
                                (when (stage-animating-p stage)
                                  (incf (stage-phase stage))
                                  (stage-redraw stage))))

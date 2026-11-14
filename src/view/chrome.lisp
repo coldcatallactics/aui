@@ -236,6 +236,56 @@
   nil)
 
 
+;;;; -- Jobs --
+
+(defparameter *jobs-shown* 4
+  "How many live jobs are listed above the composer.")
+
+(-> jobs-height (workbench) integer)
+(defun jobs-height (workbench)
+  "Return the height the list of live jobs needs."
+  (* 24 (min *jobs-shown* (length (workbench-live-jobs workbench)))))
+
+(-> jobs-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
+(defun jobs-paint (workbench stage &key x y width)
+  "Draw each live job as one line: a working mark, its role, what it is doing, how long it has run, and a way to cancel it."
+  (let ((meta (text-style ':meta))
+        (bold (text-style ':meta-bold)))
+    (loop for job in (workbench-live-jobs workbench)
+          for row-y from y by 24
+          repeat *jobs-shown*
+          do (let* ((identifier (portable-get job "id"))
+                    (elapsed    (portable-get job "elapsedSeconds"))
+                    (cancel-w   (chip-width "cancel"))
+                    (right      (- (+ x width) cancel-w)))
+               (setf (stage-animating-p stage) t)
+               (if (equal (portable-get job "state") "running")
+                   (paint-spinner (+ x 2) (+ row-y 5) :size 14 :phase (stage-phase stage) :color *green*)
+                   (paint-mark ':ring (+ x 2) (+ row-y 5) :size 14))
+               (when (stringp identifier)
+                 (paint-chip stage (list ':cancel-job identifier) "cancel"
+                             :x       right
+                             :y       row-y
+                             :height  24
+                             :action  (lambda () (workbench-cancel-job workbench identifier))
+                             :tooltip "Cancel this job"))
+               (when (integerp elapsed)
+                 (let ((text (chrome--elapsed elapsed)))
+                   (decf right (+ 8 (text-width text meta)))
+                   (paint-text text right (+ row-y 16) :style meta)))
+               (let ((end (paint-text (princ-to-string (or (portable-get job "role") "job"))
+                                      (+ x 24) (+ row-y 16)
+                                      :style bold)))
+                 (paint-text (text-fit (entries--one-line
+                                        (princ-to-string (or (portable-get job "activity")
+                                                             (portable-get job "state")
+                                                             "")))
+                                       meta (max 0 (- right end 20)))
+                             (+ end 10) (+ row-y 16)
+                             :style meta)))))
+  nil)
+
+
 ;;;; -- Pending Messages --
 
 (-> pending-height (workbench) integer)

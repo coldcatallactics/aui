@@ -35,17 +35,19 @@
          (notice-h   (if (workbench-notice workbench) 26 0))
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
-         (stack-top  (- composer-y 10 notice-h pending-h approval-h)))
+         (jobs-h     (jobs-height workbench))
+         (stack-top  (- composer-y 10 notice-h pending-h approval-h jobs-h)))
     (list :docked-p   docked-p
           :drawer-p   drawer-p
           :sidebar    (list 0 0 (min *sidebar-width* (- width 40)) height)
           :header     (list main-x 0 main-width *header-height*)
           :document   (list main-x *header-height* main-width (max 40 (- stack-top *header-height*)))
+          :jobs       (list column-x stack-top column jobs-h)
           :completion (let ((height (completion-height workbench)))
                         (list column-x (- composer-y height 4) column height))
-          :approval   (list column-x stack-top column approval-h)
-          :pending    (list column-x (+ stack-top approval-h) column pending-h)
-          :notice     (list column-x (+ stack-top approval-h pending-h) column notice-h)
+          :approval   (list column-x (+ stack-top jobs-h) column approval-h)
+          :pending    (list column-x (+ stack-top jobs-h approval-h) column pending-h)
+          :notice     (list column-x (+ stack-top jobs-h approval-h pending-h) column notice-h)
           :composer   (list column-x composer-y column composer-h)
           :status     (list (+ column-x 2) status-y (- column 4) *status-height*))))
 
@@ -70,6 +72,9 @@
         (declare (ignore height))
         (header-paint workbench stage :x x :y y :width width
                                       :sidebar-toggle-p (not (getf layout :docked-p))))
+      (destructuring-bind (x y width height) (box :jobs)
+        (when (plusp height)
+          (jobs-paint workbench stage :x x :y y :width width)))
       (when (workbench-approval workbench)
         (destructuring-bind (x y width height) (box :approval)
           (approval-paint workbench stage :x x :y y :width width :height height)))

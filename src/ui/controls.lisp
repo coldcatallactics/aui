@@ -11,10 +11,12 @@
     (stage t string
            &key (:x integer) (:y integer) (:width integer) (:height integer)
                 (:action (or null function)) (:primary-p boolean) (:enabled-p boolean)
-                (:mark (or null keyword)) (:style (or null text-style)) (:tooltip (or null string)))
+                (:mark (or null keyword)) (:mark-size (or null integer)) (:style (or null text-style))
+                (:tooltip (or null string)))
     null)
 (defun paint-button (stage identifier label
-                     &key (x 0) (y 0) (width 0) (height 0) action primary-p (enabled-p t) mark style tooltip)
+                     &key (x 0) (y 0) (width 0) (height 0) action primary-p (enabled-p t) mark mark-size style
+                          tooltip)
   "Draw a button with LABEL in the box and declare its region as IDENTIFIER.
 
 A primary button is filled; the pointer over a button swaps it. A button
@@ -24,13 +26,20 @@ before the label, or alone when LABEL is empty."
          (hot-p    (and enabled-p (stage-hot-p stage identifier)))
          (filled-p (if primary-p (not hot-p) hot-p)))
     (flet ((content ()
-             (let* ((mark-size (min 16 (- height 8)))
+             (let* ((mark-size (or mark-size (min 16 (- height 8))))
                     (label-w   (text-width label style))
-                    (gap       (if (and mark (plusp (length label))) 6 0))
+                    (gap       (if (and mark (plusp (length label))) 7 0))
                     (content-w (+ (if mark mark-size 0) gap label-w))
                     (start     (+ x (floor (- width content-w) 2))))
                (when mark
-                 (paint-mark mark start (+ y (floor (- height mark-size) 2)) :size mark-size))
+                 (paint-mark mark start
+                             (if (plusp (length label))
+                                 (multiple-value-bind (ascent descent) (text-metrics style)
+                                   (- (+ y (floor (- height (+ ascent descent)) 2) ascent)
+                                      (round (* 3/10 (text-style-size style)))
+                                      (floor mark-size 2)))
+                                 (+ y (floor (- height mark-size) 2)))
+                             :size mark-size))
                (when (plusp (length label))
                  (paint-text-in label style
                                 :x      (+ start (if mark (+ mark-size gap) 0))

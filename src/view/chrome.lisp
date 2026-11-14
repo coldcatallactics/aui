@@ -121,11 +121,10 @@
     (workbench stage &key (:x integer) (:y integer) (:width integer) (:sidebar-toggle-p boolean)) null)
 (defun header-paint (workbench stage &key x y width sidebar-toggle-p)
   "Draw the header: the channel's title, a line about it in the interface's voice, and its menu."
-  (let* ((left   (+ x 24 (if sidebar-toggle-p 38 0)))
-         (right  (- (+ x width) 20))
-         (title  (text-style ':heading-2))
-         (meta   (text-style ':meta))
-         (status (workbench-status workbench)))
+  (let* ((left  (+ x 24 (if sidebar-toggle-p 38 0)))
+         (right (- (+ x width) 20))
+         (title (text-style ':heading-2))
+         (meta  (text-style ':meta)))
     (paint-fill x y :width width :height *header-height* :color *paper*)
     (when sidebar-toggle-p
       (paint-button stage ':toggle-sidebar ""
@@ -138,7 +137,7 @@
                                (setf (workbench-sidebar-shown-p workbench)
                                      (not (workbench-sidebar-shown-p workbench)))
                                (workbench-redraw workbench))
-                    :tooltip "Channels (Ctrl+T)"))
+                    :tooltip "Show the channels (Ctrl+T)"))
     (when (workbench-channel workbench)
       (paint-button stage ':channel-menu ""
                     :x       (- right 30)
@@ -150,12 +149,9 @@
                     :tooltip "This channel")
       (decf right 44))
     (paint-text (text-fit (workbench-title workbench) title (- right left)) left (+ y 30) :style title)
-    (let ((line (format nil "~@[~A · ~]~@[~A · ~]~A"
+    (let ((line (format nil "~@[~A · ~]~A"
                         (and (workbench-channel workbench)
                              (channel-display-name (workbench-channel workbench)))
-                        (and status (portable-string (getf status :autolith-version))
-                             (string/= (getf status :autolith-version) (world-autolith-version))
-                             (format nil "server ~A" (getf status :autolith-version)))
                         (short-directory (workbench-directory workbench)))))
       (paint-text (text-fit line meta (- right left)) left (+ y 50) :style meta))
     ;; The header parts from the conversation with a dither band, not a rule.

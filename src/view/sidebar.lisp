@@ -217,28 +217,47 @@
 
 (-> sidebar-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sidebar-paint (workbench stage &key x y width height)
-  "Draw the channel list in the box, with its heading above and the server's state below."
+  "Draw the channel list in the box, with its heading above and the way to the settings and commands below."
   (let* ((entries     (sidebar--visible-entries workbench))
          (top         (+ y 150))
-         (bottom      (- (+ y height) 64))
+         (bottom      (- (+ y height) 46))
          (list-height (max 0 (- bottom top)))
          (content     (* *sidebar-row-height* (length entries)))
          (scroll      (max 0 (min (workbench-sidebar-scroll workbench) (max 0 (- content list-height))))))
     (setf (workbench-sidebar-scroll workbench) scroll)
     (paint-fill x y :width width :height height :color *paper*)
-    (paint-line (+ x width -1) y :x2 (+ x width -1) :y2 (+ y height))
-    ;; Heading: the wordmark and the way to a new channel.
+    ;; Heading: the wordmark, the way to put the list away, and the way to a new channel.
     (paint-text "Autolith" (+ x 14) (+ y 40) :style (text-style ':title))
+    (paint-button stage ':hide-sidebar ""
+                  :x       (- (+ x width) 42)
+                  :y       (+ y 16)
+                  :width   28
+                  :height  28
+                  :mark    ':panel
+                  :action  (lambda ()
+                             (setf (workbench-sidebar-shown-p workbench) nil)
+                             (workbench-redraw workbench))
+                  :tooltip "Hide the channels (Ctrl+T)")
     (paint-button stage ':new-channel "New channel"
-                  :x       (+ x 14)
-                  :y       (+ y 58)
-                  :width   (- width 28)
-                  :height  34
-                  :mark    ':plus
-                  :action  (lambda () (workbench-new-channel workbench))
-                  :tooltip (format nil "A new channel in ~A" (short-directory (workbench-directory workbench))))
-    ;; The filter field is a native input laid over this frame.
+                  :x         (+ x 14)
+                  :y         (+ y 58)
+                  :width     (- width 28)
+                  :height    34
+                  :mark      ':plus
+                  :mark-size 13
+                  :action    (lambda () (workbench-new-channel workbench))
+                  :tooltip   (format nil "A new channel in ~A" (short-directory (workbench-directory workbench))))
+    ;; The filter field is a native input laid over this frame; while an
+    ;; overlay has it put away, what it holds is drawn in its place.
     (paint-frame (+ x 14) (+ y 102) :width (- width 28) :height 34)
+    (when (workbench-overlay workbench)
+      (let ((filter (workbench-filter workbench)))
+        (paint-text-in (if (plusp (length filter)) filter "Find a channel")
+                       (text-style ':list :face (if (plusp (length filter)) ':serif ':serif-italic))
+                       :x      (+ x 20)
+                       :y      (+ y 102)
+                       :width  (- width 40)
+                       :height 34)))
     (stage-region stage ':sidebar-list
                   :x      x
                   :y      top
@@ -255,11 +274,11 @@
             do (when (and (< row-y bottom) (> (+ row-y *sidebar-row-height*) top))
                  (ecase (getf entry :kind)
                    (:inbox
-                    (sidebar--paint-inbox workbench stage entry :x x :y row-y :width (1- width)))
+                    (sidebar--paint-inbox workbench stage entry :x x :y row-y :width width))
                    (:workspace
-                    (sidebar--paint-workspace workbench stage entry :x x :y row-y :width (1- width)))
+                    (sidebar--paint-workspace workbench stage entry :x x :y row-y :width width))
                    (:channel
-                    (sidebar--paint-channel workbench stage entry :x x :y row-y :width (1- width))))))
+                    (sidebar--paint-channel workbench stage entry :x x :y row-y :width width)))))
       (when (null entries)
         (paint-text-in (if (plusp (length (workbench-filter workbench)))
                            "No channel matches."
@@ -268,10 +287,10 @@
                        :y      top
                        :width  (- width 28)
                        :height 40)))
-    ;; Foot: settings and what this client is built against.
+    ;; Foot: the settings and the commands.
     (paint-chip stage ':open-settings "Settings"
                 :x      (+ x 8)
-                :y      (- (+ y height) 54)
+                :y      (- (+ y height) 36)
                 :height 24
                 :action (lambda () (workbench-show-overlay workbench ':settings)))
     (paint-chip stage ':open-commands "Commands"

@@ -74,6 +74,13 @@
                                  (incf (stage-phase stage))
                                  (stage-redraw stage))))
                            :repeat t)
+    ;; A window that was never shown has no event loop to run: draw it once
+    ;; offscreen and leave.
+    (when (and (launch-shot launch) (launch-size launch))
+      (window-arrange workbench)
+      (main--picture workbench (launch-shot launch))
+      (workbench-close workbench)
+      (return-from run-interface nil))
     (when (launch-shot launch)
       (lightfast:add-timeout (launch-shot-after launch)
                              (lambda ()

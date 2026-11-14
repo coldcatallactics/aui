@@ -381,9 +381,17 @@
                              :key-handler (lambda (event) (window--stage-key workbench event)))))
     (setf (workbench-window workbench) window
           (workbench-stage workbench)  stage)
-    (lightfast:set-size-range window
-                              :min-width  (first *window-minimum-size*)
-                              :min-height (rest *window-minimum-size*))
+    ;; A size given on the command line is pinned, so a tiling compositor
+    ;; floats the window at it and other layouts can be looked at.
+    (if (launch-size launch)
+        (lightfast:set-size-range window
+                                  :min-width  (first size)
+                                  :min-height (rest size)
+                                  :max-width  (first size)
+                                  :max-height (rest size))
+        (lightfast:set-size-range window
+                                  :min-width  (first *window-minimum-size*)
+                                  :min-height (rest *window-minimum-size*)))
     (lightfast:window-escape-closes window nil)
     (let ((natives (window--make-natives workbench window)))
       (setf (stage-natives stage)       natives
@@ -405,11 +413,18 @@
 
 (-> window-show (workbench) null)
 (defun window-show (workbench)
-  "Show WORKBENCH's window at the size the window system gives it and hand the keyboard to the composer."
-  (let ((window (workbench-window workbench))
-        (stage  (workbench-stage workbench)))
-    (lightfast:show window)
-    (lightfast:wait 0.05)
+  "Show WORKBENCH's window at the size the window system gives it and hand the keyboard to the composer.
+
+A window that is only to be photographed at a given size is never shown: it
+is drawn offscreen at exactly that size, whatever the window system would
+have made of it."
+  (let* ((window  (workbench-window workbench))
+         (stage   (workbench-stage workbench))
+         (launch  (workbench-launch workbench))
+         (unseen-p (and (launch-shot launch) (launch-size launch))))
+    (unless unseen-p
+      (lightfast:show window)
+      (lightfast:wait 0.05))
     (lightfast:refresh-geometry window)
     (stage-resize stage (lightfast:widget-width window) (lightfast:widget-height window))
     (when (< (stage-width stage) *sidebar-docked-minimum*)

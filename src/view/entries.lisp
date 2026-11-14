@@ -260,62 +260,157 @@ What is removed is red and what is added green, marks and text alike."
     (format nil "~{~A~^~%~}~@[~%… ~D more lines~]" shown
             (and (> (length lines) (length shown)) (- (length lines) (length shown))))))
 
+(defparameter *lisp-argument-names* '("forms" "form" "definition" "source" "expression" "code")
+  "The argument names under which a tool that evaluates Lisp takes its source.")
+
+(-> entries--lisp-tool-p (tool-entry) boolean)
+(defun entries--lisp-tool-p (entry)
+  "Return T when ENTRY's tool takes and returns Lisp: the evaluators of the workspace's image and of Autolith's own."
+  (let ((name (tool-entry-name entry)))
+    (and (or (uiop:string-prefix-p "lisp." name)
+             (uiop:string-prefix-p "self." name))
+         t)))
+
+(-> entries--lisp-source (tool-entry) (values (or null string) (or null string)))
+(defun entries--lisp-source (entry)
+  "Return the Lisp source ENTRY's call carries, one form a line and set out where it came on one long line, and the argument it came under; NIL twice when it carries none."
+  (loop for name in *lisp-argument-names*
+        for value = (entries--argument entry name)
+        when value
+          do (return (values (lisp-format (if (and (listp value) (every #'stringp value))
+                                              (format nil "~{~A~^~%~}" value)
+                                              (entries--value-text value)))
+                             name))
+        finally (return (values nil nil))))
+
+(-> entries--lisp-output (string) string)
+(defun entries--lisp-output (text)
+  "Return TEXT, what a Lisp tool printed, with each long one-line form in it set out on several lines."
+  (format nil "~{~A~^~%~}"
+          (mapcar (lambda (line)
+                    (let ((trimmed (string-left-trim '(#\Space) line)))
+                      (if (and (plusp (length trimmed)) (find (char trimmed 0) "(#'"))
+                          (lisp-format line)
+                          line)))
+                  (markdown-lines text))))
+
+(-> entries--result-blocks (tool-entry string) list)
+(defun entries--result-blocks (entry output)
+  "Return the blocks of what ENTRY's call returned: a shell command's captures without the bookkeeping, a patch as a patch, Lisp as Lisp."
+  (let ((failed-p (eq (tool-entry-status entry) ':failed))
+        (lisp-p   (entries--lisp-tool-p entry)))
+    (multiple-value-bind (sections status) (tool-result-sections (tool-entry-name entry) output)
+      (let ((alone-p (null (rest sections))))
+        (or (loop for (label . text) in sections
+                  for first-p = t then nil
+                  collect (let ((shown (entries--preview (if lisp-p (entries--lisp-output text) text))))
+                            (make-code-block
+                             shown
+                             ;; One section is the result; several go by what they captured.
+                             :label         (format nil "~A~@[ · ~A~]"
+                                                    (cond
+                                                      ((not alone-p)
+                                                       label)
+                                                      (failed-p
+                                                       "failed")
+                                                      (t
+                                                       "result"))
+                                                    (and first-p status))
+                             :spans         (cond
+                                              (lisp-p
+                                               (code-spans shown "lisp"))
+                                              ((patch-p shown)
+                                               (patch-spans shown))
+                                              (t
+                                               nil))
+                             :margin-bottom 8)))
+            ;; A command that printed nothing still says how it ended.
+            (and status
+                 (list (make-code-block status :label (if failed-p "failed" "result")))))))))
+
 (-> entries--tool-detail (tool-entry) flow-block)
 (defun entries--tool-detail (entry)
-  "Return the opened detail of ENTRY's call: what it was asked, as a command, a diff or its arguments, and what it returned."
+  "Return the opened detail of ENTRY's call: what it was asked, as a command, Lisp source, a diff or its arguments, and what it returned."
   (let* ((arguments (tool-entry-arguments entry))
          (output    (tool-entry-output entry))
-         (failed-p  (eq (tool-entry-status entry) ':failed))
          (command   (entries--argument entry "command"))
          (old-text  (entries--argument entry "old-text" "old_text" "old"))
          (new-text  (entries--argument entry "new-text" "new_text" "new" "content")))
-    (make-instance
-     'box-block
-     :frame-p       nil
-     :padding-x     28
-     :padding-y     2
-     :margin-bottom 10
-     :children
-     (append
-      (cond
-        ((stringp command)
-         (list (make-code-block command :label "command" :margin-bottom 8)))
-        ((or (stringp old-text) (stringp new-text))
-         (list (make-code-block ""
-                                :label         (let ((path (entries--argument entry "path" "uri")))
-                                                 (if (stringp path) path "change"))
-                                :spans         (entries--diff-spans (if (stringp old-text) old-text "")
-                                                                    (if (stringp new-text) new-text ""))
-                                :margin-bottom 8)))
-        (arguments
-         (list (make-code-block
-                (format nil "~{~A~^~%~}"
-                        (mapcar (lambda (member)
-                                  (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
-                                arguments))
-                :label         "arguments"
-                :margin-bottom 8))))
-      (when output
-        (multiple-value-bind (sections status) (tool-result-sections (tool-entry-name entry) output)
-          (let ((alone-p (null (rest sections))))
-            (or (loop for (label . text) in sections
-                      for first-p = t then nil
-                      collect (make-code-block
-                               (entries--preview text)
-                               ;; One section is the result; several go by what they captured.
-                               :label         (format nil "~A~@[ · ~A~]"
-                                                      (cond
-                                                        ((not alone-p)
-                                                         label)
-                                                        (failed-p
-                                                         "failed")
-                                                        (t
-                                                         "result"))
-                                                      (and first-p status))
-                               :margin-bottom 8))
-                ;; A command that printed nothing still says how it ended.
-                (and status
-                     (list (make-code-block status :label (if failed-p "failed" "result"))))))))))))
+    (multiple-value-bind (source source-name) (if (entries--lisp-tool-p entry)
+                                                  (entries--lisp-source entry)
+                                                  (values nil nil))
+      (make-instance
+       'box-block
+       :frame-p       nil
+       :padding-x     28
+       :padding-y     2
+       :margin-bottom 10
+       :children
+       (append
+        (cond
+          ((stringp command)
+           (list (make-code-block command
+                                  :label         "command"
+                                  :spans         (code-spans command "bash")
+                                  :margin-bottom 8)))
+          (source
+           (append
+            (list (make-code-block source
+                                   :label         source-name
+                                   :spans         (code-spans source "lisp")
+                                   :margin-bottom 8))
+            ;; Whatever else the call was given, beside its source.
+            (let ((others (remove source-name arguments :key #'first :test #'equal)))
+              (when others
+                (list (make-code-block
+                       (format nil "~{~A~^~%~}"
+                               (mapcar (lambda (member)
+                                         (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
+                                       others))
+                       :label         "arguments"
+                       :margin-bottom 8))))))
+          ((or (stringp old-text) (stringp new-text))
+           (let* ((path (entries--argument entry "path" "uri"))
+                  (old  (if (stringp old-text) old-text ""))
+                  (new  (if (stringp new-text) new-text "")))
+             (list (make-code-block ""
+                                    :label         (if (stringp path) path "change")
+                                    :spans         (or (edit-spans old new :pathname (and (stringp path) path))
+                                                       (entries--diff-spans old new))
+                                    :margin-bottom 8))))
+          (arguments
+           (list (make-code-block
+                  (format nil "~{~A~^~%~}"
+                          (mapcar (lambda (member)
+                                    (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
+                                  arguments))
+                  :label         "arguments"
+                  :margin-bottom 8))))
+        (when output
+          (entries--result-blocks entry output)))))))
+
+(-> entries--preview-spans (tool-entry) list)
+(defun entries--preview-spans (entry)
+  "Return the spans of ENTRY's one-line preview: a command colored as shell, Lisp as Lisp, anything else plain."
+  (let* ((preview  (tool-entry-preview entry))
+         (language (cond
+                     ((stringp (entries--argument entry "command"))
+                      "bash")
+                     ((entries--lisp-tool-p entry)
+                      "lisp")
+                     (t
+                      nil)))
+         (parts    (and language (source-highlight preview :language language))))
+    (if parts
+        (loop for (role . text) in parts
+              collect (let ((style (code-role-style role)))
+                        ;; The row is set smaller than a code block; the ink carries over.
+                        (make-span text (if style
+                                            (text-style ':label
+                                                        :face  (text-style-face style)
+                                                        :color (text-style-color style))
+                                            (text-style ':label)))))
+        (list (make-span preview (text-style ':label))))))
 
 (defmethod entry-blocks ((entry tool-entry) toggle)
   "One row naming the tool and what it was asked, opening to its arguments and result; a plan update is drawn as the plan."
@@ -335,11 +430,10 @@ What is removed is red and what is added green, marks and text alike."
                                         (:failed
                                          ':cross))
                           :mark-color (and (eq status ':failed) *red*)
-                          :title      (spans (list (tool-entry-name entry)
-                                                   (text-style ':label-bold
-                                                               :color (if (eq status ':failed) *red* *amber*)))
-                                             (list (format nil "  ~A" (tool-entry-preview entry))
-                                                   (text-style ':label)))
+                          :title      (cons (make-span (format nil "~A  " (tool-entry-name entry))
+                                                       (text-style ':label-bold
+                                                                   :color (if (eq status ':failed) *red* *amber*)))
+                                            (entries--preview-spans entry))
                           :trailing   (and seconds (entries--duration seconds))
                           :style      (text-style ':label)
                           :action     toggle)))

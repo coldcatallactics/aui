@@ -59,6 +59,12 @@
                                     (cons "old-text" "BRIDGE := build/liblightfast.so")
                                     (cons "new-text" (format nil "SUFFIX := $(if $(filter Darwin,$(shell uname -s)),dylib,so)~%BRIDGE := build/liblightfast.$(SUFFIX)")))
                   :output     "Replaced 1 occurrence in Makefile.")
+   (make-instance 'tool-entry
+                  :call-identifier "demo-5" :name "lisp.eval" :status ':completed :seconds 1/10
+                  :expanded-p t
+                  :arguments  (list (cons "forms"
+                                          (list "(let ((suffix (if (uiop:os-macosx-p) \"dylib\" \"so\"))) (format nil \"build/liblightfast.~A\" suffix))")))
+                  :output     "\"build/liblightfast.so\"")
    (make-instance 'assistant-entry :text *demo-answer*)
    (make-instance 'output-entry
                   :invocation "(status)"

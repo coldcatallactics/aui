@@ -568,7 +568,21 @@ its output; that line becomes the entry's invocation."
               (projector--notice-line trimmed))
          (multiple-value-bind (words tone) (projector--notice-line trimmed)
            (projector--close-stream projector)
-           (projector--append projector (make-instance 'notice-entry :tone tone :text words))))
+           ;; A notice that lists calls after its statement, as the one about
+           ;; memories does, keeps the statement in its line and the calls behind it.
+           (let ((calls (search " · (" words)))
+             (projector--append
+              projector
+              (make-instance 'notice-entry
+                             :tone   tone
+                             :text   (if calls (subseq words 0 calls) words)
+                             :detail (and calls
+                                          (format nil "~{~A~^~%~}"
+                                                  (loop with rest = (subseq words (+ calls 3))
+                                                        for cut = (search " · " rest)
+                                                        collect (subseq rest 0 cut)
+                                                        while cut
+                                                        do (setf rest (subseq rest (+ cut 3)))))))))))
         (open
          (setf (output-entry-text open)
                (if (plusp (length (output-entry-text open)))

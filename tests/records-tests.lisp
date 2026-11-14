@@ -237,3 +237,13 @@
   (fiveam:is (string= (format nil "Planning the deadline capture~2%Checking Lisp apropos")
                       (projector--reasoning-summary
                        (format nil "◇ reasoning summary~%  │ Planning the deadline~%  │ capture~%  │~%  │ Checking Lisp apropos")))))
+
+(fiveam:test a-notice-keeps-the-calls-it-lists-behind-its-line
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector
+                     (list ':present
+                           :text "∙ 2 relevant memories exist · (memory \"w-1\") · (memory \"Q-2\")"))
+    (let ((notice (first (coerce (transcript-entries transcript) 'list))))
+      (fiveam:is (string= "2 relevant memories exist" (notice-entry-text notice)))
+      (fiveam:is (string= (format nil "(memory \"w-1\")~%(memory \"Q-2\")") (notice-entry-detail notice))))))

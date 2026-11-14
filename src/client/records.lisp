@@ -485,6 +485,55 @@ of marking it and is dropped."
         (values (string-trim " " (subseq text 2)) tone)
         (values nil nil))))
 
+(-> projector--reasoning-summary (string) (or null string))
+(defun projector--reasoning-summary (text)
+  "Return the reasoning summary TEXT holds when it is the terminal's rendering of one, else NIL.
+
+The terminal prints a summary under a heading of its own, each line behind a
+bar; the heading and the bars are the terminal's and are dropped."
+  (let* ((lines (markdown-lines text))
+         (head  (string-trim '(#\Space) (or (first lines) ""))))
+    (and (> (length head) 2)
+         (search "reasoning summary" head)
+         (not (alphanumericp (char head 0)))
+         ;; The terminal wrapped the summary to its own width: rows that follow
+         ;; one another are one paragraph, an empty row parts two.
+         (let ((paragraphs nil)
+               (words      nil))
+           (dolist (line (rest lines))
+             (let ((row (string-trim '(#\Space) (string-left-trim '(#\Space #\│ #\|) line))))
+               (cond
+                 ((plusp (length row))
+                  (push row words))
+                 (words
+                  (push (format nil "~{~A~^ ~}" (nreverse words)) paragraphs)
+                  (setf words nil)))))
+           (when words
+             (push (format nil "~{~A~^ ~}" (nreverse words)) paragraphs))
+           (format nil "~{~A~^~2%~}" (nreverse paragraphs))))))
+
+(-> projector--letters (string) string)
+(defun projector--letters (text)
+  "Return the letters and digits of TEXT, lowercased, which is what two renderings of one summary share."
+  (string-downcase (remove-if-not #'alphanumericp text)))
+
+(-> projector--note-reasoning (projector string) null)
+(defun projector--note-reasoning (projector summary)
+  "Show the reasoning SUMMARY as a thought unless the thought just shown already says it."
+  (let* ((transcript (projector-transcript projector))
+         (entries    (transcript-entries transcript))
+         (recent     (find-if (lambda (entry)
+                                (typep entry 'reasoning-entry))
+                              entries
+                              :from-end t
+                              :start    (max 0 (- (length entries) 6))))
+         (letters    (projector--letters summary)))
+    (unless (or (zerop (length letters))
+                (and recent (search letters (projector--letters (reasoning-entry-text recent)))))
+      (projector--close-stream projector)
+      (projector--append projector (make-instance 'reasoning-entry :text summary))))
+  nil)
+
 (-> projector--present (projector t) null)
 (defun projector--present (projector text)
   "Show the command or Lisp output TEXT, joining what one command prints in several parts.
@@ -500,6 +549,9 @@ its output; that line becomes the entry's invocation."
       (cond
         ((zerop (length (string-trim '(#\Newline #\Space) trimmed)))
          nil)
+        ;; The terminal's own rendering of a reasoning summary is a thought, shown once.
+        ((projector--reasoning-summary trimmed)
+         (projector--note-reasoning projector (projector--reasoning-summary trimmed)))
         ;; A command prints what it has to say; the NIL it returns is noise after it.
         ((and open
               (plusp (length (output-entry-text open)))
@@ -510,8 +562,10 @@ its output; that line becomes the entry's invocation."
                (projector--output projector)
                (projector--append projector
                                   (make-instance 'output-entry :invocation (subseq trimmed 2)))))
-        ;; A notice outside any command's output is a line of its own, not a block.
-        ((and (null open) (projector--notice-line trimmed))
+        ;; A notice is a line of its own, not part of a block, unless a command
+        ;; the person ran is printing: what that prints is its output.
+        ((and (or (null open) (null (output-entry-invocation open)))
+              (projector--notice-line trimmed))
          (multiple-value-bind (words tone) (projector--notice-line trimmed)
            (projector--close-stream projector)
            (projector--append projector (make-instance 'notice-entry :tone tone :text words))))

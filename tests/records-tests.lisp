@@ -208,3 +208,33 @@
   (multiple-value-bind (sections status) (tool-result-sections "resource.read" "the file's text")
     (fiveam:is (null status))
     (fiveam:is (equal '(("result" . "the file's text")) sections))))
+
+(fiveam:test a-presented-reasoning-summary-is-a-thought-shown-once
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector (list ':reasoning :delta "**Checking model limit defaults**"))
+    (projector-apply projector
+                     (list ':present
+                           :text (format nil "◇ reasoning summary~% │ Checking model limit defaults")))
+    (projector-apply projector
+                     (list ':present
+                           :text (format nil "◇ reasoning summary~% │ Reading the provider file")))
+    (let ((entries (coerce (transcript-entries transcript) 'list)))
+      (fiveam:is (equal '(reasoning-entry reasoning-entry) (mapcar #'type-of entries)))
+      (fiveam:is (string= "Reading the provider file" (reasoning-entry-text (second entries)))))))
+
+(fiveam:test a-notice-does-not-join-output-nobody-asked-for
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector (list ':present :text "something the channel printed"))
+    (projector-apply projector
+                     (list ':present :text "! cache stalled · 153.0K / 191.2K input tokens cached"))
+    (let ((entries (coerce (transcript-entries transcript) 'list)))
+      (fiveam:is (equal '(output-entry notice-entry) (mapcar #'type-of entries)))
+      (fiveam:is (search "cache stalled" (notice-entry-text (second entries)))))))
+
+(fiveam:test a-wrapped-reasoning-summary-is-unwrapped
+  (fiveam:is (string= (format nil "Planning the deadline capture~2%Checking Lisp apropos")
+                      (projector--reasoning-summary
+                       (format nil "◇ reasoning summary~%  │ Planning the deadline~%  │ capture~%  │~%  │ Checking Lisp apropos")))))
+

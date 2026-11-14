@@ -302,7 +302,8 @@
     (lightfast:on editor
                   (lambda (widget event value)
                     (declare (ignore widget event))
-                    (when (window--editor-key workbench (parse-key-event value))
+                    (when (with-stage-guard ("A key in the composer")
+                            (window--editor-key workbench (parse-key-event value)))
                       (lightfast:consume-event)))
                   :event lightfast:+event-key+)
     (lightfast:on editor
@@ -362,7 +363,8 @@
                   (lambda (widget event value)
                     (declare (ignore widget event))
                     (when (and (workbench-overlay workbench)
-                               (overlay-key workbench (parse-key-event value)))
+                               (with-stage-guard ("A key in the list")
+                                 (overlay-key workbench (parse-key-event value))))
                       (lightfast:consume-event)))
                   :event lightfast:+event-key+)
     (list editor filter query)))

@@ -127,10 +127,22 @@
     (let ((output (transcript-last transcript)))
       (fiveam:is (string= "(status)" (output-entry-invocation output)))
       (fiveam:is (search "model x" (output-entry-text output)))
-      (fiveam:is (search "⇒ NIL" (output-entry-text output))))
+      ;; The NIL a printing command returns is not shown after its output.
+      (fiveam:is (null (search "⇒ NIL" (output-entry-text output)))))
     ;; The next command starts its own entry.
     (projector-apply projector (list :present :text "settings"))
     (fiveam:is (= 2 (transcript-length transcript)))))
+
+(fiveam:test a-form's-value-is-kept
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector (list :present :text (format nil "* (+ 1 2)~2%")))
+    (projector-apply projector (list :present :text (format nil "⇒ 3~2%")))
+    (fiveam:is (string= "⇒ 3" (output-entry-text (transcript-last transcript))))
+    (projector-apply projector '(:work-finished :kind :lisp :outcome :done))
+    (projector-apply projector (list :present :text (format nil "* (values)~2%")))
+    (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
+    (fiveam:is (string= "⇒ NIL" (output-entry-text (transcript-last transcript))))))
 
 (fiveam:test portable-values-read-back
   (let ((object (portable-object "name" "model" "value" nil "list" '(:array 1 2))))

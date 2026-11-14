@@ -443,6 +443,11 @@ its output; that line becomes the entry's invocation."
       (cond
         ((zerop (length (string-trim '(#\Newline #\Space) trimmed)))
          nil)
+        ;; A command prints what it has to say; the NIL it returns is noise after it.
+        ((and open
+              (plusp (length (output-entry-text open)))
+              (string= (string-trim '(#\Space) trimmed) "⇒ NIL"))
+         nil)
         (echo-p
          (setf (projector--output projector)
                (projector--append projector

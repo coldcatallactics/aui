@@ -71,7 +71,13 @@
     :initform      nil
     :reader        launch-draft
     :type          (or null string)
-    :documentation "Text to put in the composer at start, or NIL."))
+    :documentation "Text to put in the composer at start, or NIL.")
+   (prompt
+    :initarg       :prompt
+    :initform      nil
+    :reader        launch-prompt
+    :type          (or null string)
+    :documentation "Text to send as soon as the channel is attached, or NIL."))
   (:documentation "What one invocation of aui asked for, once its options were read."))
 
 (-> launch--window-options () list)
@@ -119,7 +125,13 @@
                         :key         ':draft
                         :parameter   "TEXT"
                         :persistent  t
-                        :description "put TEXT in the composer at start")))
+                        :description "put TEXT in the composer at start")
+   (clingon:make-option ':string
+                        :long-name   "prompt"
+                        :key         ':prompt
+                        :parameter   "TEXT"
+                        :persistent  t
+                        :description "send TEXT as soon as the channel is attached")))
 
 (-> launch--open-command () clingon:command)
 (defun launch--open-command ()
@@ -210,7 +222,8 @@ it does under autolith."
      :shot-after shot-after
      :size       (launch--parse-size (clingon:getopt* command ':size))
      :view       (clingon:getopt* command ':view)
-     :draft      (clingon:getopt* command ':draft))))
+     :draft      (clingon:getopt* command ':draft)
+     :prompt     (clingon:getopt* command ':prompt))))
 
 (-> launch-parse (list) (or null launch))
 (defun launch-parse (arguments)

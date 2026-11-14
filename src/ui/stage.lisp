@@ -109,6 +109,27 @@
   (:documentation "The window's custom-drawn surface and its pointer and keyboard dispatch."))
 
 
+;;;; -- Guarding --
+
+(defvar *stage-failure-function* nil
+  "Called with a report string when a drawing or input handler signals an error, or NIL to only log it.")
+
+(defmacro with-stage-guard ((what) &body body)
+  "Run BODY, and when it signals an error report WHAT failed instead of unwinding into FLTK.
+
+A handler runs inside one of FLTK's callbacks, where a Lisp error has
+nowhere to go but through foreign frames. The window stays up, the failure
+goes to standard error, and the interface is told so that it can say so."
+  (let ((condition (gensym "CONDITION")))
+    `(handler-case (progn ,@body)
+       (error (,condition)
+         (let ((report (format nil "~A failed: ~A" ,what ,condition)))
+           (format *error-output* "~&aui: ~A~%" report)
+           (when *stage-failure-function*
+             (funcall *stage-failure-function* report)))
+         nil))))
+
+
 ;;;; -- Regions --
 
 (-> stage-region
@@ -340,7 +361,8 @@ otherwise."
                   :height   (lightfast:widget-height window)
                   :callback (lambda (widget event value)
                               (declare (ignore widget event value))
-                              (stage--paint stage)))))
+                              (with-stage-guard ("Drawing")
+                                (stage--paint stage))))))
     (setf (stage-canvas stage) canvas
           (stage-width stage)  (lightfast:widget-width window)
           (stage-height stage) (lightfast:widget-height window))
@@ -349,7 +371,8 @@ otherwise."
     (flet ((pointer (kind)
              (lambda (widget event value)
                (declare (ignore widget event))
-               (stage--pointer stage kind value))))
+               (with-stage-guard ("A pointer action")
+                 (stage--pointer stage kind value)))))
       (lightfast:on canvas (pointer ':push) :event lightfast:+event-push+)
       (lightfast:on canvas (pointer ':drag) :event lightfast:+event-drag+)
       (lightfast:on canvas (pointer ':release) :event lightfast:+event-release+)
@@ -362,7 +385,8 @@ otherwise."
                     (declare (ignore widget event))
                     (let ((handler (stage-key-handler stage)))
                       (when handler
-                        (funcall handler (parse-key-event value)))))
+                        (with-stage-guard ("A key")
+                          (funcall handler (parse-key-event value))))))
                   :event lightfast:+event-key+)
     stage))
 

@@ -90,12 +90,18 @@
                                (main--picture workbench (launch-shot launch))
                                (workbench-close workbench)
                                (lightfast:quit))))
+    (setf *stage-failure-function*
+          (lambda (report)
+            (setf (workbench-notice workbench) report)
+            (workbench-redraw workbench)))
     (lightfast:run-with-idle
      (lambda ()
-       (workbench-drain workbench)
-       (when (stage-dirty-p (workbench-stage workbench))
-         (window-arrange workbench))
-       (stage-flush (workbench-stage workbench))))
+       (with-stage-guard ("Applying what the channel said")
+         (workbench-drain workbench))
+       (with-stage-guard ("Laying out the window")
+         (when (stage-dirty-p (workbench-stage workbench))
+           (window-arrange workbench))
+         (stage-flush (workbench-stage workbench)))))
     (workbench-close workbench)
     (format *error-output* "~&AUI ran for ~D seconds.~%"
             (round (- (get-internal-real-time) started) internal-time-units-per-second)))

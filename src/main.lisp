@@ -26,6 +26,20 @@
           (format *error-output* "No image tool converted the picture; it is at ~A.~%" ppm)))))
   nil)
 
+(-> main--settle (workbench real) null)
+(defun main--settle (workbench seconds)
+  "Apply what the world says for SECONDS.
+
+A picture taken without a window then shows the channels as the server
+reports them, not the moment before it answered."
+  (let ((deadline (+ (get-internal-real-time)
+                     (round (* seconds internal-time-units-per-second)))))
+    (loop while (< (get-internal-real-time) deadline)
+          do (workbench-drain workbench)
+             (lightfast:wait 0.05)
+             (sleep 0.02)))
+  nil)
+
 (-> main--start (workbench) null)
 (defun main--start (workbench)
   "Open what the launch asked for: the demonstration, a named channel, the picker, or the directory's channel."
@@ -85,6 +99,8 @@
     ;; A window that was never shown has no event loop to run: draw it once
     ;; offscreen and leave.
     (when (and (launch-shot launch) (launch-size launch))
+      (unless (launch-demo-p launch)
+        (main--settle workbench (launch-shot-after launch)))
       (window-arrange workbench)
       (main--picture workbench (launch-shot launch))
       (workbench-close workbench)

@@ -138,41 +138,60 @@ once it has idled."
     (session--post session 'history-event :records records :more-p more-p))
   nil)
 
+(-> session--open-served (session &key (:channel (or null string)) (:directory (or null string))
+                                      (:new-p boolean) (:images list))
+    null)
+(defun session--open-served (session &key channel directory new-p images)
+  "Open the channel in the world server that runs, attach to it and deliver its newest history, reporting each step."
+  (let* ((world      (session-world session))
+         (identifier (handler-bind ((autolith::channel-loading-progress
+                                     (lambda (progress)
+                                       (session--post session 'attachment-event
+                                                      :state  ':opening
+                                                      :detail (list (autolith::channel-loading-progress-step progress)
+                                                                    (autolith::channel-loading-progress-description
+                                                                     progress))))))
+                       (autolith::world-client-open (world-configuration world)
+                                                    :directory       directory
+                                                    :channel         channel
+                                                    :new-p           new-p
+                                                    :permission-mode (world-permission-mode world)
+                                                    :immutable-p     (world-immutable-p world)
+                                                    :launch          (shiftf (world-launch world) nil)
+                                                    :images          images
+                                                    ;; A window shows its own progress, so the
+                                                    ;; channel skips the terminal's boot screen
+                                                    ;; and first-run tour, which wait for a key.
+                                                    :switch-p        t)))
+         (greeting   (session--attach session identifier)))
+    (session--post session 'attachment-event
+                   :state  ':attached
+                   :detail (list :status          (rest (getf (rest greeting) :state))
+                                 :record-sequence (getf (rest greeting) :record-sequence)
+                                 :image-root      (history-image-root (world-configuration world)
+                                                                      identifier)))
+    (session--deliver-history session :through (getf (rest greeting) :record-sequence)))
+  nil)
+
 (-> session--open (session &key (:channel (or null string)) (:directory (or null string)) (:new-p boolean)
                                (:images list))
     null)
 (defun session--open (session &key channel directory new-p images)
-  "Open the channel in the world server, attach to it and deliver its newest history, reporting each step."
+  "Start the world server when none runs, open the channel in it, attach to it and deliver its newest history, reporting each step and a failure of any."
   (let ((world (session-world session)))
     (handler-case
-        (let ((identifier
-                (handler-bind ((autolith::channel-loading-progress
-                                (lambda (progress)
-                                  (session--post session 'attachment-event
-                                                 :state  ':opening
-                                                 :detail (list (autolith::channel-loading-progress-step progress)
-                                                               (autolith::channel-loading-progress-description
-                                                                progress))))))
-                 (autolith::world-client-open (world-configuration world)
-                                              :directory       directory
-                                              :channel         channel
-                                              :new-p           new-p
-                                              :permission-mode (world-permission-mode world)
-                                              :immutable-p     (world-immutable-p world)
-                                              :launch          (shiftf (world-launch world) nil)
-                                              :images          images
-                                              ;; A window shows its own progress, so the
-                                              ;; channel skips the terminal's boot screen
-                                              ;; and first-run tour, which wait for a key.
-                                              :switch-p        t))))
-          (let ((greeting (session--attach session identifier)))
+        (progn
+          ;; The command prepares what a server needs before it starts one.
+          (unless (world-served-p world)
             (session--post session 'attachment-event
-                           :state  ':attached
-                           :detail (list :status          (rest (getf (rest greeting) :state))
-                                         :record-sequence (getf (rest greeting) :record-sequence)
-                                         :image-root      (history-image-root (world-configuration world)
-                                                                              identifier)))
-            (session--deliver-history session :through (getf (rest greeting) :record-sequence))))
+                           :state  ':opening
+                           :detail (list 0 "Starting the world server"))
+            (world-start-server world))
+          (session--open-served session
+                                :channel   channel
+                                :directory directory
+                                :new-p     new-p
+                                :images    images))
       (error (condition)
         (setf (session-closed-p session) t)
         (session--post session 'attachment-event

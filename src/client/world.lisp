@@ -4,8 +4,9 @@
 
 ;;; AUI's handle on Autolith's world of channels, through the client code
 ;;; Autolith's own terminal uses: the world endpoint record to find the
-;;; server, WORLD-CLIENT-OPEN to open a channel in it, starting the server
-;;; when none runs, and WORLD-SIDEBAR for the tree of channels. Everything
+;;; server, WORLD-CLIENT-OPEN to open a channel in it, and WORLD-SIDEBAR for
+;;; the tree of channels. When no server runs, the autolith command starts
+;;; one, as it would from a terminal. Everything
 ;;; that names an Autolith definition lives in this directory, so the
 ;;; interface above it depends on AUI's own vocabulary only.
 
@@ -147,6 +148,55 @@
           (rest (getf (rest (autolith::localgroup-query-record entry ':status)) :status))))
     (error ()
       nil)))
+
+(-> world--last-line (string) string)
+(defun world--last-line (text)
+  "Return the last line of TEXT that says anything, or the empty string."
+  (or (find-if (lambda (line)
+                 (plusp (length line)))
+               (mapcar (lambda (line)
+                         (string-trim '(#\Space #\Tab #\Return) line))
+                       (uiop:split-string text :separator '(#\Newline)))
+               :from-end t)
+      ""))
+
+(-> world-served-p (world) boolean)
+(defun world-served-p (world)
+  "Return T when WORLD's server answers or is starting."
+  (let ((configuration (world-configuration world)))
+    (and (or (autolith::world-client-entry configuration)
+             (autolith::world-server-running-p configuration))
+         t)))
+
+(-> world-start-server (world) null)
+(defun world-start-server (world)
+  "Start WORLD's server with the autolith command when none runs, and return once that command has finished.
+
+The command is the launcher of the Autolith this client was built against. It
+prepares the image and the helpers a server needs before it starts one, which
+a release needs on its first start, so the server AUI starts is the one a
+terminal would have started. A site configuration root this start named goes
+to the command through its environment. Signal a CLIENT-ERROR with what the
+command said when it fails and no server runs."
+  (unless (world-served-p world)
+    (let ((site (autolith::config :site-config-root (world-configuration world))))
+      (multiple-value-bind (output complaint code)
+          (uiop:run-program (append (when site
+                                      (list "env" (format nil "AUTOLITH_SITE_CONFIG_ROOT=~A"
+                                                          (uiop:native-namestring site))))
+                                    (list (installation-program) "localgroup" "start"))
+                            :input               nil
+                            :output              ':string
+                            :error-output        ':string
+                            :ignore-error-status t)
+        (unless (or (eql code 0) (world-served-p world))
+          (let ((said (world--last-line (if (plusp (length (world--last-line complaint)))
+                                            complaint
+                                            output))))
+            (error 'client-error
+                   :message (format nil "The world server did not start~:[.~;: ~:*~A~]"
+                                    (and (plusp (length said)) said))))))))
+  nil)
 
 (-> world-request (world keyword &rest t) list)
 (defun world-request (world operation &rest arguments)

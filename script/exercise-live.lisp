@@ -393,11 +393,16 @@ which may happen to a person's own world."
       (unwind-protect
            (progn
              ;; The first open starts the world server, which takes its time.
-             (exercise-expect "a first start brings up a world server and a channel"
-                              (exercise-live--until workbench
-                                                    (lambda ()
-                                                      (workbench-attached-p workbench))
-                                                    :seconds 600))
+             (let ((command-p nil))
+               (exercise-expect "a first start brings up a world server and a channel"
+                                (exercise-live--until workbench
+                                                      (lambda ()
+                                                        (when (equal (second (workbench-progress workbench))
+                                                                     "Starting the world server")
+                                                          (setf command-p t))
+                                                        (workbench-attached-p workbench))
+                                                      :seconds 600))
+               (exercise-expect "the autolith command started that server" command-p))
              (main--settle workbench 1)
              (exercise-expect "the channel runs the model the command line named"
                               (search "mock-1" (or (workbench-model workbench) "")))

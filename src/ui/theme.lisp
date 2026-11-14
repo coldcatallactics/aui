@@ -88,11 +88,24 @@
                  names)
         (first names))))
 
+(-> theme--register-bundled-fonts () null)
+(defun theme--register-bundled-fonts ()
+  "Make the typefaces AUI ships with available to this process, so the typewriter face is the same on every machine.
+
+A face that cannot be registered is left to the system's own copy or to the next family in the list."
+  (let ((files (uiop:directory-files (asdf:system-relative-pathname :aui "assets/fonts/") "*.ttf")))
+    (when files
+      (handler-case (lightfast:register-font-files (mapcar #'uiop:native-namestring files))
+        (error ()
+          nil))))
+  nil)
+
 (-> theme-install () null)
 (defun theme-install ()
   "Load the faces and make every widget created afterwards flat, on paper, in ink.
 
 Call once on the interface thread before any window exists."
+  (theme--register-bundled-fonts)
   (let* ((installed (lightfast:system-font-names))
          (serif     (theme--family *serif-families* installed))
          (mono      (theme--family *mono-families* installed)))

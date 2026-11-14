@@ -54,6 +54,28 @@ it is older than any of them.
 `AUI_AUTOLITH_ROOT` names the Autolith checkout when `autolith` is not on the
 path, and `AUI_LIGHTFAST_ROOT` names Lightfast when it is not beside AUI.
 
+On a Mac with Homebrew, from nothing, these are the steps the macOS check in
+`.github/workflows/check.yml` runs on every push:
+
+```sh
+brew install sbcl fltk rust cmake pkg-config openssl coreutils gnu-tar
+export PATH="$(brew --prefix coreutils)/libexec/gnubin:$HOME/.local/bin:$PATH"
+
+curl -LO https://beta.quicklisp.org/quicklisp.lisp
+sbcl --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'
+
+git clone https://github.com/lambda-symbolics/autolith.git
+(cd autolith && ./script/bootstrap)
+mkdir -p ~/.local/bin && ln -s "$PWD/autolith/bin/autolith" ~/.local/bin/autolith
+autolith auth                 # sign in to a model provider, once
+
+git clone https://github.com/lambda-symbolics/lightfast.git
+git clone https://github.com/lambda-symbolics/aui.git
+(cd aui && script/install)
+```
+
+After that, Autolith is in `~/Applications`, and `aui` is on the path.
+
 ## Run
 
 `aui` takes `autolith`'s command line.

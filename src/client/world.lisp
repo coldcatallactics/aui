@@ -101,6 +101,16 @@
   (let ((sidebar (world--sidebar world)))
     (and sidebar (autolith::world-sidebar-entries sidebar))))
 
+(-> world-channel-title (world (or null string)) (or null string))
+(defun world-channel-title (world identifier)
+  "Return the title WORLD's channel tree gives the channel IDENTIFIER, or NIL when it has none there."
+  (and identifier
+       (let ((entry (find identifier (world-entries world)
+                          :key  (lambda (entry)
+                                  (getf entry :id))
+                          :test #'equal)))
+         (and entry (portable-string (getf entry :title))))))
+
 (-> (setf world-current-channel) ((or null string) world) (or null string))
 (defun (setf world-current-channel) (identifier world)
   "Tell WORLD's channel tree that this client now shows channel IDENTIFIER."

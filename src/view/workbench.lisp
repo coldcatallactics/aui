@@ -215,6 +215,9 @@
   "Return the shown channel's title, or words for a channel that has none yet."
   (or (portable-string (getf (workbench-status workbench) :conversation-title))
       (portable-string (portable-get (workbench-state workbench) "title"))
+      ;; The channel tree hears of a first turn's title before the turn ends.
+      (and (not (workbench-demo-p workbench))
+           (world-channel-title (workbench-world workbench) (workbench-channel workbench)))
       (case (workbench-attachment workbench)
         (:none
          "Autolith")

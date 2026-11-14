@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Install AUI for this user: build it, put the aui command on the path, and on
+# macOS make an application that the Dock and Spotlight can start.
+#
+# Needs Autolith installed first (its autolith command on the path, or
+# AUI_AUTOLITH_ROOT naming its checkout), FLTK 1.4 with fltk-config, a C++17
+# compiler, and Lightfast checked out beside AUI.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+"$root/script/build"
+
+bin_home=${AUI_BIN_HOME:-$HOME/.local/bin}
+mkdir -p "$bin_home"
+ln -sfn "$root/bin/aui" "$bin_home/aui"
+echo "Linked $bin_home/aui"
+case ":$PATH:" in
+  *":$bin_home:"*) ;;
+  *) echo "Add $bin_home to your PATH to run aui from a terminal." ;;
+esac
+
+if [[ $(uname -s) == Darwin ]]; then
+  application=${AUI_APPLICATION:-$HOME/Applications/Autolith.app}
+  mkdir -p "$application/Contents/MacOS" "$application/Contents/Resources"
+  cat > "$application/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Autolith</string>
+  <key>CFBundleDisplayName</key><string>Autolith</string>
+  <key>CFBundleIdentifier</key><string>com.lambda-symbolics.aui</string>
+  <key>CFBundleExecutable</key><string>Autolith</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+</dict>
+</plist>
+PLIST
+  # An application started from the Dock gets a bare PATH and the root
+  # directory; give it the usual tool directories and the home directory, and
+  # let the person pick the channel.
+  cat > "$application/Contents/MacOS/Autolith" <<LAUNCHER
+#!/bin/bash
+export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH"
+cd "\$HOME"
+exec "$root/bin/aui" open
+LAUNCHER
+  chmod +x "$application/Contents/MacOS/Autolith"
+  echo "Installed $application"
+fi

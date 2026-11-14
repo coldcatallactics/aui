@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Build AUI: Lightfast's native bridge, then the saved image build/aui that
+# bin/aui starts. Run it again after updating AUI, Lightfast or Autolith.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
+
+if [[ ! -f "$lightfast/lightfast.asd" ]]; then
+  echo "Lightfast is not at $lightfast. Clone https://github.com/lambda-symbolics/lightfast beside AUI, or set AUI_LIGHTFAST_ROOT." >&2
+  exit 64
+fi
+make -s -C "$lightfast" native
+mkdir -p "$root/build"
+rm -f "$root/build/aui"
+"$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
+  --eval '(aui::save-image (uiop:native-namestring (merge-pathnames "build/aui" (asdf:system-source-directory :aui))))' \
+  >"$root/build/build.log" 2>&1 || { tail -40 "$root/build/build.log" >&2; exit 1; }
+if [[ ! -x "$root/build/aui" ]]; then
+  tail -40 "$root/build/build.log" >&2
+  echo "The image was not saved." >&2
+  exit 1
+fi
+echo "Built $root/build/aui"

@@ -116,3 +116,25 @@
     (finish-output *error-output*)
     (sb-ext:exit :code status :abort t))
   nil)
+
+
+;;;; -- Saved Image --
+
+(-> image-toplevel () null)
+(defun image-toplevel ()
+  "Run aui in a saved image with the process's own arguments."
+  (main (rest sb-ext:*posix-argv*)))
+
+(-> save-image (string) null)
+(defun save-image (pathname)
+  "Save this process as an executable at PATHNAME that starts aui, and exit.
+
+The executable holds Autolith's client code and AUI together, so it starts in
+a fraction of a second. It takes every argument for itself rather than for
+the Lisp runtime."
+  (ensure-directories-exist pathname)
+  (sb-ext:save-lisp-and-die pathname
+                            :toplevel             #'image-toplevel
+                            :executable           t
+                            :save-runtime-options t)
+  nil)

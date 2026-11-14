@@ -1,0 +1,104 @@
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # The Autolith release AUI is checked against. AUI loads Autolith's own
+  # client code, so the two move together.
+  AUTOLITH_REF: v0.67.38
+
+jobs:
+  macos:
+    name: macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: aui
+
+      - uses: actions/checkout@v5
+        with:
+          repository: lambda-symbolics/autolith
+          ref: ${{ env.AUTOLITH_REF }}
+          path: autolith
+
+      - uses: actions/checkout@v5
+        with:
+          repository: lambda-symbolics/lightfast
+          path: lightfast
+
+      - name: Install tools
+        run: |
+          brew install sbcl fltk rust cmake pkg-config openssl coreutils gnu-tar
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          sbcl --version
+          fltk-config --version
+
+      - name: Restore Autolith's dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            autolith/.qlot
+            ~/quicklisp
+            ~/.local/share/autolith
+            ~/.cache/common-lisp
+          key: autolith-${{ runner.os }}-${{ runner.arch }}-${{ env.AUTOLITH_REF }}
+
+      - name: Install Quicklisp
+        run: |
+          if [[ ! -f "$HOME/quicklisp/setup.lisp" ]]; then
+            curl --fail --location --retry 3 --output quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
+            sbcl --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'
+          fi
+
+      - name: Bootstrap Autolith
+        run: |
+          cd autolith
+          ./script/bootstrap
+          ./bin/autolith --version
+
+      - name: Build AUI
+        env:
+          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
+          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
+        run: |
+          cd aui
+          script/build
+          ls -la build/aui
+
+      - name: Run the tests
+        env:
+          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
+          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
+        run: |
+          cd aui
+          script/check --suite aui
+
+      - name: Photograph the demonstration
+        env:
+          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
+          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
+        run: |
+          cd aui
+          mkdir -p pictures
+          build/aui --demo --size 1400x900 --shot pictures/macos-wide.png
+          build/aui --demo --size 760x1000 --shot pictures/macos-narrow.png
+          build/aui --demo --size 1400x900 --view settings --shot pictures/macos-settings.png
+          build/aui --demo --size 1400x900 --view commands --shot pictures/macos-commands.png
+          build/aui --demo --size 1400x900 --view approval --shot pictures/macos-approval.png
+          build/aui --version
+          ls -la pictures
+
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aui-macos-pictures
+          path: |
+            aui/pictures
+            aui/build/build.log
+          if-no-files-found: warn

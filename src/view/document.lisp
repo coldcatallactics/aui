@@ -382,18 +382,14 @@ showed."
     (document--paint-scrollbar document stage :x x :y y :width width :height height)
     ;; Away from the end, offer the way back to it.
     (unless (document-following-p document)
-      (let* ((label  "newest")
-             (chip   (+ (chip-width label) 14))
-             (chip-x (- (+ x width) chip 22))
-             (chip-y (- (+ y height) 34)))
-        (paint-fill chip-x chip-y :width chip :height 24 :color *paper*)
-        (paint-frame chip-x chip-y :width chip :height 24)
-        (paint-chip stage ':to-newest label
-                    :x       chip-x
-                    :y       chip-y
-                    :height  24
+      (paint-button stage ':to-newest ""
+                    :x       (- (+ x width) 54)
+                    :y       (- (+ y height) 44)
+                    :width   30
+                    :height  30
+                    :mark    ':arrow-down
                     :action  (lambda () (document-scroll-to-end document))
-                    :tooltip "Show the newest output and follow it"))))
+                    :tooltip "Show the newest output and follow it")))
   nil)
 
 (-> document--paint-scrollbar

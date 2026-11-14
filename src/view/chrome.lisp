@@ -249,27 +249,51 @@
 (defparameter *approval-button-height* 34
   "The height of one approval choice.")
 
+(-> approval--fill-rows (list integer) list)
+(defun approval--fill-rows (buttons width)
+  "Return BUTTONS, each (INDEX LABEL BUTTON-WIDTH OPTION), in rows filled as far as WIDTH allows."
+  (let ((rows  nil)
+        (row   nil)
+        (taken 0))
+    (dolist (button buttons)
+      (let ((button-w (third button)))
+        (when (and row (> (+ taken button-w) width))
+          (push (nreverse row) rows)
+          (setf row   nil
+                taken 0))
+        (push button row)
+        (incf taken (+ button-w 8))))
+    (when row
+      (push (nreverse row) rows))
+    (nreverse rows)))
+
 (-> approval--rows (list integer) list)
 (defun approval--rows (options width)
   "Return the approval OPTIONS as rows that fit WIDTH, in the order they are numbered.
 
-Each row is a list of (INDEX LABEL BUTTON-WIDTH OPTION)."
-  (let ((rows  nil)
-        (row   nil)
-        (taken 0))
-    (loop for option in options
-          for index from 0
-          do (let* ((label    (format nil "~D  ~A" (1+ index) (approval--label option)))
-                    (button-w (+ 28 (text-width label (text-style ':label-bold)))))
-               (when (and row (> (+ taken button-w) width))
-                 (push (nreverse row) rows)
-                 (setf row   nil
-                       taken 0))
-               (push (list index label button-w option) row)
-               (incf taken (+ button-w 8))))
-    (when row
-      (push (nreverse row) rows))
-    (nreverse rows)))
+Each row is a list of (INDEX LABEL BUTTON-WIDTH OPTION). When the choices
+need more than one row they are shared out evenly, so that no row holds a
+lone last choice, as long as the even rows still fit."
+  (let* ((buttons (loop for option in options
+                        for index from 0
+                        collect (let ((label (format nil "~D  ~A" (1+ index) (approval--label option))))
+                                  (list index label (+ 28 (text-width label (text-style ':label-bold))) option))))
+         (filled  (approval--fill-rows buttons width))
+         (count   (length filled)))
+    (if (<= count 1)
+        filled
+        (let* ((each (ceiling (length buttons) count))
+               (even (loop for rest on buttons by (lambda (list)
+                                                    (nthcdr each list))
+                           collect (subseq rest 0 (min each (length rest))))))
+          (if (every (lambda (row)
+                       (<= (- (reduce #'+ row :key (lambda (button)
+                                                     (+ (third button) 8)))
+                              8)
+                           width))
+                     even)
+              even
+              filled)))))
 
 (-> approval--buttons-height (list integer) integer)
 (defun approval--buttons-height (options width)

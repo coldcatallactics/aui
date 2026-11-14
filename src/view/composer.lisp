@@ -111,14 +111,26 @@ Stepping past the newest returns to an empty composer."
       (workbench-redraw workbench)))
   nil)
 
+(-> composer--offered-models (workbench) list)
+(defun composer--offered-models (workbench)
+  "Return the models to offer: those of providers the person has signed in to, or all of them when none is."
+  (let* ((models (workbench-models workbench))
+         (usable (remove-if-not (lambda (model)
+                                  (portable-true-p (portable-get model "credentialStored")))
+                                models)))
+    (or usable models)))
+
 (-> composer--choose-model (workbench) null)
 (defun composer--choose-model (workbench)
-  "Offer the models grouped by provider and select the one chosen."
-  (let* ((models (workbench-models workbench))
-         (items  (mapcar (lambda (model)
-                           (format nil "~A/~A" (or (portable-get model "provider") "models")
-                                   (portable-get model "id")))
-                         models)))
+  "Offer the models grouped by provider, the current one marked, and select the one chosen."
+  (let* ((models  (composer--offered-models workbench))
+         (current (workbench-model workbench))
+         (items   (mapcar (lambda (model)
+                            (format nil "~A/~A~:[~; (current)~]"
+                                    (or (portable-get model "provider") "models")
+                                    (portable-get model "id")
+                                    (equal (portable-get model "id") current)))
+                          models)))
     (if (null items)
         (setf (workbench-notice workbench) "No model list is available from this channel yet.")
         (let ((choice (lightfast:popup-menu items)))

@@ -22,6 +22,8 @@ hairlines, no rounded corners.
 
 ![An approval waiting above the composer](assets/pictures/approval.png)
 
+![What is remembered for the workspace](assets/pictures/memories.png)
+
 ## Install
 
 AUI is built on the machine it runs on.
@@ -105,23 +107,38 @@ Options of AUI's own:
 | `-C`, `--directory DIR` | work in DIR instead of the current directory |
 | `--prompt TEXT` | send TEXT as soon as the channel is attached |
 | `--draft TEXT` | put TEXT in the composer |
-| `--view NAME` | show `commands`, `settings` or `channels` at start |
+| `--view NAME` | show `commands`, `settings`, `channels`, `agenda`, `memories` or `plan` at start |
 | `--demo` | a scripted conversation, no server needed |
 | `--shot FILE` | write a picture of the window and exit |
 | `--size WIDTHxHEIGHT` | with `--shot`, draw offscreen at exactly this size |
 
 ## Using it
 
-The left side lists the world's channels: the inbox, then each workspace with
-its channels, children under their parents. A green dot marks an agent at
-work, a ring a hosted channel that is idle, a small point one nobody serves.
-Counts at the right are unread messages and mentions. Click a channel to
-attach to it; right-click for more.
+A wide window has three columns. The left one lists the world's channels, the
+middle one holds the conversation and nothing else, and the right one, the
+console, holds everything about the channel that is not conversation: its
+title, identifier and directory, how full its context is, what runs for it,
+what waits to be read by the agent, an approval when one is asked for, and the
+composer at its foot. A window too narrow for that stacks the same things
+above and below the conversation, and one narrower still shows the channel
+list as a drawer.
+
+The channel list has the inbox, then each workspace with its channels,
+children under their parents. A green dot marks an agent at work, a ring a
+hosted channel that is idle, a small point one nobody serves. Counts at the
+right are unread messages and mentions. Click a channel to attach to it;
+right-click for more. The button beside the wordmark puts the list away.
+
+What runs is listed by kind, agents, commands, evaluations and model calls,
+and a kind with nothing running is not named. A row's cross cancels it; its
+menu copies the call that cancels it.
 
 Write in the composer. A draft starting with `/` or `(` is a command or a Lisp
 form and runs as it does in the terminal; typing either offers the channel's
 commands, and `@` offers the world's participants. The chips under the text
-choose the model, the reasoning effort and the permission mode.
+choose the model, the reasoning effort and the permission mode. The channel's
+menu, the button with three dots, shows its status, plan, agenda, memories and
+jobs, each in a window of its own.
 
 What the agent did is shown as one line per tool call, reasoning step or
 notice; click a line to open it. Drag across the conversation to select and
@@ -135,7 +152,12 @@ copy text.
 | Up, Down | step through completions, or through what you sent |
 | Escape | put a list or the drawer away; otherwise stop the agent |
 | 1 to 9 | answer a waiting approval with that choice, when the composer is empty |
-| Ctrl+K | commands |
+| Ctrl+A, Ctrl+E | the start and the end of the line |
+| Ctrl+U, Ctrl+K | delete to the start and to the end of the line |
+| Ctrl+W, Ctrl+Backspace, Alt+Backspace | delete the word before the caret |
+| Alt+D, Ctrl+Delete | delete the word after the caret |
+| Alt+B, Alt+F | move by words |
+| Ctrl+K | commands, where the line has nothing after the caret to delete |
 | Ctrl+, | settings |
 | Ctrl+T | show or hide the channel list |
 | Ctrl+O | find a channel |
@@ -143,7 +165,8 @@ copy text.
 | Page Up, Page Down | scroll the conversation |
 | Ctrl+Home, Ctrl+End | its beginning; its end, following new output again |
 
-On macOS the Command key takes the place of Ctrl.
+On macOS the Command key takes the place of Ctrl for the window's own keys.
+The editing keys stay on Control there, as in every text field on a Mac.
 
 ## Develop
 

@@ -28,8 +28,9 @@ ask for what is missing.
 - `src/ui/`: the toolkit over Lightfast. Theme, painting, the stage with its
   pointer regions, paragraphs and blocks, controls.
 - `src/view/`: the window. How entries are typeset, the document, the
-  channel list, the composer, completion, overlays, and the workbench that
-  holds the window's state.
+  channel list, the composer, completion, the activity list, the overlays
+  with their catalogs, sheets and panels, and the workbench that holds the
+  window's state.
 - `tests/`: FiveAM, same package, no display, server or credentials.
 - `script/setup.lisp`: finds the Autolith checkout and its dependency set;
   every script and the source checks load it first.
@@ -67,6 +68,17 @@ FLTK goes into Lightfast as a reusable operation, never as application
 behavior.
 
 The look is Interlisp Paper's with the Autolith site's liberties: one paper
-ground, ink, the brand green only for what is alive, inversion for selection
-and hover, dither for shadows and de-emphasis, hairlines, no rounded corners,
-no grey, sentence case.
+ground, ink, inversion for selection and hover, dither for shadows and
+de-emphasis, hairlines, no rounded corners, no grey, sentence case. A few
+accent inks say what a thing is, as the terminal's colors do: green for what
+is alive or went well, red for what failed, amber for tools and warnings, blue
+for code among prose, links and the step in hand, plum for defining words in
+code. They are tokens in `src/ui/theme.lisp` and turn lighter on an inverted
+ground by themselves; do not invent others.
+
+Menus, pickers, prompts and panels are overlays drawn on the stage
+(`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
+share the faces. A file chooser is the one exception. A wide window sets the
+console (title, activity, approval, composer) beside the conversation; a
+narrow one stacks them. Both come from `window--layout`, so a pane is added
+there once and appears in both.

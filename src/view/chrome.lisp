@@ -495,7 +495,7 @@ A choice is taken with its number or a click."
                                             :x     left
                                             :y     top
                                             :width column)))
-         (setf below (chrome--paint-centered "Write below. A line starting with ( or / runs a command."
+         (setf below (chrome--paint-centered "Write to the agent. A line starting with ( or / runs a command."
                                              (text-style ':body)
                                              :x     left
                                              :y     (+ below 14)

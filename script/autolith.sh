@@ -9,7 +9,7 @@
 #
 # AUI_AUTOLITH_ROOT, or else AUTOLITH_SOURCE_ROOT, names the release directory
 # or the checkout. Without either, it is the one behind the autolith command
-# on the path.
+# on the path, or else behind ~/.local/bin/autolith.
 #
 # Sets:
 #   autolith_source   the directory that holds autolith.asd, or empty
@@ -34,7 +34,10 @@ autolith_identity=
 
 autolith_home=${AUI_AUTOLITH_ROOT:-${AUTOLITH_SOURCE_ROOT:-}}
 if [[ -z "$autolith_home" ]]; then
-  if autolith_command=$(command -v autolith 2>/dev/null); then
+  # Autolith's installer links the command into ~/.local/bin, which a login
+  # does not always put on the path.
+  autolith_command=$(command -v autolith 2>/dev/null) || autolith_command=$HOME/.local/bin/autolith
+  if [[ -e "$autolith_command" ]]; then
     autolith_command=$(aui_follow_links "$autolith_command")
     autolith_home=$(dirname "$(dirname "$autolith_command")")
   fi

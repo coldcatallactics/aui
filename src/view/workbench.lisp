@@ -509,7 +509,7 @@ agent takes it up."
     (when (and session (workbench-attached-p workbench))
       (session-operation session "_autolith/set-setting"
                          :params  (portable-object "name" name "value" value)
-                         :request (list ':set-setting name))))
+                         :request (list ':set-setting name value))))
   nil)
 
 

@@ -62,12 +62,25 @@
              (write-string (theme-error-message condition) stream)))
   (:documentation "The theme was asked for something it does not have."))
 
+(-> theme--family-installed-p (string list) boolean)
+(defun theme--family-installed-p (family installed)
+  "Return T when the INSTALLED face names include FAMILY itself or one of its styles.
+
+Font systems disagree on what the regular face is called: the family alone,
+or the family followed by a style word."
+  (let ((prefix (format nil "~A " family)))
+    (and (find-if (lambda (name)
+                    (or (string-equal family name)
+                        (and (> (length name) (length prefix))
+                             (string-equal prefix name :end2 (length prefix)))))
+                  installed
+                  :key #'first)
+         t)))
+
 (-> theme--family (list list) string)
 (defun theme--family (candidates installed)
   "Return the first of CANDIDATES among the INSTALLED face names, or the first candidate when none is."
-  (or (find-if (lambda (family)
-                 (find family installed :key #'first :test #'string-equal))
-               candidates)
+  (or (find-if (lambda (family) (theme--family-installed-p family installed)) candidates)
       (first candidates)))
 
 (-> theme--face-name (string keyword list) string)
@@ -88,27 +101,35 @@
                  names)
         (first names))))
 
-(-> theme--register-bundled-fonts () null)
-(defun theme--register-bundled-fonts ()
-  "Make the typefaces AUI ships with available to this process, so the typewriter face is the same on every machine.
+(defparameter *bundled-mono-family* "CMU Typewriter Text"
+  "The family of the typewriter face AUI ships with.")
 
-A face that cannot be registered is left to the system's own copy or to the next family in the list."
+(-> theme--register-bundled-fonts () boolean)
+(defun theme--register-bundled-fonts ()
+  "Make the typefaces AUI ships with available to this process, and return whether the font system took them all.
+
+The typewriter face is then the same on every machine. A face that cannot
+be registered is left to the system's own copy or to the next family in the
+list."
   (let ((files (uiop:directory-files (asdf:system-relative-pathname :aui "assets/fonts/") "*.ttf")))
-    (when files
-      (handler-case (lightfast:register-font-files (mapcar #'uiop:native-namestring files))
-        (error ()
-          nil))))
-  nil)
+    (and files
+         (handler-case (values (lightfast:register-font-files (mapcar #'uiop:native-namestring files)))
+           (error ()
+             nil))
+         t)))
 
 (-> theme-install () null)
 (defun theme-install ()
   "Load the faces and make every widget created afterwards flat, on paper, in ink.
 
 Call once on the interface thread before any window exists."
-  (theme--register-bundled-fonts)
-  (let* ((installed (lightfast:system-font-names))
+  (let* ((bundled-p (theme--register-bundled-fonts))
+         (installed (lightfast:system-font-names))
          (serif     (theme--family *serif-families* installed))
-         (mono      (theme--family *mono-families* installed)))
+         ;; A face just registered is there whatever the system's list calls it.
+         (mono      (if bundled-p
+                        *bundled-mono-family*
+                        (theme--family *mono-families* installed))))
     ;; FLTK's Cairo driver draws a face with a line gap above its baseline;
     ;; the corrected copies sit where every other face does.
     (lightfast:correct-font-baselines (list serif mono))

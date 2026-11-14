@@ -119,7 +119,7 @@
                         :key         ':view
                         :parameter   "NAME"
                         :persistent  t
-                        :description "show a view at start: commands, settings, memories or help")
+                        :description "show a view at start: commands, settings or channels")
    (clingon:make-option ':string
                         :long-name   "draft"
                         :key         ':draft

@@ -34,7 +34,11 @@
       ((launch-demo-p launch)
        (demo-install workbench)
        (when (equal (launch-view launch) "approval")
-         (setf (workbench-approval workbench) (demo-approval))))
+         (setf (workbench-approval workbench) (demo-approval)))
+       (when (equal (launch-view launch) "welcome")
+         (transcript-clear (workbench-transcript workbench))
+         (setf (workbench-working-p workbench) nil
+               (workbench-jobs workbench)      nil)))
       (t
        (world-start-watching (workbench-world workbench))
        (if (launch-pick-p launch)

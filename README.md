@@ -16,6 +16,12 @@ black ink, Times for what is said, a typewriter face for what the interface
 says about it, inversion in place of grey, dither as the only in-between tone,
 hairlines, no rounded corners.
 
+![A conversation: the channel list, an opened edit, an answer](assets/pictures/conversation.png)
+
+![A new channel](assets/pictures/welcome.png)
+
+![An approval waiting above the composer](assets/pictures/approval.png)
+
 ## Install
 
 AUI is built on the machine it runs on.

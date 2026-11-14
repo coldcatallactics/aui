@@ -68,6 +68,9 @@
                  (plusp (transcript-length (workbench-transcript workbench))))
             (document-paint (workbench-document workbench) stage :x x :y y :width width :height height)
             (empty-paint workbench stage :x x :y y :width width :height height)))
+      ;; The conversation ends on a band of dither, as it begins under the header's.
+      (destructuring-bind (x y width height) (box :document)
+        (paint-dither x (+ y height -3) :width width :height 3 :step 3))
       (destructuring-bind (x y width height) (box :header)
         (declare (ignore height))
         (header-paint workbench stage :x x :y y :width width

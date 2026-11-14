@@ -1,0 +1,281 @@
+(in-package #:aui)
+
+;;;; -- Sidebar --
+
+;;; The world's channels at the window's left: the inbox, then each workspace
+;;; with its channels, children under their parents. The tree is Autolith's
+;;; own sidebar model, the one its terminal draws; this file only gives it a
+;;; face. The current channel is inverted, a working agent carries the green
+;;; dot, and unread counts sit at the right as small inverted badges.
+
+(defparameter *sidebar-width* 292
+  "The width of the docked channel list.")
+
+(defparameter *sidebar-row-height* 30
+  "The height of one channel row.")
+
+(defparameter *sidebar-docked-minimum* 980
+  "The narrowest window that still docks the channel list beside the conversation.")
+
+(-> sidebar-entries (workbench) list)
+(defun sidebar-entries (workbench)
+  "Return the channel tree to show: the world's, or the demonstration's."
+  (if (workbench-demo-p workbench)
+      (workbench-demo-entries workbench)
+      (world-entries (workbench-world workbench))))
+
+(-> sidebar--matches-p (list string) boolean)
+(defun sidebar--matches-p (entry filter)
+  "Return T when the channel ENTRY's name, title or identifier contains FILTER, ignoring case."
+  (and (some (lambda (text)
+               (and (stringp text) (search filter text :test #'char-equal)))
+             (list (getf entry :name) (getf entry :title) (getf entry :id)
+                   (and (getf entry :id) (channel-display-name (getf entry :id)))))
+       t))
+
+(-> sidebar--visible-entries (workbench) list)
+(defun sidebar--visible-entries (workbench)
+  "Return the entries to list: the whole tree, or with a filter typed only the channels that match it."
+  (let ((entries (sidebar-entries workbench))
+        (filter  (string-trim " " (workbench-filter workbench))))
+    (if (zerop (length filter))
+        entries
+        (remove-if-not (lambda (entry)
+                         (and (eq (getf entry :kind) ':channel)
+                              (sidebar--matches-p entry filter)))
+                       entries))))
+
+(-> sidebar--channel-label (list) (values string (or null string)))
+(defun sidebar--channel-label (entry)
+  "Return the name the channel ENTRY goes by and its title, the title NIL when it has none."
+  (let ((name  (portable-string (getf entry :name)))
+        (title (portable-string (getf entry :title))))
+    (values (or name (channel-display-name (getf entry :id)))
+            title)))
+
+(-> sidebar--channel-menu (workbench list) null)
+(defun sidebar--channel-menu (workbench entry)
+  "Offer what can be done with the channel ENTRY and do what is chosen."
+  (let* ((identifier (getf entry :id))
+         (choice     (lightfast:popup-menu '("Open" "Send a message…" "Copy identifier" "-" "Stop serving"))))
+    (case choice
+      (0
+       (workbench-open workbench :channel identifier))
+      (1
+       (let ((text (lightfast:input-dialog
+                    (format nil "Message to ~A" (channel-display-name identifier)))))
+         (when text
+           (workbench-tell workbench identifier text))))
+      (2
+       (lightfast:copy-text identifier))
+      (4
+       (workbench-close-channel workbench identifier))))
+  nil)
+
+(-> sidebar--paint-channel (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun sidebar--paint-channel (workbench stage entry &key x y width)
+  "Draw one channel row: its state mark, its agent's name and title, and what is unread."
+  (let* ((identifier (getf entry :id))
+         (region     (list ':channel identifier))
+         (current-p  (or (getf entry :current-p)
+                         (equal identifier (workbench-channel workbench))))
+         (hot-p      (stage-hot-p stage region))
+         (state      (getf entry :state))
+         (indent     (+ 14 (* 16 (or (getf entry :depth) 0))))
+         (height     *sidebar-row-height*)
+         (unread     (or (getf entry :unread) 0))
+         (mentions   (or (getf entry :mentions) 0))
+         (pending    (or (getf entry :pending) 0)))
+    (flet ((content ()
+             (let ((mark-y (+ y (floor (- height 12) 2)))
+                   (right  (- (+ x width) 10)))
+               (case state
+                 ((:active :working :cancelling)
+                  (paint-mark ':dot (+ x indent) mark-y :size 12 :color (accent-color)))
+                 (:absent
+                  (paint-fill (+ x indent 5) (+ mark-y 5) :width 2 :height 2))
+                 (otherwise
+                  (paint-mark ':ring (+ x indent) mark-y :size 12)))
+               (when (plusp mentions)
+                 (decf right (+ 6 (paint-badge (format nil "@~D" mentions) :right right :y y :height height))))
+               (when (plusp unread)
+                 (decf right (+ 6 (paint-badge (princ-to-string unread) :right right :y y :height height))))
+               (when (plusp pending)
+                 (let ((text (format nil "~D waiting" pending)))
+                   (paint-text-in text (text-style ':meta)
+                                  :x      (- right (text-width text (text-style ':meta)))
+                                  :y      y
+                                  :width  (text-width text (text-style ':meta))
+                                  :height height)
+                   (decf right (+ 8 (text-width text (text-style ':meta))))))
+               (multiple-value-bind (name title) (sidebar--channel-label entry)
+                 (let* ((text-x (+ x indent 20))
+                        (bold   (text-style ':small :face ':serif-bold))
+                        (plain  (text-style ':small))
+                        (fitted (text-fit name bold (max 0 (- right text-x))))
+                        (end    (paint-text fitted text-x (+ y (floor (- height (text-style-line-height bold)) 2)
+                                                           (text-baseline bold))
+                                            :style bold)))
+                   (when (and title (> (- right end) 40))
+                     (paint-text (text-fit title plain (- right end 10)) (+ end 10) (+ y (floor (- height (text-style-line-height plain)) 2)
+                                                                                     (text-baseline plain))
+                                 :style plain)))))))
+      (if (or current-p hot-p)
+          (with-inversion (x y width height)
+            (content))
+          (content)))
+    (stage-region stage region
+                  :x       x
+                  :y       y
+                  :width   width
+                  :height  height
+                  :action  (lambda ()
+                             (unless (equal identifier (workbench-channel workbench))
+                               (workbench-open workbench :channel identifier)))
+                  :menu    (lambda () (sidebar--channel-menu workbench entry))
+                  :tooltip (channel-display-name identifier)))
+  nil)
+
+(-> sidebar--paint-workspace (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun sidebar--paint-workspace (workbench stage entry &key x y width)
+  "Draw a workspace heading: its open or closed mark, its name, its path, and what a closed one hides."
+  (let* ((key    (getf entry :key))
+         (region (list ':workspace key))
+         (height *sidebar-row-height*)
+         (bold   (text-style ':meta-bold))
+         (meta   (text-style ':meta))
+         (hot-p  (stage-hot-p stage region)))
+    (flet ((content ()
+             (paint-mark (if (getf entry :open-p) ':open ':closed) (+ x 12) (+ y (floor (- height 10) 2))
+                         :size 10)
+             (let* ((right (- (+ x width) 10))
+                    (end   (paint-text (text-fit (or (getf entry :name) "") bold (- width 60)) (+ x 28) (+ y (floor (- height (text-style-line-height bold)) 2)
+                                                                                                         (text-baseline bold))
+                                       :style bold)))
+               (when (and (not (getf entry :open-p)) (getf entry :hidden))
+                 (decf right (+ 6 (paint-badge (format nil "+~D" (getf entry :hidden))
+                                               :right  right
+                                               :y      y
+                                               :height height))))
+               (when (> (- right end) 60)
+                 (paint-text-in (text-fit (or (getf entry :path) "") meta (- right end 12)) meta
+                                :x      (+ end 12)
+                                :y      y
+                                :width  (- right end 12)
+                                :height height)))))
+      (if hot-p
+          (with-inversion (x y width height)
+            (content))
+          (content)))
+    (stage-region stage region
+                  :x      x
+                  :y      y
+                  :width  width
+                  :height height
+                  :action (lambda ()
+                            (unless (workbench-demo-p workbench)
+                              (world-toggle-node (workbench-world workbench) key))
+                            (workbench-redraw workbench))))
+  nil)
+
+(-> sidebar--paint-inbox (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun sidebar--paint-inbox (workbench stage entry &key x y width)
+  "Draw the inbox row with the count of what waits there unread."
+  (let* ((identifier (getf entry :id))
+         (region     (list ':channel identifier))
+         (height     *sidebar-row-height*)
+         (current-p  (or (getf entry :current-p) (equal identifier (workbench-channel workbench))))
+         (hot-p      (stage-hot-p stage region))
+         (unread     (or (getf entry :unread) 0)))
+    (flet ((content ()
+             (paint-text-in "Inbox" (text-style ':small :face ':serif-bold)
+                            :x      (+ x 14)
+                            :y      y
+                            :width  (- width 80)
+                            :height height)
+             (when (plusp unread)
+               (paint-badge (princ-to-string unread) :right (- (+ x width) 10) :y y :height height))))
+      (if (or current-p hot-p)
+          (with-inversion (x y width height)
+            (content))
+          (content)))
+    (stage-region stage region
+                  :x      x
+                  :y      y
+                  :width  width
+                  :height height
+                  :action (lambda ()
+                            (unless (equal identifier (workbench-channel workbench))
+                              (workbench-open workbench :channel identifier)))))
+  nil)
+
+(-> sidebar-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sidebar-paint (workbench stage &key x y width height)
+  "Draw the channel list in the box, with its heading above and the server's state below."
+  (let* ((entries     (sidebar--visible-entries workbench))
+         (top         (+ y 150))
+         (bottom      (- (+ y height) 64))
+         (list-height (max 0 (- bottom top)))
+         (content     (* *sidebar-row-height* (length entries)))
+         (scroll      (max 0 (min (workbench-sidebar-scroll workbench) (max 0 (- content list-height))))))
+    (setf (workbench-sidebar-scroll workbench) scroll)
+    (paint-fill x y :width width :height height :color *paper*)
+    (paint-line (+ x width -1) y :x2 (+ x width -1) :y2 (+ y height))
+    ;; Heading: the wordmark and the way to a new channel.
+    (paint-text "Autolith" (+ x 14) (+ y 40) :style (text-style ':title))
+    (paint-button stage ':new-channel "New channel"
+                  :x       (+ x 14)
+                  :y       (+ y 58)
+                  :width   (- width 28)
+                  :height  34
+                  :mark    ':plus
+                  :action  (lambda () (workbench-new-channel workbench))
+                  :tooltip (format nil "A new channel in ~A" (short-directory (workbench-directory workbench))))
+    ;; The filter field is a native input laid over this frame.
+    (paint-frame (+ x 14) (+ y 102) :width (- width 28) :height 34)
+    (stage-region stage ':sidebar-list
+                  :x      x
+                  :y      top
+                  :width  width
+                  :height list-height
+                  :wheel  (lambda (vertical horizontal)
+                            (declare (ignore horizontal))
+                            (setf (workbench-sidebar-scroll workbench)
+                                  (max 0 (+ (workbench-sidebar-scroll workbench)
+                                            (* vertical *sidebar-row-height*))))))
+    (lightfast:with-clip (x top width list-height)
+      (loop for entry in entries
+            for row-y from (- top scroll) by *sidebar-row-height*
+            do (when (and (< row-y bottom) (> (+ row-y *sidebar-row-height*) top))
+                 (ecase (getf entry :kind)
+                   (:inbox
+                    (sidebar--paint-inbox workbench stage entry :x x :y row-y :width (1- width)))
+                   (:workspace
+                    (sidebar--paint-workspace workbench stage entry :x x :y row-y :width (1- width)))
+                   (:channel
+                    (sidebar--paint-channel workbench stage entry :x x :y row-y :width (1- width))))))
+      (when (null entries)
+        (paint-text-in (if (plusp (length (workbench-filter workbench)))
+                           "No channel matches."
+                           "No channels yet.") (text-style ':small :face ':serif-italic)
+                       :x      (+ x 14)
+                       :y      top
+                       :width  (- width 28)
+                       :height 40)))
+    ;; Foot: settings and what this client is built against.
+    (paint-chip stage ':open-settings "Settings"
+                :x      (+ x 8)
+                :y      (- (+ y height) 54)
+                :height 24
+                :action (lambda () (workbench-show-overlay workbench ':settings)))
+    (paint-chip stage ':open-commands "Commands"
+                :x      (+ x 8 (chip-width "Settings") 4)
+                :y      (- (+ y height) 54)
+                :height 24
+                :action (lambda () (workbench-show-overlay workbench ':commands)))
+    (paint-text-in (format nil "Autolith ~A" (world-autolith-version)) (text-style ':meta)
+                   :x      (+ x 16)
+                   :y      (- (+ y height) 28)
+                   :width  (- width 32)
+                   :height 20))
+  nil)

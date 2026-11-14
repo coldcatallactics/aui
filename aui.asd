@@ -18,7 +18,8 @@
       :serial t
       :components
       ((:file "transcript")
-       (:file "events")))
+       (:file "events")
+       (:file "markdown")))
      (:module "client"
       :serial t
       :components
@@ -27,7 +28,30 @@
        (:file "records")
        (:file "history")
        (:file "session")
-       (:file "launch"))))))
+       (:file "launch")))
+     (:module "ui"
+      :serial t
+      :components
+      ((:file "theme")
+       (:file "paint")
+       (:file "stage")
+       (:file "paragraph")
+       (:file "blocks")
+       (:file "controls")))
+     (:module "view"
+      :serial t
+      :components
+      ((:file "prose")
+       (:file "entries")
+       (:file "document")
+       (:file "workbench")
+       (:file "sidebar")
+       (:file "composer")
+       (:file "chrome")
+       (:file "overlay")
+       (:file "window")
+       (:file "demo")))
+     (:file "main"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests

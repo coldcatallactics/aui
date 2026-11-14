@@ -265,12 +265,14 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
                                 :name "AUI request")
   nil)
 
-(-> session-submit (session string &key (:images list) (:steer-p boolean) (:request t)) null)
-(defun session-submit (session text &key images steer-p (request ':submit))
+(-> session-submit
+    (session string &key (:images list) (:steer-p boolean) (:identifier (or null string)) (:request t)) null)
+(defun session-submit (session text &key images steer-p identifier (request ':submit))
   "Submit TEXT with IMAGES to the channel, as a steer of the running turn when STEER-P.
 
 Prose becomes a message to the agent; a Lisp form or a slash command runs as
-the terminal would run it. Submissions keep the order they were made in."
+the terminal would run it. Submissions keep the order they were made in.
+IDENTIFIER names the submission in the channel's events about it."
   (session--enqueue
    session
    (lambda ()
@@ -282,7 +284,7 @@ the terminal would run it. Submissions keep the order they were made in."
                       (list :text       text
                             :images     images
                             :steer-p    steer-p
-                            :submission (list :id     (autolith::make-identifier)
+                            :submission (list :id     (or identifier (autolith::make-identifier))
                                               :client (autolith::channel-subscription-client-identifier
                                                        (session--subscription session))
                                               :source (if steer-p "steering" "prompt"))))))

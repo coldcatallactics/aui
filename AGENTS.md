@@ -76,9 +76,16 @@ for code among prose, links and the step in hand, plum for defining words in
 code. They are tokens in `src/ui/theme.lisp` and turn lighter on an inverted
 ground by themselves; do not invent others.
 
+Labels, tooltips, notices and the README say what a person does or state a
+plain fact. A key, a window or a list is never the subject of a verb: "Stop
+(Esc)", not "Esc stops". Short sentences, plain words.
+
 Menus, pickers, prompts and panels are overlays drawn on the stage
 (`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
 share the faces. A file chooser is the one exception. A wide window sets the
 console (title, activity, approval, composer) beside the conversation; a
 narrow one stacks them. Both come from `window--layout`, so a pane is added
-there once and appears in both.
+there once and appears in both. An overlay opened from another is drawn over
+it, each dimming the one beneath. What the window itself remembers between
+runs, such as the console's width, goes through `preference` in
+`src/model/preferences.lisp`; Autolith's settings stay Autolith's.

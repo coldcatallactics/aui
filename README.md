@@ -5,22 +5,22 @@ world of channels, written in Common Lisp on
 [Lightfast](https://github.com/lambda-symbolics/lightfast) and FLTK 1.4. It runs
 on Linux and macOS.
 
-AUI is a client of Autolith's world server in the way Autolith's own terminal
-is. It loads Autolith's client code into its image, opens channels with
-`world-client-open`, follows them as a structured client, and shows the tree
-of channels from Autolith's own sidebar model. Nothing is re-derived through a
-bridge, so what the terminal can reach, the window can reach.
+AUI is a client of Autolith's world server, as Autolith's terminal is. It
+uses Autolith's own client code to open channels, to follow them and to list
+them. Whatever you can reach from the terminal, you can reach from the window.
 
-The look follows Interlisp Paper and the Autolith site: one paper ground,
-black ink, Times for what is said, a typewriter face for what the interface
-says about it, inversion in place of grey, dither as the only in-between tone,
-hairlines, no rounded corners.
+The look is Interlisp Paper's and the Autolith site's: paper, black ink, Times
+for what is said, a typewriter face for what is said about it, inversion
+instead of grey, dither as the only tone between, hairlines, square corners,
+and a few accent inks.
 
 ![A conversation: the channel list, an opened edit, an answer](assets/pictures/conversation.png)
 
 ![A new channel](assets/pictures/welcome.png)
 
 ![An approval waiting above the composer](assets/pictures/approval.png)
+
+![The agenda as a board](assets/pictures/agenda.png)
 
 ![What is remembered for the workspace](assets/pictures/memories.png)
 
@@ -91,14 +91,12 @@ aui -C ~/work/project        # as if started in that directory
 aui lg status                # every other sub-command runs as under autolith
 ```
 
-The first `aui` starts the world server if none runs, exactly as the first
-`autolith` does. Options that concern the channel (`--model`, `--provider`,
-`--permissions`, `--immutable`, `--image`, `--site-config-root`) are Autolith's
-own option objects, read by Autolith's own functions and sent to the server as
-a terminal sends them. Starts that have no window (`--detached`, `--pristine`)
-and every sub-command other than `open` are handed to the `autolith` program
-unchanged: the process becomes `autolith`, so they run in Autolith's own image
-with the person's private definitions as Autolith applies them.
+If no world server is running, the first `aui` starts one, as the first
+`autolith` does. The options for a channel (`--model`, `--provider`,
+`--permissions`, `--immutable`, `--image`, `--site-config-root`) are
+Autolith's own and mean what they mean there. A start without a window
+(`--detached`, `--pristine`) and every sub-command except `open` run in
+`autolith` itself: `aui` turns into it.
 
 Options of AUI's own:
 
@@ -114,41 +112,48 @@ Options of AUI's own:
 
 ## Using it
 
-A wide window has three columns. The left one lists the world's channels, the
-middle one holds the conversation and nothing else, and the right one, the
-console, holds everything about the channel that is not conversation: its
-title, identifier and directory, how full its context is, what runs for it,
-what waits to be read by the agent, an approval when one is asked for, and the
-composer at its foot. A window too narrow for that stacks the same things
-above and below the conversation, and one narrower still shows the channel
-list as a drawer.
+A wide window has three columns:
 
-The channel list has the inbox, then each workspace with its channels,
-children under their parents. A green dot marks an agent at work, a ring a
-hosted channel that is idle, a small point one nobody serves. Counts at the
-right are unread messages and mentions. Click a channel to attach to it;
-right-click for more. The button beside the wordmark puts the list away.
+- On the left, the list of channels.
+- In the middle, the conversation and nothing else.
+- On the right, the console: the channel's title, identifier and directory,
+  how full its context is, what is running, what is waiting, an approval when
+  one is asked for, and the composer at the bottom.
 
-What runs is listed by kind, agents, commands, evaluations and model calls,
-and a kind with nothing running is not named. A row's cross cancels it; its
-menu copies the call that cancels it.
+Drag the edge between the conversation and the console to resize the console.
+The width is remembered. In a narrow window the same things are stacked above
+and below the conversation, and the channel list is a drawer.
 
-Write in the composer. A draft starting with `/` or `(` is a command or a Lisp
-form and runs as it does in the terminal; typing either offers the channel's
-commands, and `@` offers the world's participants. The chips under the text
-choose the model, the reasoning effort and the permission mode. The channel's
-menu, the button with three dots, shows its status, plan, agenda, memories and
-jobs, each in a window of its own.
+In the channel list you see the inbox, then each workspace with its channels,
+children under their parents. A green dot means the agent is working, a ring
+means the channel is hosted and idle, a small point means nobody serves it.
+The numbers on the right count unread messages and mentions. Click a channel
+to open it. Right-click it to send it a message, stop serving it or delete
+it. Click the button next to the wordmark to hide the list.
 
-What the agent did is shown as one line per tool call, reasoning step or
-notice; click a line to open it. Drag across the conversation to select and
-copy text.
+Running things are grouped as agents, commands, evaluations and model calls.
+Click the cross on a row to cancel it. Right-click the row to copy the call
+that cancels it.
+
+Write in the composer. Start a line with `/` or `(` to run a command or a
+Lisp form, as in the terminal. Type either to see the commands, or `@` to see
+who you can mention. Use the chips under the text to pick the model, the
+reasoning effort and the permission mode.
+
+The three buttons in the header open the settings, the commands and the
+channel's menu. From the menu you can open the status, the plan, the agenda,
+the memories and the jobs, each in a window of its own, and sign in to a
+model provider.
+
+Each tool call, thought and notice is one line in the conversation. Click it
+to open it. Commands, Lisp and edits are highlighted as in the terminal. Drag
+across the conversation to select text, then copy it.
 
 | key | action |
 |---|---|
-| Enter | send; while the agent works, steer the running turn |
+| Enter | send; while the agent is working, steer the running turn |
 | Shift+Enter | break the line |
-| Tab | take the highlighted completion; while the agent works, queue a follow-up |
+| Tab | take the highlighted completion; while the agent is working, queue a follow-up |
 | Up, Down | step through completions, or through what you sent |
 | Escape | put a list or the drawer away; otherwise stop the agent |
 | 1 to 9 | answer a waiting approval with that choice, when the composer is empty |
@@ -157,7 +162,7 @@ copy text.
 | Ctrl+W, Ctrl+Backspace, Alt+Backspace | delete the word before the caret |
 | Alt+D, Ctrl+Delete | delete the word after the caret |
 | Alt+B, Alt+F | move by words |
-| Ctrl+K | commands, where the line has nothing after the caret to delete |
+| Ctrl+K | commands, when there is nothing after the caret to delete |
 | Ctrl+, | settings |
 | Ctrl+T | show or hide the channel list |
 | Ctrl+O | find a channel |
@@ -165,8 +170,8 @@ copy text.
 | Page Up, Page Down | scroll the conversation |
 | Ctrl+Home, Ctrl+End | its beginning; its end, following new output again |
 
-On macOS the Command key takes the place of Ctrl for the window's own keys.
-The editing keys stay on Control there, as in every text field on a Mac.
+On macOS use Command instead of Ctrl for the window's own keys. The editing
+keys are on Control there, as in every text field on a Mac.
 
 ## Develop
 
@@ -181,16 +186,16 @@ script/exercise-live            # real turns through a world server of its own a
 script/build                    # the saved image
 ```
 
-The source rules are [cheque](https://github.com/lambda-symbolics/cheque)'s,
-installed on first use into the per-user cache. The checks run on macOS in
-GitHub Actions for every push, and keep pictures of the demonstration drawn
-there as an artifact.
+The source rules come from [cheque](https://github.com/lambda-symbolics/cheque),
+installed on first use into the per-user cache. Every push is checked on macOS
+in GitHub Actions, and the pictures of the demonstration drawn there are kept
+as an artifact.
 
-`script/exercise-live` needs no account. It makes a world under `/tmp`, starts
-Autolith's world server for it, registers a model that is a script in the same
-process, and does what a person does in the window: send, queue a follow-up,
-allow a command, stop a turn, steer one, run a command, reopen the channel
-from its history. Then it stops the server and removes the world.
+You need no account for `script/exercise-live`. It uses a throwaway world
+under `/tmp`, Autolith's real world server and a scripted model. It sends a
+message, queues a follow-up, allows a command, stops a turn, steers one, runs
+a command, reopens the channel from its history and deletes it. Afterwards the
+server is stopped and the world removed.
 
 `src/client/` is the only directory that names Autolith's definitions. When
 Autolith publishes its client interface, that directory is what changes.

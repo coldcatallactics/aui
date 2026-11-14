@@ -68,53 +68,82 @@
   (workbench-redraw workbench)
   nil)
 
-(-> chrome--channel-menu (workbench) null)
-(defun chrome--channel-menu (workbench)
-  "Offer what can be done with the channel shown and its agent, and do what is chosen."
+(-> chrome--move-agent-here (workbench) null)
+(defun chrome--move-agent-here (workbench)
+  "Offer the agents that live elsewhere, and move the one chosen into the channel shown."
+  (let ((channel (workbench-channel workbench)))
+    (workbench-pick
+     workbench
+     (loop for participant in (and (not (workbench-demo-p workbench))
+                                   (world-participants (workbench-world workbench)))
+           when (and (eq (getf participant :kind) ':agent)
+                     (not (equal (getf participant :residence) channel))
+                     (stringp (getf participant :name)))
+             collect (make-choice :label  (getf participant :name)
+                                  :detail (if (getf participant :residence)
+                                              (format nil "in ~A" (channel-display-name (getf participant :residence)))
+                                              "parked")
+                                  :value  (getf participant :name)))
+     (lambda (name)
+       (workbench-submit workbench (format nil "(move ~S)" name)))
+     :title "Move an agent here"))
+  nil)
+
+(-> chrome--channel-menu (workbench &key (:x integer) (:y integer)) null)
+(defun chrome--channel-menu (workbench &key (x 0) (y 0))
+  "Open the menu of what can be done with the channel shown and its agent, with its corner at X, Y."
   (let ((agent (chrome--channel-agent workbench)))
-    (popup-actions
-     (append
-      (list (list "New channel here"
-                  (lambda () (workbench-new-channel workbench)))
-            (list "New channel in another folder…"
-                  (lambda () (workbench-new-channel-elsewhere workbench)))
-            nil
-            (list "Show status"
-                  (lambda () (workbench-submit workbench "(status)")))
-            (list "Show the agenda"
-                  (lambda () (workbench-submit workbench "(agenda)")))
-            (list "Show the jobs"
-                  (lambda () (workbench-submit workbench "(tasks)")))
-            (list "Show what it remembers"
-                  (lambda () (workbench-submit workbench "(memories)")))
-            (list "Compact the context now"
-                  (lambda () (workbench-submit workbench "(compact)")))
-            nil
-            (list "Agent/Rename…"
-                  (lambda ()
-                    (let ((name (lightfast:input-dialog "A new name for this channel's agent"
-                                                        :initial (or agent ""))))
-                      (when name
-                        (workbench-submit workbench (format nil "(rename ~S)" name)))))))
-      (if agent
-          (list (list "Agent/Park it"
-                      (lambda () (workbench-submit workbench (format nil "(dismiss ~S)" agent)))))
-          (list (list "Agent/Create one for this channel"
-                      (lambda () (workbench-submit workbench "(domestic)")))))
-      (mapcar (lambda (name)
-                (list (format nil "Agent/Move here/~A" name)
-                      (lambda () (workbench-submit workbench (format nil "(move ~S)" name)))))
-              (chrome--other-agents workbench))
-      (list nil
-            (list "Sign in to a model provider…"
-                  (lambda () (chrome--sign-in workbench)))
-            (list "Copy channel identifier"
-                  (lambda ()
-                    (when (workbench-channel workbench)
-                      (lightfast:copy-text (workbench-channel workbench)))))
-            (list "Copy the conversation"
-                  (lambda ()
-                    (lightfast:copy-text (transcript-plain-text (workbench-transcript workbench)))))))))
+    (flet ((item (label function &optional detail)
+             (make-choice :label label :detail detail :value function)))
+      (workbench-menu
+       workbench
+       (append
+        (list (item "New channel here"
+                    (lambda () (workbench-new-channel workbench)))
+              (item "New channel in another folder…"
+                    (lambda () (workbench-new-channel-elsewhere workbench)))
+              (make-choice)
+              (item "Status"
+                    (lambda () (panel-show-output workbench "Status" "status")))
+              (item "Plan"
+                    (lambda () (panel-show-plan workbench)))
+              (item "Agenda"
+                    (lambda () (panel-show-agenda workbench)))
+              (item "Memories"
+                    (lambda () (panel-show-memories workbench)))
+              (item "Jobs"
+                    (lambda () (panel-show-output workbench "Jobs" "tasks")))
+              (item "Compact the context now"
+                    (lambda () (workbench-submit workbench "(compact)")))
+              (make-choice)
+              (item "Rename the agent…"
+                    (lambda ()
+                      (workbench-ask workbench "Rename the agent"
+                                     (lambda (name)
+                                       (when (plusp (length (string-trim " " name)))
+                                         (workbench-submit workbench (format nil "(rename ~S)" name))))
+                                     :note    "The name this channel's agent answers to in @mentions."
+                                     :initial (or agent "")))))
+        (if agent
+            (list (item "Park the agent"
+                        (lambda () (workbench-submit workbench (format nil "(dismiss ~S)" agent)))))
+            (list (item "Create an agent for this channel"
+                        (lambda () (workbench-submit workbench "(domestic)")))))
+        (when (chrome--other-agents workbench)
+          (list (item "Move an agent here…"
+                      (lambda () (chrome--move-agent-here workbench)))))
+        (list (make-choice)
+              (item "Sign in to a model provider…"
+                    (lambda () (chrome--sign-in workbench)))
+              (item "Copy the channel identifier"
+                    (lambda ()
+                      (when (workbench-channel workbench)
+                        (lightfast:copy-text (workbench-channel workbench)))))
+              (item "Copy the conversation"
+                    (lambda ()
+                      (lightfast:copy-text (transcript-plain-text (workbench-transcript workbench)))))))
+       :x x
+       :y y)))
   nil)
 
 (-> header-paint
@@ -132,7 +161,7 @@
                     :y       (+ y 15)
                     :width   30
                     :height  30
-                    :mark    ':menu
+                    :mark    ':panel
                     :action  (lambda ()
                                (setf (workbench-sidebar-shown-p workbench)
                                      (not (workbench-sidebar-shown-p workbench)))
@@ -145,7 +174,8 @@
                     :width   30
                     :height  30
                     :mark    ':more
-                    :action  (lambda () (chrome--channel-menu workbench))
+                    :action  (lambda ()
+                               (chrome--channel-menu workbench :x (- right 30) :y (+ y 47)))
                     :tooltip "This channel")
       (decf right 44))
     (paint-text (text-fit (workbench-title workbench) title (- right left)) left (+ y 30) :style title)
@@ -393,10 +423,15 @@ A choice is taken with its number or a click."
         (bold (text-style ':meta-bold)))
     (loop for (nil text steer-p) in (last (workbench-pending workbench) 3)
           for row-y from y by 24
-          do (let* ((label (if steer-p "steering" "follow-up"))
-                    (end   (paint-text label (+ x 4) (+ row-y 16) :style bold)))
-               (paint-text (text-fit (entries--one-line text) meta (- (+ x width) end 12)) (+ end 10) (+ row-y 16)
-                           :style meta))))
+          do (let* ((label   (if steer-p "steering" "follow-up"))
+                    (label-w (+ 12 (text-width label bold))))
+               (with-inversion ((+ x 2) (+ row-y 3) label-w 18)
+                 (paint-text-in label bold :x (+ x 2) :y (+ row-y 3) :width label-w :height 18 :align ':center))
+               (paint-text-in (entries--one-line text) meta
+                              :x      (+ x 2 label-w 10)
+                              :y      (+ row-y 3)
+                              :width  (max 0 (- width label-w 14))
+                              :height 18))))
   nil)
 
 

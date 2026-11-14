@@ -1,0 +1,184 @@
+(in-package #:aui)
+
+;;;; -- Sheets --
+
+;;; What the smaller overlays draw inside their windows: the rows of a picker
+;;; or a menu, set in columns; a prompt's sentence, field and buttons; and a
+;;; panel's blocks, scrolled.
+
+(-> sheet-paint-scrollbar
+    (stage &key (:x integer) (:y integer) (:height integer) (:content integer) (:scroll integer)) null)
+(defun sheet-paint-scrollbar (stage &key (x 0) (y 0) (height 0) (content 0) (scroll 0))
+  "Draw a thin thumb at X showing which part of CONTENT units the HEIGHT units below Y hold, when not all of it fits."
+  (declare (ignore stage))
+  (when (and (> content height) (> height 40))
+    (let* ((thumb (max 24 (floor (* height height) content)))
+           (track (- height thumb))
+           (top   (+ y (floor (* track (min scroll (- content height))) (- content height)))))
+      (paint-dither x top :width 4 :height thumb :step 2)))
+  nil)
+
+
+;;;; -- Choices --
+
+(-> sheet-paint-choices
+    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-choices (workbench stage &key x y width height)
+  "Draw the choices of the picker or menu shown, one a row: a check before the current one, the labels in one column and what is said about each in the next."
+  (let* ((overlay  (workbench-overlay workbench))
+         (menu-p   (eq (overlay-kind overlay) ':menu))
+         (choices  (overlay-shown-choices overlay))
+         (count    (length choices))
+         (visible  (max 1 (floor height *choice-row-height*)))
+         (bold     (text-style ':label-bold))
+         (meta     (text-style ':meta))
+         (detail-p (some #'choice-detail (overlay-choices overlay)))
+         (label-w  (if detail-p
+                       (min (overlay--label-width overlay) (floor (* width 45/100)))
+                       (- width 40)))
+         (detail-x (+ x 30 label-w 20)))
+    (setf (overlay-selection overlay) (max -1 (min (overlay-selection overlay) (1- count))))
+    (unless menu-p
+      (setf (overlay-scroll overlay)
+            (max 0 (min (overlay-scroll overlay) (max 0 (- count visible)))))
+      (when (and (>= (overlay-selection overlay) 0)
+                 (< (overlay-selection overlay) (overlay-scroll overlay)))
+        (setf (overlay-scroll overlay) (overlay-selection overlay)))
+      (when (>= (overlay-selection overlay) (+ (overlay-scroll overlay) visible))
+        (setf (overlay-scroll overlay) (- (overlay-selection overlay) visible -1)))
+      (stage-region stage ':overlay-list
+                    :x      x
+                    :y      y
+                    :width  width
+                    :height height
+                    :wheel  (catalog--scroll overlay count visible)))
+    (when (zerop count)
+      (paint-text-in "Nothing matches." (text-style ':small :face ':serif-italic)
+                     :x      (+ x 16)
+                     :y      y
+                     :width  (- width 32)
+                     :height *choice-row-height*))
+    (lightfast:with-clip (x y width height)
+      (let ((row-y y))
+        (loop for choice in (if menu-p choices (nthcdr (overlay-scroll overlay) choices))
+              for index from (if menu-p 0 (overlay-scroll overlay))
+              while (< row-y (+ y height))
+              do (if (null (choice-value choice))
+                     ;; A divider: a short band of dither between two groups of choices.
+                     (let ((gap (floor *choice-row-height* 3)))
+                       (paint-dither (+ x 8) (+ row-y (floor gap 2) -1) :width (- width 16) :height 2 :step 3)
+                       (incf row-y gap))
+                     (let* ((chosen choice)
+                            (region (list ':choice index))
+                            (lit-p  (or (= index (overlay-selection overlay)) (stage-hot-p stage region)))
+                            (top    row-y))
+                       (flet ((content ()
+                                (when (choice-current-p chosen)
+                                  (paint-mark ':check (+ x 9) (+ top (floor (- *choice-row-height* 12) 2))
+                                              :size 12))
+                                (paint-text-in (choice-label chosen) bold
+                                               :x      (+ x 30)
+                                               :y      top
+                                               :width  label-w
+                                               :height *choice-row-height*)
+                                (when (choice-detail chosen)
+                                  (paint-text-in (choice-detail chosen) meta
+                                                 :x      detail-x
+                                                 :y      top
+                                                 :width  (max 0 (- (+ x width) detail-x 16))
+                                                 :height *choice-row-height*))))
+                         (if lit-p
+                             (with-inversion (x top width *choice-row-height*)
+                               (content))
+                             (content)))
+                       (stage-region stage region
+                                     :x      x
+                                     :y      top
+                                     :width  width
+                                     :height *choice-row-height*
+                                     :action (lambda () (overlay-choose workbench chosen)))
+                       (incf row-y *choice-row-height*))))))
+    (unless menu-p
+      (sheet-paint-scrollbar stage
+                             :x       (+ x width -9)
+                             :y       y
+                             :height  height
+                             :content (* count *choice-row-height*)
+                             :scroll  (* (overlay-scroll overlay) *choice-row-height*))))
+  nil)
+
+
+;;;; -- Prompt --
+
+(-> sheet-paint-prompt
+    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-prompt (workbench stage &key x y width height)
+  "Draw the prompt shown below its title bar: what is asked, the frame of its field, and the two ways out."
+  (let* ((overlay (workbench-overlay workbench))
+         (note    (overlay-note overlay))
+         (field   (overlay-input-box overlay (stage-width stage) (stage-height stage)))
+         (bottom  (+ y height))
+         (button  92))
+    (when (and note (plusp (length note)))
+      (let ((paragraph (make-paragraph (list (make-span note nil)) :style (text-style ':small))))
+        (paragraph-layout paragraph (- width 32))
+        (paragraph-paint paragraph (+ x 16) (+ y 14))))
+    (destructuring-bind (field-x field-y field-width field-height) field
+      (paint-frame (- field-x 5) (- field-y 3) :width (+ field-width 10) :height (+ field-height 6)))
+    (paint-button stage ':prompt-accept "OK"
+                  :x         (- (+ x width) button 14)
+                  :y         (- bottom 46)
+                  :width     button
+                  :height    32
+                  :primary-p t
+                  :action    (lambda () (overlay-accept workbench))
+                  :tooltip   "Enter")
+    (paint-button stage ':prompt-cancel "Cancel"
+                  :x       (- (+ x width) (* 2 button) 22)
+                  :y       (- bottom 46)
+                  :width   button
+                  :height  32
+                  :action  (lambda () (overlay-dismiss workbench))
+                  :tooltip "Esc"))
+  nil)
+
+
+;;;; -- Panel --
+
+(-> sheet-paint-panel
+    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-panel (workbench stage &key x y width height)
+  "Draw the panel's content in the box, scrolled, or say that it is being fetched."
+  (let* ((overlay (workbench-overlay workbench))
+         (content (overlay-content overlay))
+         (inner   (max 80 (- width 56))))
+    (if (null content)
+        (paint-text-in "Asking the channel" (text-style ':small :face ':serif-italic)
+                       :x      (+ x 24)
+                       :y      (+ y 8)
+                       :width  inner
+                       :height 44)
+        (let* ((total   (+ (block-layout content inner) 36))
+               (maximum (max 0 (- total height))))
+          (setf (overlay-scroll overlay) (max 0 (min (overlay-scroll overlay) maximum)))
+          (stage-region stage ':overlay-list
+                        :x      x
+                        :y      y
+                        :width  width
+                        :height height
+                        :wheel  (lambda (vertical horizontal)
+                                  (declare (ignore horizontal))
+                                  (setf (overlay-scroll overlay)
+                                        (max 0 (min maximum (+ (overlay-scroll overlay) (* vertical 48)))))))
+          (lightfast:with-clip (x y width height)
+            (let ((*paint-stage*  stage)
+                  (*paint-top*    y)
+                  (*paint-bottom* (+ y height)))
+              (block-paint content (+ x 24) (+ y 18 (- (overlay-scroll overlay))))))
+          (sheet-paint-scrollbar stage
+                                 :x       (+ x width -9)
+                                 :y       y
+                                 :height  height
+                                 :content total
+                                 :scroll  (overlay-scroll overlay)))))
+  nil)

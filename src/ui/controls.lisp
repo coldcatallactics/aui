@@ -21,7 +21,8 @@
 
 A primary button is filled; the pointer over a button swaps it. A button
 that is not ENABLED-P has a dashed frame and no action. MARK draws a mark
-before the label, or alone when LABEL is empty."
+MARK-SIZE units across before the label, or alone when LABEL is empty. Beside
+a label the mark sits on the middle of the label's letters, not of the box."
   (let* ((style    (or style (text-style ':label-bold)))
          (hot-p    (and enabled-p (stage-hot-p stage identifier)))
          (filled-p (if primary-p (not hot-p) hot-p)))
@@ -119,19 +120,3 @@ Return the height the title bar took, zero without a title."
       (with-inversion (x y width bar)
         (paint-text-in title (text-style ':label-bold) :x (+ x 10) :y y :width (- width 20) :height bar)))
     bar))
-
-
-;;;; -- Menus --
-
-(-> popup-actions (list) null)
-(defun popup-actions (items)
-  "Show a popup menu at the pointer and do what the chosen entry stands for.
-
-Each of ITEMS is (LABEL FUNCTION), or NIL for a divider under the entry
-before it. A LABEL of the form section/entry goes into the submenu section."
-  (let* ((labels (mapcar (lambda (item) (if item (first item) "-")) items))
-         (choice (lightfast:popup-menu labels))
-         (chosen (and choice (nth choice items))))
-    (when chosen
-      (funcall (second chosen))))
-  nil)

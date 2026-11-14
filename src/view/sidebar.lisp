@@ -55,22 +55,27 @@
 
 (-> sidebar--channel-menu (workbench list) null)
 (defun sidebar--channel-menu (workbench entry)
-  "Offer what can be done with the channel ENTRY and do what is chosen."
-  (let ((identifier (getf entry :id)))
-    (popup-actions
-     (list (list "Open"
-                 (lambda () (workbench-open workbench :channel identifier)))
-           (list "Send a message…"
-                 (lambda ()
-                   (let ((text (lightfast:input-dialog
-                                (format nil "Message to ~A" (channel-display-name identifier)))))
-                     (when text
-                       (workbench-tell workbench identifier text)))))
-           (list "Copy identifier"
-                 (lambda () (lightfast:copy-text identifier)))
-           nil
-           (list "Stop serving"
-                 (lambda () (workbench-close-channel workbench identifier))))))
+  "Offer what can be done with the channel ENTRY in a menu at the pointer, and do what is chosen."
+  (let ((identifier (getf entry :id))
+        (stage      (workbench-stage workbench)))
+    (workbench-menu
+     workbench
+     (list (make-choice :label "Open"
+                        :value (lambda () (workbench-open workbench :channel identifier)))
+           (make-choice :label "Send a message…"
+                        :value (lambda ()
+                                 (workbench-ask workbench
+                                                (format nil "Message to ~A" (channel-display-name identifier))
+                                                (lambda (text)
+                                                  (when (plusp (length (string-trim " " text)))
+                                                    (workbench-tell workbench identifier text))))))
+           (make-choice :label "Copy identifier"
+                        :value (lambda () (lightfast:copy-text identifier)))
+           (make-choice)
+           (make-choice :label "Stop serving"
+                        :value (lambda () (workbench-close-channel workbench identifier))))
+     :x (stage-pointer-x stage)
+     :y (stage-pointer-y stage)))
   nil)
 
 (-> sidebar--paint-channel (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
@@ -295,12 +300,7 @@
                 :action (lambda () (workbench-show-overlay workbench ':settings)))
     (paint-chip stage ':open-commands "Commands"
                 :x      (+ x 8 (chip-width "Settings") 4)
-                :y      (- (+ y height) 54)
+                :y      (- (+ y height) 36)
                 :height 24
-                :action (lambda () (workbench-show-overlay workbench ':commands)))
-    (paint-text-in (format nil "Autolith ~A" (world-autolith-version)) (text-style ':meta)
-                   :x      (+ x 16)
-                   :y      (- (+ y height) 28)
-                   :width  (- width 32)
-                   :height 20))
+                :action (lambda () (workbench-show-overlay workbench ':commands))))
   nil)

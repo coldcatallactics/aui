@@ -124,6 +124,30 @@
           (setting "channel-idle-minutes" "Idle minutes" "behavior" "integer" 30
                    "How long an unused channel stays in memory."))))
 
+(-> demo-agenda () list)
+(defun demo-agenda ()
+  "Return an agenda in the shape the workspace reader gives one."
+  (list (list :id "a-7Hq2" :status ':done :text "Make the Makefile portable" :memories nil)
+        (list :id "a-9Kd4" :status ':doing :text "Guard the fontconfig code behind the platform" :memories '("m-1"))
+        (list :id "a-2Xp8" :status ':todo :text "Run the smoke tests on a Mac" :memories nil)
+        (list :id "a-5Lm1" :status ':blocked :text "Retina rendering: needs someone at a screen" :memories nil)
+        (list :id "a-3Rt6" :status ':note :text "Homebrew's FLTK is a shared library" :memories nil)))
+
+(-> demo-memories () list)
+(defun demo-memories ()
+  "Return memories in the shape the workspace reader gives them."
+  (list (list :id "m-4Tq9" :title "The bridge library is named per platform" :status ':stale
+              :summary "Makefile changed since this was written"
+              :content "`liblightfast.so` on Linux and `liblightfast.dylib` on macOS; the name comes from `LIGHTFAST_LIBRARY` when that is set."
+              :scope ':workspace :provenance "Makefile" :date "2026-11-13")
+        (list :id "m-8Wc2" :title "Commits are tiny and title-only" :status ':current :summary nil
+              :content "One purpose a commit, an imperative title under 72 characters, no body and no trailers. Push after each."
+              :scope ':global :provenance "you said so" :date "2026-11-02")
+        (list :id "m-1Zb5" :title "FLTK binds Command plus and minus to scaling" :status ':unverified
+              :summary "its source could not be checked"
+              :content "On macOS the window scales on Cmd +, Cmd - and Cmd 0 before the application sees the key."
+              :scope ':workspace :provenance "fltk.org" :date "2026-11-14")))
+
 (-> demo-install (workbench) null)
 (defun demo-install (workbench)
   "Fill WORKBENCH with the demonstration: a conversation, a channel tree and a working agent."

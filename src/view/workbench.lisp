@@ -374,8 +374,9 @@
          (member (char trimmed 0) '(#\/ #\( #\?))
          t)))
 
-(defparameter *interface-commands* '("settings" "model" "effort" "permissions" "open" "new")
-  "Commands that, given no argument, open a picker in the terminal and a view of its own in the window.")
+(defparameter *interface-commands*
+  '("settings" "model" "effort" "permissions" "open" "new" "agenda" "memories")
+  "Commands that, given no argument, open a picker or a page in the terminal and a view of its own in the window.")
 
 (defparameter *terminal-only-commands*
   '("onboard" "quit" "exit" "detach" "rollback" "auth" "complain" "wtf")
@@ -414,6 +415,12 @@ name is NIL when TEXT is neither."
      t)
     ((equal name "permissions")
      (composer--choose-mode workbench)
+     t)
+    ((equal name "agenda")
+     (panel-show-agenda workbench)
+     t)
+    ((equal name "memories")
+     (panel-show-memories workbench)
      t)
     ((equal name "open")
      (window-focus-filter workbench)
@@ -679,11 +686,27 @@ agent takes it up."
                (format nil "Could not cancel the job: ~A"
                        (or (result-event-report event) "the channel refused.")))))
       ((and (consp request) (eq (first request) ':set-setting))
-       (if ok-p
-           (workbench-refresh workbench "_autolith/state" "_autolith/settings")
-           (setf (workbench-notice workbench)
-                 (format nil "Could not change ~A: ~A" (second request)
-                         (or (result-event-report event) "the channel refused.")))))
+       (destructuring-bind (name &optional choice again-p) (rest request)
+         (cond
+           (ok-p
+            (workbench-refresh workbench "_autolith/state" "_autolith/settings"))
+           ;; A choice whose values are keywords is refused as a string by the
+           ;; structured setter; the settings command reads it as it is spelled.
+           ((and (stringp choice) (not again-p) (workbench-session workbench))
+            (session-operation (workbench-session workbench) "_autolith/invoke"
+                               :params  (portable-object
+                                         "operation" "settings"
+                                         "arguments" (portable-object "input" (format nil "~A ~A" name choice)))
+                               :request (list ':set-setting name choice t)))
+           (t
+            (setf (workbench-notice workbench)
+                  (format nil "Could not change ~A: ~A" name
+                          (or (result-event-report event) "the channel refused.")))))))
+      ((and (consp request) (eq (first request) ':panel))
+       (panel-take-output workbench (second request)
+                          (or (and ok-p (portable-string (portable-get value "text")))
+                              (result-event-report event)
+                              "The channel had nothing to report.")))
       ((and (consp request) (eq (first request) ':submit))
        (unless ok-p
          (setf (workbench-pending workbench)

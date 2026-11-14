@@ -37,9 +37,9 @@
   "Return the demonstration's conversation, oldest first."
   (list
    (make-instance 'user-entry
-                  :text "Why does the build fail on macOS? Have a look at the Makefile and fix it.")
+                  :text (format nil "Why does the build fail on macOS?~2%- have a look at the `Makefile`~%- fix it, and tell me what you changed"))
    (make-instance 'reasoning-entry
-                  :text "The Makefile hardcodes a .so suffix and asks pkg-config for Pango, neither of which exists on macOS.")
+                  :text "**Reading the Makefile** It hardcodes a .so suffix and asks pkg-config for Pango, neither of which exists on macOS.")
    (make-instance 'tool-entry
                   :call-identifier "demo-1" :name "resource.read" :status ':completed :seconds 2/5
                   :arguments '(("uri" . "workspace:Makefile"))
@@ -48,6 +48,10 @@
                   :call-identifier "demo-2" :name "shell.run" :status ':failed :seconds 12
                   :arguments '(("command" . "make native && make check"))
                   :output    (format nil "c++: error: unrecognized option~%make: *** [Makefile:39] Error 1"))
+   (make-instance 'notice-entry
+                  :tone   ':failure
+                  :text   "Job failed · exec:117"
+                  :detail (format nil "exit 127~%Execution: exited; timeout no; cancelled no~%combined output: 813 bytes retained, 813 bytes observed; capture-complete yes; status complete~%Log: shell-log:g4P5Hsc/g6Axa8d/2D7765C629A661F4/output~%Source checks passed.~%Running 3 cases in 3 isolated workers.~%PASS 0.086s test-agent-compaction-missing-summary~%3 cases, 14 checks, 0 failed cases.~%/bin/sh: line 1: ./script/autolith: No such file or directory"))
    (make-instance 'tool-entry
                   :call-identifier "demo-3" :name "fs.edit" :status ':completed :seconds 3/10
                   :expanded-p t

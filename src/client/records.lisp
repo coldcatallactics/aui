@@ -290,12 +290,18 @@ transcript instead."
     ((:summary :native-compaction)
      (make-instance 'marker-entry :time (record--time record) :label "Context compacted"))
     (:turn-aborted
-     (make-instance 'notice-entry
-                    :time   (record--time record)
-                    :tone   ':failure
-                    :text   "The turn stopped"
-                    :detail (let ((message (getf (rest record) :message)))
-                              (and (stringp message) message))))
+     ;; A turn someone stopped is not a failure, and its condition says nothing
+     ;; a person can read.
+     (if (eq (getf (rest record) :reason) ':cancelled)
+         (make-instance 'notice-entry
+                        :time (record--time record)
+                        :text "Stopped")
+         (make-instance 'notice-entry
+                        :time   (record--time record)
+                        :tone   ':failure
+                        :text   "The turn stopped"
+                        :detail (let ((message (getf (rest record) :message)))
+                                  (and (stringp message) message)))))
     (otherwise
      nil)))
 

@@ -181,3 +181,17 @@
       (multiple-value-bind (found found-arguments-p) (command-text-name text)
         (fiveam:is (equal name found) "~S names ~S" text found)
         (fiveam:is (eq arguments-p found-arguments-p) "~S arguments ~S" text found-arguments-p)))))
+
+(fiveam:test a-stopped-turn-is-not-a-failure
+  (let* ((projector (make-instance 'projector))
+         (entries   (records->entries
+                     projector
+                     (list '(:turn-aborted :seq 1 :reason :cancelled
+                             :message "#<APPLICATION-TURN-CANCELLED {1}>")
+                           '(:turn-aborted :seq 2 :reason :application-error :message "the provider refused")))))
+    (fiveam:is (equal '(notice-entry notice-entry) (mapcar #'type-of entries)))
+    (fiveam:is (string= "Stopped" (notice-entry-text (first entries))))
+    (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
+    (fiveam:is (null (notice-entry-detail (first entries))))
+    (fiveam:is (eq ':failure (notice-entry-tone (second entries))))
+    (fiveam:is (string= "the provider refused" (notice-entry-detail (second entries))))))

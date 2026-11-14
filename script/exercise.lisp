@@ -97,6 +97,9 @@
                        (and (eq ':picker (overlay-kind (workbench-overlay workbench)))
                             (find-if #'choice-current-p (overlay-choices (workbench-overlay workbench)))
                             (exercise--region workbench '(:choice 0))))
+      (exercise-expect "the picker lies over the settings, which stay drawn beneath it"
+                       (and (exercise--region workbench '(:overlay-window :settings))
+                            (exercise--region workbench '(:overlay-window :picker))))
       (overlay-key workbench (make-key-event :code #xff1b))
       (exercise-expect "putting the picker away returns to the settings"
                        (eq ':settings (overlay-kind (workbench-overlay workbench))))
@@ -120,14 +123,22 @@
                               :key #'choice-label :test #'equal)))
         (exercise--click workbench (list ':choice agenda)))
       (exercise--draw workbench)
-      (exercise-expect "the agenda opens in a panel of its own"
-                       (and (eq ':panel (overlay-kind (workbench-overlay workbench)))
-                            (overlay-content (workbench-overlay workbench))))
+      (exercise-expect "the agenda opens as a board with a tab for each state"
+                       (and (eq ':board (overlay-kind (workbench-overlay workbench)))
+                            (equal '("All" "Doing" "To do" "Blocked" "Notes" "Done")
+                                   (mapcar #'first (overlay-tabs (workbench-overlay workbench))))
+                            (exercise--region workbench '(:tab 1))))
+      (exercise--click workbench '(:tab 1))
+      (exercise--draw workbench)
+      (exercise-expect "a tab shows what is in its state"
+                       (and (= 1 (overlay-selection (workbench-overlay workbench)))
+                            (= 1 (second (nth 1 (overlay-tabs (workbench-overlay workbench)))))))
       (workbench-show-overlay workbench nil)
       (panel-show-memories workbench)
       (exercise--draw workbench)
-      (exercise-expect "what is remembered opens in a panel"
-                       (overlay-content (workbench-overlay workbench)))
+      (exercise-expect "what is remembered opens as a board"
+                       (equal '("All" "Stale" "Unverified" "Current")
+                              (mapcar #'first (overlay-tabs (workbench-overlay workbench)))))
       (workbench-show-overlay workbench nil)
       ;; The chips under the composer.
       (exercise--draw workbench)
@@ -215,6 +226,19 @@
                               (>= (region-x stop) (+ (region-x document) (region-width document)))
                               (>= (region-x menu) (+ (region-x document) (region-width document)))
                               (= (region-height document) 900))))
+      ;; The edge between the conversation and the console can be dragged.
+      (let* ((edge   (exercise--region workbench ':console-edge))
+             (before (and edge (region-x edge))))
+        (when edge
+          (let ((from (format nil "~D 400 1 0 0 0" (+ (region-x edge) 4)))
+                (to   (format nil "~D 400 1 0 0 0" (- (region-x edge) 120))))
+            (stage--pointer stage ':push from)
+            (stage--pointer stage ':drag to)
+            (stage--pointer stage ':release to)))
+        (exercise--draw workbench)
+        (exercise-expect "dragging the console's edge makes it wider"
+                         (let ((after (exercise--region workbench ':console-edge)))
+                           (and before after (< (region-x after) (- before 80))))))
       (exercise-expect "what runs is listed by kind, each with its cross"
                        (and (exercise--region workbench '(:cancel-job "job-1"))
                             (exercise--region workbench '(:job "job-2"))

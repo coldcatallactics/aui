@@ -424,6 +424,14 @@ which may happen to a person's own world."
              (exercise-expect "Tab queues a follow-up"
                               (find "Now use a shell tool to look around" (workbench-pending workbench)
                                     :key #'second :test #'equal))
+             (exercise-expect "what waits is read from the channel's own queue"
+                              (exercise-live--until
+                               workbench
+                               (lambda ()
+                                 (workbench-poll-waiting workbench :now-p t)
+                                 (find "Now use a shell tool to look around" (workbench--waiting workbench)
+                                       :key #'first :test #'equal))
+                               :seconds 20))
              ;; The follow-up asks for a command, and the channel asks first.
              (exercise-expect "the channel asks before a command runs"
                               (and (exercise-live--until workbench
@@ -546,7 +554,21 @@ which may happen to a person's own world."
                                             (search "hello from the mock"
                                                     (princ-to-string (tool-entry-output tool)))))))
                (exercise-live--picture workbench "live-history"))
-             (exercise-expect "nothing reported a failure" (null (workbench-notice workbench))))
+             (exercise-expect "nothing reported a failure" (null (workbench-notice workbench)))
+             ;; Deleting the channel leaves it and takes it out of the world.
+             (let ((channel (workbench-channel workbench)))
+               (workbench-delete-channel workbench channel)
+               (exercise-expect "a channel can be deleted"
+                                (exercise-live--until
+                                 workbench
+                                 (lambda ()
+                                   (and (null (workbench-channel workbench))
+                                        (null (workbench-notice workbench))
+                                        (not (find channel (world-entries (workbench-world workbench))
+                                                   :key  (lambda (entry)
+                                                           (getf entry :id))
+                                                   :test #'equal))))
+                                 :seconds 60))))
         (workbench-close workbench)
         ;; The world server was started for this exercise alone.
         (uiop:run-program (list (launch--autolith-program) "localgroup" "stop")

@@ -5,12 +5,10 @@
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
+# shellcheck source=lightfast.sh
+source "$root/script/lightfast.sh"
 
-if [[ ! -f "$lightfast/lightfast.asd" ]]; then
-  echo "Lightfast is not at $lightfast. Clone https://github.com/lambda-symbolics/lightfast beside AUI, or set AUI_LIGHTFAST_ROOT." >&2
-  exit 64
-fi
+aui_require_lightfast
 mkdir -p "$root/build"
 # shellcheck source=autolith.sh
 source "$root/script/autolith.sh"
@@ -18,7 +16,7 @@ source "$root/script/autolith.sh"
 # against; bin/aui reads it so that it does not try the same sources again on
 # every start.
 printf '%s\n' "$autolith_identity" > "$root/build/failed"
-make -s -C "$lightfast" native
+aui_build_bridge
 # The image is saved beside the one in use and moved over it only once it
 # exists, so a build that fails leaves the last good image in place.
 rm -f "$root/build/aui.new"

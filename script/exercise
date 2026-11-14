@@ -4,8 +4,9 @@
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
-make -s -C "$lightfast" native
+# shellcheck source=lightfast.sh
+source "$root/script/lightfast.sh"
+aui_build_bridge
 exec "$root/script/lisp" \
   --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
   --load "$root/script/exercise.lisp"

@@ -8,8 +8,9 @@
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
-make -s -C "$lightfast" native
+# shellcheck source=lightfast.sh
+source "$root/script/lightfast.sh"
+aui_build_bridge
 
 # Autolith's SBCL is found through the person's data directory; find it before
 # the exercise is given directories of its own.

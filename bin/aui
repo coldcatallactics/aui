@@ -26,7 +26,7 @@ fi
 stale=false
 if [[ ! -x "$image" ]]; then
   stale=true
-elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print -quit 2>/dev/null) ]]; then
+elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print 2>/dev/null | head -n 1) ]]; then
   stale=true
 elif [[ -z ${AUI_AUTOLITH_ROOT:-} ]]; then
   # An Autolith updated since the build speaks a newer protocol than the image

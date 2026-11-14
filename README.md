@@ -3,7 +3,7 @@
 A native window onto [Autolith](https://github.com/lambda-symbolics/autolith)'s
 world of channels, written in Common Lisp on
 [Lightfast](https://github.com/lambda-symbolics/lightfast) and FLTK 1.4. It runs
-on Linux and macOS.
+on Linux, macOS and NetBSD.
 
 AUI is a client of Autolith's world server, as Autolith's terminal is. It
 uses Autolith's own client code to open channels, to follow them and to list
@@ -38,7 +38,8 @@ AUI is built on the machine it runs on, against the Autolith installed there.
    its own, and AUI builds against those. A source checkout that has run its
    `script/bootstrap` serves the same way.
 2. Install FLTK 1.4 and a C++17 compiler. On macOS: `brew install fltk`. On
-   Arch: `pacman -S fltk`.
+   Arch: `pacman -S fltk`. On NetBSD, from pkgsrc: `x11/fltk`, with
+   `devel/gmake`, `shells/bash` and `devel/pkgconf` for the build.
 3. Clone Lightfast beside AUI:
 
    ```sh

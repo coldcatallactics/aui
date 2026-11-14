@@ -60,3 +60,18 @@
 
 (fiveam:test a-bar-in-prose-is-not-a-table
   (fiveam:is (equal '(:paragraph) (mapcar #'first (markdown-blocks "| just a line with bars |")))))
+
+(fiveam:test text-for-a-terminal-is-shown-as-the-terminal-would
+  ;; A carriage return lets what follows overwrite the line, as git's progress does.
+  (fiveam:is (string= (format nil "Rebasing (3/3)~%done")
+                      (text-clean (format nil "Rebasing (1/3)~CRebasing (2/3)~CRebasing (3/3)~%done"
+                                          #\Return #\Return))))
+  ;; Colors go; a tab advances to the next multiple of eight columns.
+  (fiveam:is (string= "ok  failed"
+                      (text-clean (format nil "~C[32mok~C[0m  failed" (code-char 27) (code-char 27)))))
+  (fiveam:is (string= "ab      c" (text-clean (format nil "ab~Cc" #\Tab))))
+  ;; Windows line endings are just line endings.
+  (fiveam:is (string= (format nil "a~%b") (text-clean (format nil "a~C~%b" #\Return))))
+  ;; Text without anything of the kind is returned as it is.
+  (let ((plain "nothing to clean"))
+    (fiveam:is (eq plain (text-clean plain)))))

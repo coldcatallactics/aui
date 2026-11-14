@@ -7,11 +7,89 @@
 ;;; character and a range of characters drawn selected. Everything a person
 ;;; reads in the transcript is a paragraph inside some block.
 
-(defstruct (span (:constructor make-span (text style &key link)))
+(defstruct (span (:constructor %make-span (text style link)))
   "One run of a paragraph, TEXT set in STYLE, opening LINK when clicked."
   (text  ""  :type string)
   (style nil :type (or null text-style))
   (link  nil))
+
+(-> text--overwrite (string) string)
+(defun text--overwrite (line)
+  "Return LINE as a terminal would leave it after its carriage returns: each part written over the one before it."
+  (let ((result (make-array 0 :element-type 'character :adjustable t :fill-pointer t))
+        (column 0))
+    (loop for character across line
+          do (cond
+               ((char= character #\Return)
+                (setf column 0))
+               ((< column (length result))
+                (setf (aref result column) character)
+                (incf column))
+               (t
+                (vector-push-extend character result)
+                (incf column))))
+    (coerce result 'simple-string)))
+
+(-> text-clean (string) string)
+(defun text-clean (text)
+  "Return TEXT fit to be drawn: what a program wrote for a terminal, as the terminal would show it.
+
+Escape sequences that color or move are dropped, a carriage return lets what
+follows overwrite the line, a tab advances to the next multiple of eight
+columns, and other control characters go. Text without any of these is
+returned as it is."
+  (if (not (find-if (lambda (character)
+                      (and (< (char-code character) 32) (char/= character #\Newline)))
+                    text))
+      text
+      (with-output-to-string (stream)
+        (let ((start 0))
+          (loop
+            (let* ((end    (position #\Newline text :start start))
+                   (line   (subseq text start end))
+                   (kept   (make-string-output-stream))
+                   (index  0)
+                   (column 0))
+              ;; Escape sequences first, then tabs, then what remains of the control characters.
+              (loop while (< index (length line))
+                    do (let ((character (char line index)))
+                         (cond
+                           ((and (char= character (code-char 27))
+                                 (< (1+ index) (length line))
+                                 (char= (char line (1+ index)) #\[))
+                            (incf index 2)
+                            (loop while (and (< index (length line))
+                                             (not (<= 64 (char-code (char line index)) 126)))
+                                  do (incf index))
+                            (incf index))
+                           ((char= character #\Tab)
+                            (let ((spaces (- 8 (mod column 8))))
+                              (dotimes (count spaces)
+                                (write-char #\Space kept))
+                              (incf column spaces))
+                            (incf index))
+                           ((char= character #\Return)
+                            (write-char character kept)
+                            (setf column 0)
+                            (incf index))
+                           ((< (char-code character) 32)
+                            (incf index))
+                           (t
+                            (write-char character kept)
+                            (incf column)
+                            (incf index)))))
+              (write-string (text--overwrite (string-right-trim '(#\Return) (get-output-stream-string kept)))
+                            stream)
+              (if end
+                  (progn
+                    (write-char #\Newline stream)
+                    (setf start (1+ end)))
+                  (return))))))))
+
+(-> make-span (string (or null text-style) &key (:link t)) span)
+(defun make-span (text style &key link)
+  "Return a span of TEXT in STYLE that opens LINK when clicked. Whatever TEXT holds that a terminal would have interpreted is resolved first, so nothing reaches the font system that it would draw over other lines."
+  (%make-span (text-clean text) style link))
 
 (defstruct fragment
   "A stretch of one span on one line, with where it starts, how wide it is, and where its text sits in the paragraph."

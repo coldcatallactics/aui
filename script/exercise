@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Drive the demonstration offscreen: click, scroll, select and type, and check
+# what each did. Needs a display to measure text with.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
+make -s -C "$lightfast" native
+exec "$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
+  --load "$root/script/exercise.lisp"

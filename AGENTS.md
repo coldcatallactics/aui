@@ -40,6 +40,7 @@ ask for what is missing.
 script/check                    # everything
 script/check --suite records    # one suite, no source checks
 script/check --fix              # repair layout findings
+script/exercise                 # drive the demonstration offscreen; needs a display
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 

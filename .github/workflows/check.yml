@@ -43,22 +43,12 @@ jobs:
           sbcl --version
           fltk-config --version
 
-      - name: Restore Autolith's dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            autolith/.qlot
-            ~/quicklisp
-            ~/.local/share/autolith
-            ~/.cache/common-lisp
-          key: autolith-${{ runner.os }}-${{ runner.arch }}-${{ env.AUTOLITH_REF }}
-
+      # Nothing is cached between runs: compiled files restored from an
+      # earlier run bind Autolith's TLS library to the wrong OpenSSL symbols.
       - name: Install Quicklisp
         run: |
-          if [[ ! -f "$HOME/quicklisp/setup.lisp" ]]; then
-            curl --fail --location --retry 3 --output quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
-            sbcl --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'
-          fi
+          curl --fail --location --retry 3 --output quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
+          sbcl --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'
 
       - name: Bootstrap Autolith
         run: |
@@ -82,6 +72,14 @@ jobs:
         run: |
           cd aui
           script/check --suite aui
+
+      - name: Exercise the interface
+        env:
+          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
+          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
+        run: |
+          cd aui
+          script/exercise
 
       - name: Photograph the demonstration
         env:

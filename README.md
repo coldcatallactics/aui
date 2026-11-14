@@ -123,6 +123,7 @@ script/check --suite records    # one suite
 script/check --fix              # repair what the source rules can repair
 script/run --demo               # the scripted conversation, from source
 script/run --demo --size 1400x900 --shot /tmp/aui.png
+script/exercise                 # click, scroll, select and type against the demonstration
 script/build                    # the saved image
 ```
 

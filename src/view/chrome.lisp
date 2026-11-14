@@ -246,62 +246,15 @@
       (t
        (string-capitalize (substitute #\Space #\- (or value "choose")))))))
 
-(defparameter *approval-button-height* 34
-  "The height of one approval choice.")
+(defparameter *approval-row-height* 28
+  "The height of one choice in the approval card.")
 
-(-> approval--fill-rows (list integer) list)
-(defun approval--fill-rows (buttons width)
-  "Return BUTTONS, each (INDEX LABEL BUTTON-WIDTH OPTION), in rows filled as far as WIDTH allows."
-  (let ((rows  nil)
-        (row   nil)
-        (taken 0))
-    (dolist (button buttons)
-      (let ((button-w (third button)))
-        (when (and row (> (+ taken button-w) width))
-          (push (nreverse row) rows)
-          (setf row   nil
-                taken 0))
-        (push button row)
-        (incf taken (+ button-w 8))))
-    (when row
-      (push (nreverse row) rows))
-    (nreverse rows)))
-
-(-> approval--rows (list integer) list)
-(defun approval--rows (options width)
-  "Return the approval OPTIONS as rows that fit WIDTH, in the order they are numbered.
-
-Each row is a list of (INDEX LABEL BUTTON-WIDTH OPTION). When the choices
-need more than one row they are shared out evenly, so that no row holds a
-lone last choice, as long as the even rows still fit."
-  (let* ((buttons (loop for option in options
-                        for index from 0
-                        collect (let ((label (format nil "~D  ~A" (1+ index) (approval--label option))))
-                                  (list index label (+ 28 (text-width label (text-style ':label-bold))) option))))
-         (filled  (approval--fill-rows buttons width))
-         (count   (length filled)))
-    (if (<= count 1)
-        filled
-        (let* ((each (ceiling (length buttons) count))
-               (even (loop for rest on buttons by (lambda (list)
-                                                    (nthcdr each list))
-                           collect (subseq rest 0 (min each (length rest))))))
-          (if (every (lambda (row)
-                       (<= (- (reduce #'+ row :key (lambda (button)
-                                                     (+ (third button) 8)))
-                              8)
-                           width))
-                     even)
-              even
-              filled)))))
-
-(-> approval--buttons-height (list integer) integer)
-(defun approval--buttons-height (options width)
-  "Return the height the choices among OPTIONS take when laid out in WIDTH."
-  (let ((rows (length (approval--rows options width))))
-    (if (zerop rows)
-        0
-        (- (* rows (+ *approval-button-height* 8)) 8))))
+(-> approval--sentence (string) string)
+(defun approval--sentence (text)
+  "Return TEXT opening with a capital, as a sentence does."
+  (if (plusp (length text))
+      (concatenate 'string (string (char-upcase (char text 0))) (subseq text 1))
+      text))
 
 (-> approval-height (workbench integer) integer)
 (defun approval-height (workbench width)
@@ -311,16 +264,19 @@ lone last choice, as long as the even rows still fit."
         0
         (let ((entry (make-paragraph (list (make-span (or (getf approval :entry) "") nil))
                                      :style (text-style ':code) :wrap ':anywhere)))
-          (+ 28 14
-             (min 160 (paragraph-layout entry (- width 44)))
-             14
-             (approval--buttons-height (getf approval :options) (- width 28))
-             14 *shadow-offset* 10)))))
+          (+ 28 12
+             (min 120 (paragraph-layout entry (- width 44)))
+             10
+             (* *approval-row-height* (length (getf approval :options)))
+             8 *shadow-offset* 10)))))
 
 (-> approval-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun approval-paint (workbench stage &key x y width height)
-  "Draw the approval card: a window titled with what is asked, the request in the typewriter face, and a button for each choice."
+  "Draw the approval card: a window titled with what is asked, the request in the typewriter face, and the choices as a numbered list, what each means beside it.
+
+A choice is taken with its number or a click."
   (let* ((approval (workbench-approval workbench))
+         (options  (getf approval :options))
          (box-h    (- height *shadow-offset* 10))
          (bar      (paint-window-frame x y
                                        :width  width
@@ -328,26 +284,52 @@ lone last choice, as long as the even rows still fit."
                                        :title  (format nil "Approve: ~A" (or (getf approval :title) "request"))))
          (entry    (make-paragraph (list (make-span (or (getf approval :entry) "") nil))
                                    :style (text-style ':code) :wrap ':anywhere))
-         (rows     (approval--rows (getf approval :options) (- width 28)))
-         (button-y (- (+ y box-h) 14 (approval--buttons-height (getf approval :options) (- width 28)))))
+         (bold     (text-style ':label-bold))
+         (meta     (text-style ':meta))
+         (rows-y   (- (+ y box-h) 8 (* *approval-row-height* (length options))))
+         (label-w  (loop for option in options
+                         maximize (text-width (approval--label option) bold)))
+         (detail-x (+ x 14 30 label-w 22)))
     (paragraph-layout entry (- width 44))
-    (lightfast:with-clip ((+ x 14) (+ y bar 14) (- width 28) (max 0 (- button-y y bar 20)))
-      (paragraph-paint entry (+ x 22) (+ y bar 14)))
-    ;; Choices in the order they are numbered, the first of them filled.
-    (loop for row in rows
-          for row-y from button-y by (+ *approval-button-height* 8)
-          do (let ((cursor (+ x 14)))
-               (loop for (index label button-w option) in row
-                     do (let ((choice (getf option :value)))
-                          (paint-button stage (list ':approval choice) label
-                                        :x         cursor
-                                        :y         row-y
-                                        :width     button-w
-                                        :height    *approval-button-height*
-                                        :primary-p (zerop index)
-                                        :action    (lambda () (workbench-answer workbench choice))
-                                        :tooltip   (getf option :description))
-                          (incf cursor (+ button-w 8)))))))
+    (lightfast:with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
+      (paragraph-paint entry (+ x 22) (+ y bar 12)))
+    (loop for option in options
+          for index from 0
+          for row-y from rows-y by *approval-row-height*
+          do (let* ((choice (getf option :value))
+                    (region (list ':approval choice))
+                    (deny-p (equal choice "deny"))
+                    (hot-p  (stage-hot-p stage region))
+                    (top    row-y))
+               (flet ((content ()
+                        (paint-text-in (format nil "~D" (1+ index)) bold
+                                       :x      (+ x 14)
+                                       :y      top
+                                       :width  22
+                                       :height *approval-row-height*
+                                       :align  ':center)
+                        (paint-text-in (approval--label option) bold
+                                       :x      (+ x 14 30)
+                                       :y      top
+                                       :width  label-w
+                                       :height *approval-row-height*
+                                       :color  (and deny-p *red*))
+                        (paint-text-in (approval--sentence (or (getf option :description) "")) meta
+                                       :x      detail-x
+                                       :y      top
+                                       :width  (max 0 (- (+ x width) detail-x 14))
+                                       :height *approval-row-height*)))
+                 (if hot-p
+                     (with-inversion ((1+ x) top (- width 2) *approval-row-height*)
+                       (content))
+                     (content)))
+               (stage-region stage region
+                             :x       (1+ x)
+                             :y       top
+                             :width   (- width 2)
+                             :height  *approval-row-height*
+                             :action  (lambda () (workbench-answer workbench choice))
+                             :tooltip (getf option :description)))))
   nil)
 
 

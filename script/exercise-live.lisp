@@ -516,6 +516,18 @@ which may happen to a person's own world."
                                                     (lambda ()
                                                       (eq ':sandboxed (workbench-permission-mode workbench)))
                                                     :seconds 30))
+             ;; A setting whose values are keywords on the server is set by its spelling.
+             (workbench-set-setting workbench "permission-mode" "auto")
+             (exercise-expect "a saved choice with keyword values can be changed"
+                              (exercise-live--until
+                               workbench
+                               (lambda ()
+                                 (let ((row (find "permission-mode" (workbench-settings workbench)
+                                                  :key  (lambda (row)
+                                                          (portable-get row "name"))
+                                                  :test #'equal)))
+                                   (and row (equal "auto" (portable-get row "value")))))
+                               :seconds 30))
              ;; The same channel again, from its history.
              (let ((channel (workbench-channel workbench)))
                (workbench-open workbench :channel channel)

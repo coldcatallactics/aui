@@ -156,7 +156,11 @@
          (first      (max 0 (if (< index first) index first)))
          (height     (completion-height workbench))
          (bold       (text-style ':label-bold))
-         (meta       (text-style ':meta)))
+         (meta       (text-style ':meta))
+         ;; One column for what is offered, one for what is said about it.
+         (label-w    (min (floor (* width 2/5))
+                          (loop for completion in candidates
+                                maximize (text-width (completion-label completion) bold)))))
     (when candidates
       (paint-fill x y :width width :height height :color *paper*)
       (paint-frame x y :width width :height height)
@@ -168,12 +172,16 @@
                       (region (list ':completion row))
                       (lit-p  (or (= row index) (stage-hot-p stage region))))
                  (flet ((content ()
-                          (let ((end (paint-text (completion-label completion) (+ x 10) (+ row-y 18)
-                                                 :style bold)))
-                            (paint-text (text-fit (completion-detail completion) meta
-                                                  (max 0 (- (+ x width) end 24)))
-                                        (+ end 14) (+ row-y 18)
-                                        :style meta))))
+                          (paint-text-in (completion-label completion) bold
+                                         :x      (+ x 10)
+                                         :y      row-y
+                                         :width  label-w
+                                         :height *completion-row-height*)
+                          (paint-text-in (completion-detail completion) meta
+                                         :x      (+ x 10 label-w 18)
+                                         :y      row-y
+                                         :width  (max 0 (- width label-w 40))
+                                         :height *completion-row-height*)))
                    (if lit-p
                        (with-inversion ((1+ x) row-y (- width 2) *completion-row-height*)
                          (content))

@@ -51,3 +51,22 @@
     (fiveam:is (member "localgroup" names :test #'string=))
     (fiveam:is (member "auth" names :test #'string=))
     (fiveam:is (= 1 (count "open" names :test #'string=)))))
+
+(fiveam:test what-has-no-window-is-autolith's
+  (fiveam:is (launch--windowless-p (launch--read '("models"))))
+  (fiveam:is (launch--windowless-p (launch--read '("localgroup" "status"))))
+  (fiveam:is (launch--windowless-p (launch--read '("--detached"))))
+  (fiveam:is (launch--windowless-p (launch--read '("open" "--detached"))))
+  (fiveam:is (launch--windowless-p (launch--read '("--pristine"))))
+  (fiveam:is (not (launch--windowless-p (launch--read '("--demo")))))
+  (fiveam:is (not (launch--windowless-p (launch--read '("open")))))
+  (fiveam:is (not (launch--windowless-p (launch--read '("--model" "some-model"))))))
+
+(fiveam:test a-window's-options-are-refused-where-there-is-none
+  (fiveam:signals client-error
+    (launch-parse '("--size" "800x600" "models")))
+  (fiveam:signals client-error
+    (launch-parse '("-C" "/tmp" "--detached"))))
+
+(fiveam:test the-autolith-program-is-the-one-built-against
+  (fiveam:is (probe-file (launch--autolith-program))))

@@ -7,10 +7,12 @@
 ;;; read by the same functions, so a flag means here what it means there.
 ;;; Options that concern the channel (--model, --provider, --permissions,
 ;;; --immutable, --image, --site-config-root) reach the world server exactly
-;;; as a terminal sends them. Sub-commands that have nothing to draw (auth,
-;;; models, lg, update, data, usage, replay and the rest) are Autolith's own
-;;; command objects and run as they do under autolith. Only a start that
-;;; would open a channel in a terminal opens it in a window instead.
+;;; as a terminal sends them. Only a start that would open a channel in a
+;;; terminal opens it in a window instead. Everything else (auth, models, lg,
+;;; update, data, usage, replay, an unattended or a rescue start) has no
+;;; window, and this process becomes autolith to do it: Autolith's own image
+;;; holds the person's private definitions and knows which of them still
+;;; apply, which an image built around a window does not.
 
 (defclass launch ()
   ((world
@@ -170,12 +172,64 @@ it does under autolith."
         (and width height (plusp width) (plusp height)
              (cons width height))))))
 
-(-> launch--terminal-start-p (clingon:command) boolean)
-(defun launch--terminal-start-p (command)
-  "Return T when COMMAND's options ask for a start that has no window: unattended, a rescue session, or Autolith's internal starts."
-  (and (some (lambda (key) (clingon:getopt* command key))
-             '(:detached :pristine :localgroup-handoff :simulate-crash))
+(defparameter *launch-window-option-keys*
+  '(:directory :demo :shot :shot-after :size :view :draft :prompt)
+  "The keys of the options only a window understands.")
+
+(-> launch--windowless-p (clingon:command) boolean)
+(defun launch--windowless-p (command)
+  "Return T when COMMAND is Autolith's to run without a window.
+
+That is every sub-command but open, and a start that is unattended, a rescue
+session, or one of Autolith's internal starts."
+  (and (or (not (member (clingon:command-name command) '("aui" "open") :test #'string=))
+           (some (lambda (key)
+                   (clingon:getopt* command key))
+                 '(:detached :pristine :localgroup-handoff :simulate-crash)))
        t))
+
+(-> launch--autolith-program () string)
+(defun launch--autolith-program ()
+  "Return the namestring of the autolith program of the Autolith this client was built against."
+  (uiop:native-namestring
+   (merge-pathnames "bin/autolith" (asdf:system-source-directory ':autolith))))
+
+(-> launch--become-autolith (list) null)
+(defun launch--become-autolith (arguments)
+  "Replace this process with autolith run on ARGUMENTS.
+
+Signal a CLIENT-ERROR when the program cannot be started; on success this
+never returns."
+  (let* ((program (launch--autolith-program))
+         (words   (cons program arguments))
+         (count   (length words))
+         (vector  (sb-alien:make-alien sb-alien:c-string (1+ count))))
+    (finish-output)
+    (finish-output *error-output*)
+    (loop for word in words
+          for index from 0
+          do (setf (sb-alien:deref vector index) word))
+    (setf (sb-alien:deref vector count) nil)
+    (sb-alien:alien-funcall
+     (sb-alien:extern-alien "execv" (function sb-alien:int sb-alien:c-string (* sb-alien:c-string)))
+     program vector)
+    (error 'client-error
+           :message (format nil "Could not start ~A: ~A." program (sb-int:strerror)))))
+
+(-> launch--hand-over (clingon:command list) null)
+(defun launch--hand-over (command arguments)
+  "Give the windowless COMMAND, read from ARGUMENTS, to autolith.
+
+Signal a CLIENT-ERROR when the arguments also carry an option that only a
+window understands, which autolith would not know."
+  (let ((given (remove-if-not (lambda (key)
+                                (clingon:getopt* command key))
+                              *launch-window-option-keys*)))
+    (when given
+      (error 'client-error
+             :message (format nil "~{--~(~A~)~^, ~} ~:[belongs~;belong~] to a window, and this start has none."
+                              given (rest given)))))
+  (launch--become-autolith arguments))
 
 (-> launch--window (clingon:command) launch)
 (defun launch--window (command)
@@ -225,33 +279,28 @@ it does under autolith."
      :draft      (clingon:getopt* command ':draft)
      :prompt     (clingon:getopt* command ':prompt))))
 
+(-> launch--read (list) clingon:command)
+(defun launch--read (arguments)
+  "Return the command the command line ARGUMENTS name, with its options read.
+
+Help, version and usage errors exit the process the way they do under
+autolith."
+  (handler-case
+      (clingon:parse-command-line (launch-command)
+                                  (autolith::main--normalize-update-arguments arguments))
+    (clingon:exit-error (condition)
+      (uiop:quit (clingon:exit-error-code condition)))
+    (error (condition)
+      (format *error-output* "~&~A~%" condition)
+      (uiop:quit 64))))
+
 (-> launch-parse (list) (or null launch))
 (defun launch-parse (arguments)
   "Read the command line ARGUMENTS and return the window launch they ask for.
 
-Return NIL when the arguments named something Autolith does without a
-window, which has then been done. Help, version and usage errors exit the
-process the way they do under autolith."
-  (let ((command (handler-case
-                     (clingon:parse-command-line
-                      (launch-command)
-                      (autolith::main--normalize-update-arguments arguments))
-                   (clingon:exit-error (condition)
-                     (uiop:quit (clingon:exit-error-code condition)))
-                   (error (condition)
-                     (format *error-output* "~&~A~%" condition)
-                     (uiop:quit 64)))))
-    (cond
-      ((not (member (clingon:command-name command) '("aui" "open") :test #'string=))
-       (funcall (clingon:command-handler command) command)
-       nil)
-      ((launch--terminal-start-p command)
-       (if (string= (clingon:command-name command) "open")
-           (autolith::main--start-session
-            command
-            :open-requested-p t
-            :open-id          (autolith::main--single-selection command "conversation ID"))
-           (autolith::main--start-session command))
-       nil)
-      (t
-       (launch--window command)))))
+Arguments that name something Autolith does without a window turn this
+process into autolith, so the call does not return for them."
+  (let ((command (launch--read arguments)))
+    (if (launch--windowless-p command)
+        (launch--hand-over command arguments)
+        (launch--window command))))

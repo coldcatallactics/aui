@@ -94,7 +94,9 @@ The first `aui` starts the world server if none runs, exactly as the first
 `--permissions`, `--immutable`, `--image`, `--site-config-root`) are Autolith's
 own option objects, read by Autolith's own functions and sent to the server as
 a terminal sends them. Starts that have no window (`--detached`, `--pristine`)
-and every sub-command other than `open` are handed to Autolith unchanged.
+and every sub-command other than `open` are handed to the `autolith` program
+unchanged: the process becomes `autolith`, so they run in Autolith's own image
+with the person's private definitions as Autolith applies them.
 
 Options of AUI's own:
 

@@ -308,7 +308,7 @@ which may happen to a person's own world."
       (sb-ext:exit :code 64 :abort t))
     ;; The script that started this stops the server if this process dies first.
     (with-open-file (stream (format nil "~A/autolith-program" root) :direction ':output :if-exists ':supersede)
-      (write-line (launch--autolith-program) stream))
+      (write-line (installation-program) stream))
     (ensure-directories-exist init)
     (with-open-file (stream init :direction ':output :if-exists ':supersede)
       (format stream "(register-openai-compatible-provider~% :name        \"mock\"~% :description \"The live exercise's model\"~% :endpoint    \"http://127.0.0.1:~D/v1/chat/completions\"~% :models      '(\"mock-1\"))~%"
@@ -571,7 +571,7 @@ which may happen to a person's own world."
                                  :seconds 60))))
         (workbench-close workbench)
         ;; The world server was started for this exercise alone.
-        (uiop:run-program (list (launch--autolith-program) "localgroup" "stop")
+        (uiop:run-program (list (installation-program) "localgroup" "stop")
                           :ignore-error-status t))))
   *exercise-failures*)
 

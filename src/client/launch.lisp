@@ -188,19 +188,13 @@ session, or one of Autolith's internal starts."
                  '(:detached :pristine :localgroup-handoff :simulate-crash)))
        t))
 
-(-> launch--autolith-program () string)
-(defun launch--autolith-program ()
-  "Return the namestring of the autolith program of the Autolith this client was built against."
-  (uiop:native-namestring
-   (merge-pathnames "bin/autolith" (asdf:system-source-directory ':autolith))))
-
 (-> launch--become-autolith (list) null)
 (defun launch--become-autolith (arguments)
   "Replace this process with autolith run on ARGUMENTS.
 
 Signal a CLIENT-ERROR when the program cannot be started; on success this
 never returns."
-  (let* ((program (launch--autolith-program))
+  (let* ((program (installation-program))
          (words   (cons program arguments))
          (count   (length words))
          (vector  (sb-alien:make-alien sb-alien:c-string (1+ count))))

@@ -26,6 +26,7 @@
       :serial t
       :components
       ((:file "portable")
+       (:file "installation")
        (:file "world")
        (:file "records")
        (:file "history")

@@ -69,4 +69,30 @@
     (launch-parse '("-C" "/tmp" "--detached"))))
 
 (fiveam:test the-autolith-program-is-the-one-built-against
-  (fiveam:is (probe-file (launch--autolith-program))))
+  (fiveam:is (probe-file (installation-program))))
+
+(fiveam:test a-release-is-started-by-its-own-launcher
+  (let* ((root     (uiop:ensure-directory-pathname
+                    (format nil "~Aaui-installation-~D/" (uiop:temporary-directory) (random 1000000))))
+         (release  (merge-pathnames "releases/v1.2.3/" root))
+         (packaged (merge-pathnames "libexec/autolith/" release))
+         (checkout (merge-pathnames "checkout/" root)))
+    (unwind-protect
+         (progn
+           (dolist (file (list (merge-pathnames "RELEASE" release)
+                               (merge-pathnames "bin/autolith" release)
+                               (merge-pathnames "bin/autolith" packaged)
+                               (merge-pathnames "bin/autolith" checkout)))
+             (ensure-directories-exist file)
+             (with-open-file (stream file :direction ':output :if-exists ':supersede)
+               (write-line "placeholder" stream)))
+           ;; A release keeps its source two directories beneath its launcher.
+           (fiveam:is (equal (installation--release-root packaged) release))
+           (fiveam:is (string= (installation--program packaged)
+                               (uiop:native-namestring (merge-pathnames "bin/autolith" release))))
+           ;; A checkout is started by the launcher it holds itself.
+           (fiveam:is (null (installation--release-root checkout)))
+           (fiveam:is (string= (installation--program checkout)
+                               (uiop:native-namestring (merge-pathnames "bin/autolith" checkout)))))
+      (uiop:delete-directory-tree root :validate (lambda (directory)
+                                                   (search "aui-installation-" (namestring directory)))))))

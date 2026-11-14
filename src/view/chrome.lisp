@@ -466,7 +466,7 @@
                                             :y     top
                                             :width column)))
          (setf below (chrome--paint-centered "Write below. A line starting with ( or / runs a command."
-                                             (text-style ':body :face ':serif-italic)
+                                             (text-style ':body)
                                              :x     left
                                              :y     (+ below 14)
                                              :width column))

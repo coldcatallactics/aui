@@ -69,7 +69,11 @@
     :initform      nil
     :accessor      session--history-floor
     :type          (or null integer)
-    :documentation "The lowest record sequence already delivered as history, or NIL before the first page."))
+    :documentation "The lowest record sequence already delivered as history, or NIL before the first page.")
+   (history-cursor
+    :initform      nil
+    :accessor      session--history-cursor
+    :documentation "Where the page of history before the earliest one delivered ends, or NIL before the first page."))
   (:documentation "This client's attachment to one channel."))
 
 (-> session--post (session symbol &rest t) ui-event)
@@ -117,14 +121,16 @@
 (-> session--deliver-history (session &key (:through (or null integer))) null)
 (defun session--deliver-history (session &key through)
   "Read the page of history below what SESSION already delivered and post it."
-  (multiple-value-bind (records more-p)
+  (multiple-value-bind (records more-p cursor)
       (history-read-page (world-configuration (session-world session))
                          (session-identifier session)
+                         :cursor  (session--history-cursor session)
                          :before  (session--history-floor session)
                          :through through)
     (let ((first (find-if #'record-sequence records)))
       (when first
         (setf (session--history-floor session) (record-sequence first))))
+    (setf (session--history-cursor session) cursor)
     (session--post session 'history-event :records records :more-p more-p))
   nil)
 

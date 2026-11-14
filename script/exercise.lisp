@@ -105,7 +105,8 @@
                          (and text (find #\Newline text))))
       (document-clear-selection document)
       ;; The command list.
-      (window--stage-key workbench (make-key-event :code (char-code #\k) :state #x40000))
+      (window--stage-key workbench (make-key-event :code  (char-code #\k)
+                                                   :state lightfast:+modifier-command+))
       (exercise--draw workbench)
       (exercise-expect "the command key opens the commands"
                        (and (workbench-overlay workbench)

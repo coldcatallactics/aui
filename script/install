@@ -2,9 +2,10 @@
 # Install AUI for this user: build it, put the aui command on the path, and on
 # macOS make an application that the Dock and Spotlight can start.
 #
-# Needs Autolith installed first (its autolith command on the path, or
-# AUI_AUTOLITH_ROOT naming its checkout), FLTK 1.4 with fltk-config, a C++17
-# compiler, and Lightfast checked out beside AUI.
+# Needs Autolith installed first, from a release or from source (its autolith
+# command on the path, or AUI_AUTOLITH_ROOT naming its release directory or
+# its checkout), FLTK 1.4 with fltk-config, a C++17 compiler, and Lightfast
+# checked out beside AUI.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

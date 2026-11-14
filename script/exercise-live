@@ -11,17 +11,12 @@ root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 make -s -C "$lightfast" native
 
-# Autolith records its SBCL in the person's data directory; read it before the
-# exercise is given directories of its own.
-case ${XDG_DATA_HOME:-} in
-  /*) data_home=$XDG_DATA_HOME ;;
-  *) data_home=$HOME/.local/share ;;
-esac
-if [[ -z ${AUTOLITH_SBCL:-} && -r "$data_home/autolith/runtimes/command" ]]; then
-  IFS= read -r recorded < "$data_home/autolith/runtimes/command" || recorded=
-  if [[ -n "$recorded" && -x "$recorded" ]]; then
-    export AUTOLITH_SBCL=$recorded
-  fi
+# Autolith's SBCL is found through the person's data directory; find it before
+# the exercise is given directories of its own.
+# shellcheck source=autolith.sh
+source "$root/script/autolith.sh"
+if [[ -n "$autolith_sbcl" ]]; then
+  export AUTOLITH_SBCL=$autolith_sbcl
 fi
 
 # A short path, because a world server listens on a socket beneath it, and a

@@ -6,10 +6,11 @@
 ;;;
 ;;; AUI is a client of the Autolith it was built against, so it loads that
 ;;; Autolith's source and the libraries its qlfile.lock pins instead of
-;;; carrying a second copy of either. The Autolith checkout is named by
-;;; AUI_AUTOLITH_ROOT, or else AUTOLITH_SOURCE_ROOT, or else found behind the
-;;; autolith command on the path. Lightfast is named by AUI_LIGHTFAST_ROOT, or
-;;; else is the checkout beside this one.
+;;; carrying a second copy of either. Autolith is named by AUI_AUTOLITH_ROOT,
+;;; or else AUTOLITH_SOURCE_ROOT, or else found behind the autolith command on
+;;; the path. It is a source checkout, or a release, which keeps its source
+;;; and libraries in libexec/autolith. Lightfast is named by
+;;; AUI_LIGHTFAST_ROOT, or else is the checkout beside this one.
 
 (require :asdf)
 
@@ -18,20 +19,29 @@
   (let ((value (uiop:getenvp name)))
     (and value (uiop:ensure-directory-pathname value))))
 
+(defun setup--autolith-source (directory)
+  "Return the directory under DIRECTORY that holds Autolith's source: DIRECTORY itself for a checkout, its libexec/autolith for a release."
+  (let ((packaged (merge-pathnames "libexec/autolith/" directory)))
+    (if (and (not (probe-file (merge-pathnames "autolith.asd" directory)))
+             (probe-file (merge-pathnames "autolith.asd" packaged)))
+        packaged
+        directory)))
+
 (defun setup--autolith-root ()
-  "Return the Autolith source checkout AUI builds against, or signal an error naming the ways to choose one."
-  (or (setup--directory "AUI_AUTOLITH_ROOT")
-      (setup--directory "AUTOLITH_SOURCE_ROOT")
-      (let ((command (ignore-errors
-                      (string-trim '(#\Space #\Newline #\Return)
-                                   (uiop:run-program '("sh" "-c" "command -v autolith")
-                                                     :output :string)))))
-        (when (and command (plusp (length command)) (probe-file command))
-          ;; TRUENAME follows the usual ~/.local/bin/autolith link to bin/autolith.
-          (uiop:pathname-parent-directory-pathname
-           (uiop:pathname-directory-pathname (truename command)))))
-      (error "No Autolith checkout found. Install Autolith so that autolith is on the path, ~
-              or set AUI_AUTOLITH_ROOT to its source directory.")))
+  "Return the Autolith source AUI builds against, or signal an error naming the ways to choose one."
+  (setup--autolith-source
+   (or (setup--directory "AUI_AUTOLITH_ROOT")
+       (setup--directory "AUTOLITH_SOURCE_ROOT")
+       (let ((command (ignore-errors
+                       (string-trim '(#\Space #\Newline #\Return)
+                                    (uiop:run-program '("sh" "-c" "command -v autolith")
+                                                      :output :string)))))
+         (when (and command (plusp (length command)) (probe-file command))
+           ;; TRUENAME follows the usual ~/.local/bin/autolith link to bin/autolith.
+           (uiop:pathname-parent-directory-pathname
+            (uiop:pathname-directory-pathname (truename command)))))
+       (error "No Autolith found. Install Autolith so that autolith is on the path, ~
+               or set AUI_AUTOLITH_ROOT to its release directory or its source checkout."))))
 
 (defun setup--require-file (pathname description)
   "Return PATHNAME, or signal an error saying that DESCRIPTION is missing there."

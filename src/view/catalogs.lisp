@@ -74,11 +74,10 @@
                                              (min (overlay-selection overlay) (+ scroll visible -1)))))))
 
 (-> catalog-paint-commands
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
-(defun catalog-paint-commands (workbench stage &key x y width height)
-  "Draw the list of operations matching the overlay's query."
-  (let* ((overlay (workbench-overlay workbench))
-         (rows    (catalog--command-rows workbench (overlay-query overlay)))
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun catalog-paint-commands (workbench stage overlay &key x y width height)
+  "Draw the list of operations matching OVERLAY's query."
+  (let* ((rows    (catalog--command-rows workbench (overlay-query overlay)))
          (visible (max 1 (floor height *overlay-row-height*)))
          (count   (length rows)))
     (setf (overlay-selection overlay) (max 0 (min (overlay-selection overlay) (1- count))))
@@ -98,7 +97,7 @@
     (when (zerop count)
       (paint-text-in (if (workbench-operations workbench)
                          "Nothing matches."
-                         "The channel has not sent its commands yet.") (text-style ':small :face ':serif-italic)
+                         "No commands yet.") (text-style ':small :face ':serif-italic)
                      :x      (+ x 16)
                      :y      y
                      :width  (- width 32)
@@ -215,11 +214,10 @@
     (nreverse result)))
 
 (-> catalog-paint-settings
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
-(defun catalog-paint-settings (workbench stage &key x y width height)
-  "Draw the settings as a property sheet: label and explanation at the left, the value as a chip at the right."
-  (let* ((overlay (workbench-overlay workbench))
-         (rows    (catalog--setting-rows workbench (overlay-query overlay)))
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun catalog-paint-settings (workbench stage overlay &key x y width height)
+  "Draw the settings OVERLAY lists as a property sheet: label and explanation at the left, the value as a chip at the right."
+  (let* ((rows    (catalog--setting-rows workbench (overlay-query overlay)))
          (count   (length rows))
          (visible (max 1 (floor height *overlay-row-height*))))
     (setf (overlay-scroll overlay)
@@ -237,7 +235,7 @@
     (when (zerop count)
       (paint-text-in (if (workbench-settings workbench)
                          "Nothing matches."
-                         "The channel has not sent its settings yet.") (text-style ':small :face ':serif-italic)
+                         "No settings yet.") (text-style ':small :face ':serif-italic)
                      :x      (+ x 16)
                      :y      y
                      :width  (- width 32)

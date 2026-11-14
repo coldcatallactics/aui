@@ -20,7 +20,7 @@
   ((kind
     :initarg       :kind
     :reader        overlay-kind
-    :type          (member :commands :settings :picker :menu :prompt :panel)
+    :type          (member :commands :settings :picker :menu :prompt :panel :board)
     :documentation "Which view this is.")
    (title
     :initarg       :title
@@ -67,6 +67,12 @@
     :initform      nil
     :accessor      overlay-content
     :documentation "The block a panel shows, or NIL while it is still being fetched.")
+   (tabs
+    :initarg       :tabs
+    :initform      nil
+    :reader        overlay-tabs
+    :type          list
+    :documentation "The tabs of a board, each (LABEL COUNT BLOCK): its name, how many things it holds, and what it shows.")
    (anchor
     :initarg       :anchor
     :initform      nil
@@ -222,6 +228,23 @@ NOTE says in a sentence what is asked for."
                                                             :padding-y 0))))
   nil)
 
+(-> workbench-show-board (workbench string list) null)
+(defun workbench-show-board (workbench title tabs)
+  "Show a board titled TITLE: TABS down its left side, each (LABEL COUNT . BLOCKS), and the blocks of the chosen one beside them."
+  (overlay-open workbench
+                (make-instance 'overlay
+                               :kind  ':board
+                               :title title
+                               :tabs  (loop for (label count . blocks) in tabs
+                                            collect (list label
+                                                          count
+                                                          (make-instance 'box-block
+                                                                         :children  blocks
+                                                                         :frame-p   nil
+                                                                         :padding-x 0
+                                                                         :padding-y 0)))))
+  nil)
+
 (-> overlay-choose (workbench choice) null)
 (defun overlay-choose (workbench choice)
   "Take CHOICE from the picker or menu shown: put it away, then do what the choice stands for."
@@ -300,8 +323,12 @@ NOTE says in a sentence what is asked for."
   (flet ((centered (width height)
            (list (floor (- stage-width width) 2) (max 32 (floor (- stage-height height) 3)) width height)))
     (ecase (overlay-kind overlay)
-      ((:commands :settings :panel)
+      ((:commands :settings)
        (centered (min 760 (- stage-width 48)) (min 640 (- stage-height 96))))
+      (:panel
+       (centered (min 900 (- stage-width 48)) (min 760 (- stage-height 64))))
+      (:board
+       (centered (min 1120 (- stage-width 48)) (min 820 (- stage-height 64))))
       (:picker
        (let* ((width (min 620 (- stage-width 48)))
               (top   (+ 28 (if (overlay--filter-p overlay) 56 8)))
@@ -345,58 +372,85 @@ NOTE says in a sentence what is asked for."
 
 ;;;; -- Drawing --
 
+(-> overlay--paint-layer (workbench stage overlay) null)
+(defun overlay--paint-layer (workbench stage overlay)
+  "Draw OVERLAY: the dimmed ground under it, its window, and what its kind shows in it."
+  (destructuring-bind (x y width height) (overlay-box overlay (stage-width stage) (stage-height stage))
+    (let* ((kind   (overlay-kind overlay))
+           (menu-p (eq kind ':menu))
+           (top-p  (eq overlay (workbench-overlay workbench)))
+           (field  (overlay-input-box overlay (stage-width stage) (stage-height stage))))
+      ;; A menu leaves the window readable around it; everything else dims
+      ;; what lies beneath, an overlay it was opened from included.
+      (unless menu-p
+        (paint-dither 0 0 :width (stage-width stage) :height (stage-height stage) :step 3))
+      (stage-region stage (list ':overlay-ground kind)
+                    :x      0
+                    :y      0
+                    :width  (stage-width stage)
+                    :height (stage-height stage)
+                    :action (lambda () (overlay-dismiss workbench))
+                    :cursor ':default)
+      (let ((bar (paint-window-frame x y
+                                     :width  width
+                                     :height height
+                                     :title  (and (not menu-p) (overlay-title overlay)))))
+        (stage-region stage (list ':overlay-window kind) :x x :y y :width width :height height :cursor ':default)
+        (unless menu-p
+          (paint-button stage (list ':overlay-close kind) ""
+                        :x       (- (+ x width) 26)
+                        :y       (+ y 4)
+                        :width   20
+                        :height  20
+                        :mark    ':cross
+                        :action  (lambda () (overlay-dismiss workbench))
+                        :tooltip "Close (Esc)"))
+        (when (and field (not (eq kind ':prompt)))
+          (paint-frame (+ x 12) (+ y bar 10) :width (- width 24) :height 36)
+          ;; The field itself is with the overlay on top; beneath it, what was typed is drawn.
+          (unless top-p
+            (let ((query (overlay-query overlay)))
+              (paint-text-in (if (plusp (length query)) query "Type to search")
+                             (text-style ':list :face (if (plusp (length query)) ':serif ':serif-italic))
+                             :x      (+ x 20)
+                             :y      (+ y bar 10)
+                             :width  (- width 40)
+                             :height 36))))
+        (let* ((top    (+ y bar (if (and field (not (eq kind ':prompt))) 56 0)))
+               (inside (- (+ y height) top 1)))
+          (ecase kind
+            (:commands
+             (catalog-paint-commands workbench stage overlay
+                                     :x (1+ x) :y top :width (- width 2) :height inside))
+            (:settings
+             (catalog-paint-settings workbench stage overlay
+                                     :x (1+ x) :y top :width (- width 2) :height inside))
+            ((:picker :menu)
+             (sheet-paint-choices workbench stage overlay
+                                  :x      (1+ x)
+                                  :y      (+ top 4)
+                                  :width  (- width 2)
+                                  :height (- inside 8)))
+            (:prompt
+             (sheet-paint-prompt workbench stage overlay
+                                 :x x :y (+ y bar) :width width :height (- height bar)))
+            (:panel
+             (sheet-paint-panel workbench stage overlay
+                                :x (1+ x) :y top :width (- width 2) :height inside))
+            (:board
+             (sheet-paint-board workbench stage overlay
+                                :x (1+ x) :y top :width (- width 2) :height inside)))))))
+  nil)
+
 (-> overlay-paint (workbench stage) null)
 (defun overlay-paint (workbench stage)
-  "Draw the overlay over everything else: the dimmed ground, its window, and what its kind shows in it."
-  (let ((overlay (workbench-overlay workbench)))
-    (when overlay
-      (destructuring-bind (x y width height) (overlay-box overlay (stage-width stage) (stage-height stage))
-        (let* ((kind   (overlay-kind overlay))
-               (menu-p (eq kind ':menu))
-               (field  (overlay-input-box overlay (stage-width stage) (stage-height stage))))
-          ;; A menu leaves the window readable around it; everything else dims it.
-          (unless menu-p
-            (paint-dither 0 0 :width (stage-width stage) :height (stage-height stage) :step 3))
-          (stage-region stage ':overlay-ground
-                        :x      0
-                        :y      0
-                        :width  (stage-width stage)
-                        :height (stage-height stage)
-                        :action (lambda () (overlay-dismiss workbench))
-                        :cursor ':default)
-          (let ((bar (paint-window-frame x y
-                                         :width  width
-                                         :height height
-                                         :title  (and (not menu-p) (overlay-title overlay)))))
-            (stage-region stage ':overlay-window :x x :y y :width width :height height :cursor ':default)
-            (unless menu-p
-              (paint-button stage ':overlay-close ""
-                            :x       (- (+ x width) 26)
-                            :y       (+ y 4)
-                            :width   20
-                            :height  20
-                            :mark    ':cross
-                            :action  (lambda () (overlay-dismiss workbench))
-                            :tooltip "Close (Esc)"))
-            (when (and field (not (eq kind ':prompt)))
-              (paint-frame (+ x 12) (+ y bar 10) :width (- width 24) :height 36))
-            (let* ((top    (+ y bar (if (and field (not (eq kind ':prompt))) 56 0)))
-                   (inside (- (+ y height) top 1)))
-              (ecase kind
-                (:commands
-                 (catalog-paint-commands workbench stage :x (1+ x) :y top :width (- width 2) :height inside))
-                (:settings
-                 (catalog-paint-settings workbench stage :x (1+ x) :y top :width (- width 2) :height inside))
-                ((:picker :menu)
-                 (sheet-paint-choices workbench stage
-                                      :x      (1+ x)
-                                      :y      (+ top 4)
-                                      :width  (- width 2)
-                                      :height (- inside 8)))
-                (:prompt
-                 (sheet-paint-prompt workbench stage :x x :y (+ y bar) :width width :height (- height bar)))
-                (:panel
-                 (sheet-paint-panel workbench stage :x (1+ x) :y top :width (- width 2) :height inside)))))))))
+  "Draw the overlay shown over everything else, on top of the overlays it was opened from, each dimmed by the one above it."
+  (let ((layers nil))
+    (loop for overlay = (workbench-overlay workbench) then (overlay-parent overlay)
+          while overlay
+          do (push overlay layers))
+    (dolist (overlay layers)
+      (overlay--paint-layer workbench stage overlay)))
   nil)
 
 
@@ -439,12 +493,16 @@ NOTE says in a sentence what is asked for."
             (overlay--move overlay step))
            (:panel
             (setf (overlay-scroll overlay) (max 0 (+ (overlay-scroll overlay) (* step 40)))))
+           (:board
+            (setf (overlay-selection overlay)
+                  (max 0 (min (1- (length (overlay-tabs overlay))) (+ (overlay-selection overlay) step)))
+                  (overlay-scroll overlay)    0))
            (:prompt
             nil)))
        (workbench-redraw workbench)
        t)
       ((:page-down :page-up)
-       (when (eq kind ':panel)
+       (when (member kind '(:panel :board))
          (setf (overlay-scroll overlay)
                (max 0 (+ (overlay-scroll overlay) (if (eq key ':page-down) 400 -400))))
          (workbench-redraw workbench))
@@ -460,7 +518,7 @@ NOTE says in a sentence what is asked for."
               (overlay-choose workbench choice))))
          (:prompt
           (overlay-accept workbench))
-         ((:settings :panel)
+         ((:settings :panel :board)
           nil))
        t)
       (otherwise

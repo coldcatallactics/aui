@@ -22,11 +22,10 @@
 ;;;; -- Choices --
 
 (-> sheet-paint-choices
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
-(defun sheet-paint-choices (workbench stage &key x y width height)
-  "Draw the choices of the picker or menu shown, one a row: a check before the current one, the labels in one column and what is said about each in the next."
-  (let* ((overlay  (workbench-overlay workbench))
-         (menu-p   (eq (overlay-kind overlay) ':menu))
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-choices (workbench stage overlay &key x y width height)
+  "Draw the choices of OVERLAY, a picker or a menu, one a row: a check before the current one, the labels in one column and what is said about each in the next."
+  (let* ((menu-p   (eq (overlay-kind overlay) ':menu))
          (choices  (overlay-shown-choices overlay))
          (count    (length choices))
          (visible  (max 1 (floor height *choice-row-height*)))
@@ -111,14 +110,13 @@
 ;;;; -- Prompt --
 
 (-> sheet-paint-prompt
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
-(defun sheet-paint-prompt (workbench stage &key x y width height)
-  "Draw the prompt shown below its title bar: what is asked, the frame of its field, and the two ways out."
-  (let* ((overlay (workbench-overlay workbench))
-         (note    (overlay-note overlay))
-         (field   (overlay-input-box overlay (stage-width stage) (stage-height stage)))
-         (bottom  (+ y height))
-         (button  92))
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-prompt (workbench stage overlay &key x y width height)
+  "Draw the prompt OVERLAY below its title bar: what is asked, the frame of its field, and the two ways out."
+  (let* ((note   (overlay-note overlay))
+         (field  (overlay-input-box overlay (stage-width stage) (stage-height stage)))
+         (bottom (+ y height))
+         (button 92))
     (when (and note (plusp (length note)))
       (let ((paragraph (make-paragraph (list (make-span note nil)) :style (text-style ':small))))
         (paragraph-layout paragraph (- width 32))
@@ -146,14 +144,14 @@
 ;;;; -- Panel --
 
 (-> sheet-paint-panel
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
-(defun sheet-paint-panel (workbench stage &key x y width height)
-  "Draw the panel's content in the box, scrolled, or say that it is being fetched."
-  (let* ((overlay (workbench-overlay workbench))
-         (content (overlay-content overlay))
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-panel (workbench stage overlay &key x y width height)
+  "Draw the content of the panel OVERLAY in the box, scrolled, or say that it is being fetched."
+  (declare (ignorable workbench))
+  (let* ((content (overlay-content overlay))
          (inner   (max 80 (- width 56))))
     (if (null content)
-        (paint-text-in "Asking the channel" (text-style ':small :face ':serif-italic)
+        (paint-text-in "Waiting for the answer" (text-style ':small :face ':serif-italic)
                        :x      (+ x 24)
                        :y      (+ y 8)
                        :width  inner
@@ -181,4 +179,86 @@
                                  :height  height
                                  :content total
                                  :scroll  (overlay-scroll overlay)))))
+  nil)
+
+
+;;;; -- Board --
+
+(defparameter *board-tabs-width* 190
+  "The width of the column of tabs at the left of a board.")
+
+(defparameter *board-tab-height* 34
+  "The height of one tab of a board.")
+
+(-> sheet-paint-board
+    (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
+(defun sheet-paint-board (workbench stage overlay &key x y width height)
+  "Draw the board OVERLAY in the box: its tabs down the left, each with the count of what it holds, and the chosen tab's blocks beside them, scrolled."
+  (let* ((tabs   (overlay-tabs overlay))
+         (chosen (max 0 (min (overlay-selection overlay) (1- (length tabs)))))
+         (bold   (text-style ':label-bold))
+         (meta   (text-style ':meta))
+         (pane-x (+ x *board-tabs-width*))
+         (pane-w (- width *board-tabs-width*))
+         (inner  (max 80 (- pane-w 56))))
+    (setf (overlay-selection overlay) chosen)
+    (loop for (label count) in tabs
+          for index from 0
+          for tab-y from (+ y 10) by *board-tab-height*
+          do (let* ((tab    index)
+                    (region (list ':tab index))
+                    (lit-p  (or (= index chosen) (stage-hot-p stage region)))
+                    (top    tab-y))
+               (flet ((content ()
+                        (paint-text-in label bold
+                                       :x      (+ x 16)
+                                       :y      top
+                                       :width  (- *board-tabs-width* 60)
+                                       :height *board-tab-height*)
+                        (paint-text-in (princ-to-string count) meta
+                                       :x      (+ x (- *board-tabs-width* 44))
+                                       :y      top
+                                       :width  30
+                                       :height *board-tab-height*
+                                       :align  ':right)))
+                 (if lit-p
+                     (with-inversion (x top (- *board-tabs-width* 6) *board-tab-height*)
+                       (content))
+                     (content)))
+               (stage-region stage region
+                             :x      x
+                             :y      top
+                             :width  (- *board-tabs-width* 6)
+                             :height *board-tab-height*
+                             :action (lambda ()
+                                       (setf (overlay-selection overlay) tab
+                                             (overlay-scroll overlay)    0)
+                                       (workbench-redraw workbench)))))
+    ;; A band of dither parts the tabs from what the chosen one shows.
+    (paint-dither (- pane-x 4) y :width 3 :height height :step 3)
+    (let ((content (third (nth chosen tabs))))
+      (when content
+        (let* ((total   (+ (block-layout content inner) 36))
+               (maximum (max 0 (- total height))))
+          (setf (overlay-scroll overlay) (max 0 (min (overlay-scroll overlay) maximum)))
+          (stage-region stage ':overlay-list
+                        :x      pane-x
+                        :y      y
+                        :width  pane-w
+                        :height height
+                        :wheel  (lambda (vertical horizontal)
+                                  (declare (ignore horizontal))
+                                  (setf (overlay-scroll overlay)
+                                        (max 0 (min maximum (+ (overlay-scroll overlay) (* vertical 48)))))))
+          (lightfast:with-clip (pane-x y pane-w height)
+            (let ((*paint-stage*  stage)
+                  (*paint-top*    y)
+                  (*paint-bottom* (+ y height)))
+              (block-paint content (+ pane-x 24) (+ y 18 (- (overlay-scroll overlay))))))
+          (sheet-paint-scrollbar stage
+                                 :x       (+ x width -9)
+                                 :y       y
+                                 :height  height
+                                 :content total
+                                 :scroll  (overlay-scroll overlay))))))
   nil)

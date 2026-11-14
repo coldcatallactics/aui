@@ -18,8 +18,8 @@
   "The height of the row of chips and the send button.")
 
 (defparameter *permission-modes*
-  '((:ask         "Ask first"   "Ask before running a command it does not recognize")
-    (:auto        "Auto"        "A classifier decides: sandbox, full access or refuse")
+  '((:ask         "Ask first"   "Ask me before running a command that is not recognized")
+    (:auto        "Auto"        "Decided for each command: sandbox, full access or refusal")
     (:sandboxed   "Sandbox"     "Run commands inside the workspace sandbox")
     (:full-access "Full access" "Run commands with your full privileges"))
   "The permission modes as (MODE LABEL EXPLANATION), in the order they are offered.")
@@ -348,7 +348,7 @@ delete, so that at the end of the text it still opens the commands."
                                     :height  24
                                     :menu-p  t
                                     :action  (lambda () (composer--choose-model workbench))
-                                    :tooltip "The model that answers")))
+                                    :tooltip "Model")))
       (when (workbench-effort workbench)
         (let ((chip-x cursor))
           (incf cursor (+ 2 (paint-chip stage ':effort (workbench-effort workbench)
@@ -358,7 +358,7 @@ delete, so that at the end of the text it still opens the commands."
                                         :menu-p  t
                                         :action  (lambda ()
                                                    (composer--choose-effort workbench :x chip-x :y (- chip-y 4)))
-                                        :tooltip "How much the model reasons")))))
+                                        :tooltip "Reasoning effort")))))
       (let* ((mode   (find (workbench-permission-mode workbench) *permission-modes* :key #'first))
              (label  (if mode (second mode) "Ask first"))
              (chip-x cursor))
@@ -394,7 +394,7 @@ delete, so that at the end of the text it still opens the commands."
                         :enabled-p ready-p
                         :action    (lambda () (composer-send workbench))
                         :tooltip   (if working-p
-                                       "Steer the running turn (Enter); Tab queues a follow-up"
+                                       "Steer the running turn (Enter), or queue a follow-up (Tab)"
                                        "Send (Enter)")))))
   nil)
 

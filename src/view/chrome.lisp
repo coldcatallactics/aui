@@ -162,7 +162,7 @@
                                      (lambda (name)
                                        (when (plusp (length (string-trim " " name)))
                                          (workbench-submit workbench (format nil "(rename ~S)" name))))
-                                     :note    "The name this channel's agent answers to in @mentions."
+                                     :note    "The name of the agent in @mentions."
                                      :initial (or agent "")))))
         (if agent
             (list (item "Park the agent"
@@ -552,7 +552,7 @@ A choice is taken with its number or a click."
                                             :x     left
                                             :y     top
                                             :width column)))
-         (setf below (chrome--paint-centered "Write to the agent. A line starting with ( or / runs a command."
+         (setf below (chrome--paint-centered "Write to the agent. Start a line with ( or / to run a command."
                                              (text-style ':body)
                                              :x     left
                                              :y     (+ below 14)

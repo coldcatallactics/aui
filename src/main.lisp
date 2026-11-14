@@ -82,9 +82,17 @@ reports them, not the moment before it answered."
          (chrome--channel-menu workbench
                                :x (- (stage-width (workbench-stage workbench)) 50)
                                :y 47))
+        ((equal view "choice")
+         (workbench-show-overlay workbench ':settings)
+         (let ((row (find "reasoning-effort" (workbench-settings workbench)
+                          :key  (lambda (row)
+                                  (portable-get row "name"))
+                          :test #'equal)))
+           (when row
+             (catalog--change-setting workbench row))))
         ((equal view "prompt")
          (workbench-ask workbench "Rename the agent" (constantly nil)
-                        :note    "The name this channel's agent answers to in @mentions."
+                        :note    "The name of the agent in @mentions."
                         :initial "lightfast"))
         ((equal view "channels")
          (setf (workbench-sidebar-shown-p workbench) t))

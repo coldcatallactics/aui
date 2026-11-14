@@ -74,6 +74,15 @@
       (exercise-expect "the command key opens the commands"
                        (and (workbench-overlay workbench)
                             (exercise--region workbench '(:operation "status"))))
+      ;; In a window too low to hold them all, the wheel scrolls the list.
+      (stage-resize stage 1200 420)
+      (exercise--draw workbench)
+      (stage--pointer stage ':wheel "600 250 0 0 2 0")
+      (exercise--draw workbench)
+      (exercise-expect "the wheel scrolls the commands"
+                       (plusp (overlay-scroll (workbench-overlay workbench))))
+      (stage-resize stage 1200 800)
+      (exercise--draw workbench)
       (overlay-key workbench (make-key-event :code #xff1b))
       (exercise-expect "Escape puts them away" (null (workbench-overlay workbench)))
       ;; Settings.
@@ -81,7 +90,75 @@
       (exercise--draw workbench)
       (exercise-expect "the settings list their values"
                        (exercise--region workbench '(:setting "reasoning-effort")))
+      ;; A choice among the settings opens a picker that returns to them.
+      (exercise--click workbench '(:setting "reasoning-effort"))
+      (exercise--draw workbench)
+      (exercise-expect "a setting with choices opens a picker with the current one marked"
+                       (and (eq ':picker (overlay-kind (workbench-overlay workbench)))
+                            (find-if #'choice-current-p (overlay-choices (workbench-overlay workbench)))
+                            (exercise--region workbench '(:choice 0))))
+      (overlay-key workbench (make-key-event :code #xff1b))
+      (exercise-expect "putting the picker away returns to the settings"
+                       (eq ':settings (overlay-kind (workbench-overlay workbench))))
+      ;; A setting that is a number asks for it in a prompt.
+      (exercise--draw workbench)
+      (exercise--click workbench '(:setting "channel-idle-minutes"))
+      (exercise--draw workbench)
+      (exercise-expect "a setting with a value asks for it in a prompt"
+                       (and (eq ':prompt (overlay-kind (workbench-overlay workbench)))
+                            (equal "30" (overlay-query (workbench-overlay workbench)))
+                            (exercise--region workbench ':prompt-accept)))
       (workbench-show-overlay workbench nil)
+      ;; The channel's menu, and the panels it leads to.
+      (exercise--draw workbench)
+      (exercise--click workbench ':channel-menu)
+      (exercise--draw workbench)
+      (exercise-expect "the channel's menu opens beside its button"
+                       (and (eq ':menu (overlay-kind (workbench-overlay workbench)))
+                            (exercise--region workbench '(:choice 0))))
+      (let ((agenda (position "Agenda" (overlay-choices (workbench-overlay workbench))
+                              :key #'choice-label :test #'equal)))
+        (exercise--click workbench (list ':choice agenda)))
+      (exercise--draw workbench)
+      (exercise-expect "the agenda opens in a panel of its own"
+                       (and (eq ':panel (overlay-kind (workbench-overlay workbench)))
+                            (overlay-content (workbench-overlay workbench))))
+      (workbench-show-overlay workbench nil)
+      (panel-show-memories workbench)
+      (exercise--draw workbench)
+      (exercise-expect "what is remembered opens in a panel"
+                       (overlay-content (workbench-overlay workbench)))
+      (workbench-show-overlay workbench nil)
+      ;; The chips under the composer.
+      (exercise--draw workbench)
+      (exercise--click workbench ':mode)
+      (exercise--draw workbench)
+      (exercise-expect "the permission chip opens a menu that says what each mode means"
+                       (and (eq ':menu (overlay-kind (workbench-overlay workbench)))
+                            (every #'choice-detail (overlay-choices (workbench-overlay workbench)))))
+      (workbench-show-overlay workbench nil)
+      (exercise--draw workbench)
+      (exercise--click workbench ':model)
+      (exercise--draw workbench)
+      (exercise-expect "the model chip opens a picker"
+                       (eq ':picker (overlay-kind (workbench-overlay workbench))))
+      (workbench-show-overlay workbench nil)
+      ;; The line editor's keys.
+      (setf (composer-text workbench) "one two three")
+      (composer-caret-to-end workbench)
+      (window--editor-key workbench (make-key-event :code #xff08 :state lightfast:+modifier-control+))
+      (exercise-expect "Ctrl-Backspace deletes a word" (string= "one two " (composer-text workbench)))
+      (window--editor-key workbench (make-key-event :code (char-code #\u) :state lightfast:+modifier-control+))
+      (exercise-expect "Ctrl-U deletes to the start of the line" (string= "" (composer-text workbench)))
+      ;; The channel list can be put away with the pointer.
+      (exercise--draw workbench)
+      (exercise--click workbench ':hide-sidebar)
+      (exercise--draw workbench)
+      (exercise-expect "a button hides the channel list and another brings it back"
+                       (and (not (workbench-sidebar-shown-p workbench))
+                            (exercise--region workbench ':toggle-sidebar)))
+      (exercise--click workbench ':toggle-sidebar)
+      (exercise--draw workbench)
       ;; An approval.
       (setf (workbench-approval workbench) (demo-approval))
       (exercise--draw workbench)

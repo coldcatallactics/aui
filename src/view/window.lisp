@@ -523,7 +523,11 @@ have made of it."
       (lightfast:wait 0.05))
     (lightfast:refresh-geometry window)
     (stage-resize stage (lightfast:widget-width window) (lightfast:widget-height window))
-    (when (< (stage-width stage) *sidebar-docked-minimum*)
+    ;; A window too narrow to dock the channel list starts with the drawer
+    ;; closed, unless the start asked to see the channels.
+    (when (and (< (stage-width stage) *sidebar-docked-minimum*)
+               (not (launch-pick-p launch))
+               (not (equal (launch-view launch) "channels")))
       (setf (workbench-sidebar-shown-p workbench) nil))
     (window-arrange workbench)
     (window-focus-composer workbench))

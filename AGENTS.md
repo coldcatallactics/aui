@@ -32,8 +32,9 @@ ask for what is missing.
   with their catalogs, sheets and panels, and the workbench that holds the
   window's state.
 - `tests/`: FiveAM, same package, no display, server or credentials.
-- `script/setup.lisp`: finds the Autolith checkout and its dependency set;
-  every script and the source checks load it first.
+- `script/setup.lisp`: finds Autolith's source and its dependency set; every
+  script and the source checks load it first. `script/autolith.sh` finds the
+  same Autolith for the shell scripts, with the SBCL it runs on.
 
 ## Checks
 
@@ -61,6 +62,13 @@ The interface thread alone touches widgets, the transcript and the workbench.
 Client threads post immutable `ui-event`s to the queue and wake it. Every
 handler that FLTK calls runs under `with-stage-guard`, so an error is reported
 in the window instead of unwinding through foreign frames.
+
+Autolith is installed from a release or from source, and AUI builds against
+either. What is known of a release's layout is in `script/autolith.sh`,
+`script/setup.lisp` and `src/client/installation.lisp`, nowhere else. AUI
+starts nothing of Autolith by a path of its own: a world server and every
+command without a window go through the installed `autolith` command, which
+prepares what Autolith needs to run.
 
 Everything visible is drawn by AUI on one stage; FLTK widgets appear only
 where a person types. Lightfast stays general purpose: what AUI needs from

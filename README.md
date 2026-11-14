@@ -26,11 +26,17 @@ and a few accent inks.
 
 ## Install
 
-AUI is built on the machine it runs on.
+AUI is built on the machine it runs on, against the Autolith installed there.
 
-1. Install Autolith from a source checkout and run its `script/bootstrap`, so
-   that `autolith` is on your path and has run once. AUI builds against that
-   checkout and uses its SBCL and its pinned libraries.
+1. Install Autolith, so that `autolith` is on your path. From a release:
+
+   ```sh
+   curl -fsSL https://sh.lambda-symbolics.com/autolith | sh
+   ```
+
+   A release brings Autolith's source, its pinned libraries and an SBCL of
+   its own, and AUI builds against those. A source checkout that has run its
+   `script/bootstrap` serves the same way.
 2. Install FLTK 1.4 and a C++17 compiler. On macOS: `brew install fltk`. On
    Arch: `pacman -S fltk`.
 3. Clone Lightfast beside AUI:
@@ -49,26 +55,23 @@ AUI is built on the machine it runs on.
 
 `script/install` builds Lightfast's native bridge and the saved image
 `build/aui`, links `aui` into `~/.local/bin`, and on macOS also makes
-`~/Applications/Autolith.app` for the Dock and Spotlight. After updating AUI,
-Lightfast or Autolith, run `aui` again: the launcher rebuilds the image when
-it is older than any of them.
+`~/Applications/Autolith.app` for the Dock and Spotlight. The image holds the
+client code of the Autolith it was built against. After updating AUI,
+Lightfast or Autolith, run `aui` again: the launcher builds the image again
+when its sources are newer or another Autolith is installed.
 
-`AUI_AUTOLITH_ROOT` names the Autolith checkout when `autolith` is not on the
-path, and `AUI_LIGHTFAST_ROOT` names Lightfast when it is not beside AUI.
+`AUI_AUTOLITH_ROOT` names Autolith's release directory or its checkout when
+`autolith` is not on the path, and `AUI_LIGHTFAST_ROOT` names Lightfast when
+it is not beside AUI.
 
-On a Mac with Homebrew, from nothing, these are the steps the macOS check in
-`.github/workflows/check.yml` runs on every push:
+On a Mac with Homebrew, from nothing, with Autolith from its release. The
+macOS check in `.github/workflows/check.yml` runs these steps on every push,
+and a second time with Autolith built from source:
 
 ```sh
-brew install sbcl fltk rust cmake pkg-config openssl coreutils gnu-tar
-export PATH="$(brew --prefix coreutils)/libexec/gnubin:$HOME/.local/bin:$PATH"
-
-curl -LO https://beta.quicklisp.org/quicklisp.lisp
-sbcl --non-interactive --load quicklisp.lisp --eval '(quicklisp-quickstart:install)'
-
-git clone https://github.com/lambda-symbolics/autolith.git
-(cd autolith && ./script/bootstrap)
-mkdir -p ~/.local/bin && ln -s "$PWD/autolith/bin/autolith" ~/.local/bin/autolith
+brew install fltk
+curl -fsSL https://sh.lambda-symbolics.com/autolith | sh
+export PATH="$HOME/.local/bin:$PATH"
 autolith auth                 # sign in to a model provider, once
 
 git clone https://github.com/lambda-symbolics/lightfast.git
@@ -91,8 +94,8 @@ aui -C ~/work/project        # as if started in that directory
 aui lg status                # every other sub-command runs as under autolith
 ```
 
-If no world server is running, the first `aui` starts one, as the first
-`autolith` does. The options for a channel (`--model`, `--provider`,
+If no world server is running, the first `aui` starts one with
+`autolith localgroup start`, so it is the server a terminal would start. The options for a channel (`--model`, `--provider`,
 `--permissions`, `--immutable`, `--image`, `--site-config-root`) are
 Autolith's own and mean what they mean there. A start without a window
 (`--detached`, `--pristine`) and every sub-command except `open` run in

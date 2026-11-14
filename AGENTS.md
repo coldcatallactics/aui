@@ -41,9 +41,12 @@ script/check                    # everything
 script/check --suite records    # one suite, no source checks
 script/check --fix              # repair layout findings
 script/exercise                 # drive the demonstration offscreen; needs a display
+script/exercise-live            # drive real turns against a scripted model in a world of its own
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 
+A change to what the client sends or how live events are shown gets
+`script/exercise-live`, which needs no account and touches nobody's world.
 A visual change gets a picture: `--shot` with `--size` draws offscreen at that
 size without showing a window, so it works under a tiling compositor and on a
 build machine. Develop against a pinned Autolith checkout named by

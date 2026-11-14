@@ -154,6 +154,7 @@ script/check --fix              # repair what the source rules can repair
 script/run --demo               # the scripted conversation, from source
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 script/exercise                 # click, scroll, select and type against the demonstration
+script/exercise-live            # real turns through a world server of its own and a scripted model
 script/build                    # the saved image
 ```
 
@@ -161,6 +162,12 @@ The source rules are [cheque](https://github.com/lambda-symbolics/cheque)'s,
 installed on first use into the per-user cache. The checks run on macOS in
 GitHub Actions for every push, and keep pictures of the demonstration drawn
 there as an artifact.
+
+`script/exercise-live` needs no account. It makes a world under `/tmp`, starts
+Autolith's world server for it, registers a model that is a script in the same
+process, and does what a person does in the window: send, queue a follow-up,
+allow a command, stop a turn, steer one, run a command, reopen the channel
+from its history. Then it stops the server and removes the world.
 
 `src/client/` is the only directory that names Autolith's definitions. When
 Autolith publishes its client interface, that directory is what changes.

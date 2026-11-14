@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Drive real turns offscreen: send, queue, approve a command, stop, steer, run
+# a command and reopen the channel, against a world server of its own and a
+# model that is a script. No account, no network, nothing of the person's
+# world. Needs a display to measure text with. Set AUI_EXERCISE_SHOTS to a
+# directory to keep pictures of it, and AUI_EXERCISE_KEEP to one that receives
+# the world's state when the exercise fails.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
+make -s -C "$lightfast" native
+
+# Autolith records its SBCL in the person's data directory; read it before the
+# exercise is given directories of its own.
+case ${XDG_DATA_HOME:-} in
+  /*) data_home=$XDG_DATA_HOME ;;
+  *) data_home=$HOME/.local/share ;;
+esac
+if [[ -z ${AUTOLITH_SBCL:-} && -r "$data_home/autolith/runtimes/command" ]]; then
+  IFS= read -r recorded < "$data_home/autolith/runtimes/command" || recorded=
+  if [[ -n "$recorded" && -x "$recorded" ]]; then
+    export AUTOLITH_SBCL=$recorded
+  fi
+fi
+
+# A short path, because a world server listens on a socket beneath it, and a
+# physical one, because Autolith resolves the directories it is given.
+world=$(mktemp -d /tmp/aui-live.XXXXXX)
+world=$(CDPATH= cd -P "$world" && pwd)
+status=0
+cleanup() {
+  # The exercise stops its server itself; one that died first left it running.
+  if [[ $status -ne 0 && -r "$world/autolith-program" ]]; then
+    IFS= read -r program < "$world/autolith-program" || program=
+    if [[ -n "$program" && -x "$program" ]]; then
+      "$program" localgroup stop >/dev/null 2>&1 || true
+    fi
+  fi
+  if [[ $status -ne 0 && -n ${AUI_EXERCISE_KEEP:-} ]]; then
+    mkdir -p "$AUI_EXERCISE_KEEP" && cp -R "$world/state" "$AUI_EXERCISE_KEEP/" 2>/dev/null || true
+  fi
+  rm -rf "$world"
+}
+trap cleanup EXIT
+
+export AUI_EXERCISE_WORLD=$world
+export XDG_DATA_HOME=$world/data XDG_STATE_HOME=$world/state XDG_CONFIG_HOME=$world/config
+export CODEX_HOME=$world/no-codex GROK_HOME=$world/no-grok
+mkdir -p "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CONFIG_HOME" "$CODEX_HOME" "$GROK_HOME"
+
+"$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
+  --load "$root/script/exercise-live.lisp" || status=$?
+exit "$status"

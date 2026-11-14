@@ -252,18 +252,14 @@ beneath it."
       ((workbench-working-p workbench)
        (setf (stage-animating-p stage) t)
        (paint-spinner x (+ y (floor (- height 14) 2)) :size 14 :phase (stage-phase stage) :color *green*)
-       (let* ((working (format nil "Working~@[ ~A~]"
-                               (and (workbench-working-since workbench)
-                                    (chrome--elapsed (- (get-universal-time)
-                                                        (workbench-working-since workbench))))))
-              (hinted  (format nil "~A · Esc stops" working))
-              (room    (max 0 (- right x 22))))
-         ;; The hint goes first where the line is short of room.
-         (paint-text-in (if (<= (text-width hinted meta) room) hinted working) meta
-                        :x      (+ x 22)
-                        :y      y
-                        :width  room
-                        :height height)))
+       (paint-text-in (format nil "Working~@[ ~A~]"
+                              (and (workbench-working-since workbench)
+                                   (chrome--elapsed (- (get-universal-time)
+                                                       (workbench-working-since workbench))))) meta
+                      :x      (+ x 22)
+                      :y      y
+                      :width  (max 0 (- right x 22))
+                      :height height))
       (directory-p
        (paint-text-in (short-directory (workbench-directory workbench)) meta
                       :x      x

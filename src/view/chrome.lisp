@@ -377,12 +377,37 @@
                  :align  ':center)
   (+ y (text-style-line-height style)))
 
+(defvar *mascot* nil
+  "The loaded picture of Autolith's mascot, :MISSING when it could not be read, or NIL before it was tried.")
+
+(defparameter *mascot-size* '(250 . 225)
+  "The (WIDTH . HEIGHT) the mascot is drawn at.")
+
+(-> chrome--paint-mascot (integer integer integer) integer)
+(defun chrome--paint-mascot (x y width)
+  "Draw the mascot centered in WIDTH with its top at Y, and return the Y below it; draw nothing and return Y when its picture is missing."
+  (unless *mascot*
+    (setf *mascot*
+          (or (lightfast:load-image
+               (uiop:native-namestring (asdf:system-relative-pathname :aui "assets/mascot.png")))
+              ':missing)))
+  (if (eq *mascot* ':missing)
+      y
+      (progn
+        (lightfast:draw-image *mascot* (+ x (floor (- width (first *mascot-size*)) 2)) y
+                              :width (first *mascot-size*) :height (rest *mascot-size*))
+        (+ y (rest *mascot-size*) 10))))
+
 (-> empty-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun empty-paint (workbench stage &key x y width height)
   "Draw what stands in for a conversation: the opening's progress, why it failed, or an invitation to write."
-  (let* ((column (min 560 (- width 48)))
-         (left   (+ x (floor (- width column) 2)))
-         (top    (+ y (max 24 (floor (- height 260) 2)))))
+  (let* ((column  (min 560 (- width 48)))
+         (left    (+ x (floor (- width column) 2)))
+         (roomy-p (>= height 560))
+         (top     (+ y (max 24 (floor (- height (if roomy-p 500 260)) 2)))))
+    ;; With room to spare, the mascot stands above the words.
+    (when (and roomy-p (member (workbench-attachment workbench) '(:opening :none :attached)))
+      (setf top (chrome--paint-mascot left top column)))
     (ecase (workbench-attachment workbench)
       (:opening
        (destructuring-bind (&optional (step 0) (description "Connecting to the world")) (workbench-progress workbench)
@@ -440,13 +465,16 @@
                                             :x     left
                                             :y     top
                                             :width column)))
-         (setf below (chrome--paint-centered (format nil "~A works in ~A."
-                                              (or (workbench-model workbench) "The agent")
-                                              (short-directory (workbench-directory workbench))) (text-style ':body :face ':serif-italic)
+         (setf below (chrome--paint-centered "Write below. A line starting with ( or / runs a command."
+                                             (text-style ':body :face ':serif-italic)
                                              :x     left
                                              :y     (+ below 14)
                                              :width column))
-         (chrome--paint-centered "Write below. A line starting with ( or / runs a command." (text-style ':label)
+         ;; A path belongs to the typewriter face; in italics its slashes read as bars.
+         (chrome--paint-centered (format nil "~@[~A in ~]~A"
+                                         (workbench-model workbench)
+                                         (short-directory (workbench-directory workbench)))
+                                 (text-style ':label)
                                  :x     left
                                  :y     (+ below 10)
                                  :width column)))))

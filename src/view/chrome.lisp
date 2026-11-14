@@ -52,20 +52,60 @@
                       (stringp (getf participant :name)))
               collect (getf participant :name)))))
 
+(-> chrome--sign-in-to (workbench string) null)
+(defun chrome--sign-in-to (workbench name)
+  "Sign in to the provider NAME: ask for its key when it takes one, else open the browser and say so while Autolith waits for the login there."
+  (let ((world (workbench-world workbench)))
+    (ecase (world-sign-in-kind world name)
+      (:key
+       (workbench-ask workbench (format nil "API key for ~A" name)
+                      (lambda (key)
+                        (when (plusp (length (string-trim " " key)))
+                          (workbench-show-panel workbench (format nil "Sign in to ~A" name) nil)
+                          (workbench-run-aside workbench (list ':sign-in name)
+                                               (lambda ()
+                                                 (world-sign-in world name :key (string-trim " " key))))))
+                      :note "Paste the key. It is checked and saved in the key store of Autolith on this machine."))
+      (:browser
+       (workbench-show-panel
+        workbench (format nil "Sign in to ~A" name)
+        (panel--empty "The sign-in page is open in your browser. Finish signing in there."))
+       (workbench-run-aside workbench (list ':sign-in name)
+                            (lambda ()
+                              (world-sign-in world name))))
+      ((nil)
+       (workbench-show-panel
+        workbench (format nil "Sign in to ~A" name)
+        (panel--empty (format nil "Run autolith auth ~A in a terminal to sign in to this provider." name))))))
+  nil)
+
 (-> chrome--sign-in (workbench) null)
 (defun chrome--sign-in (workbench)
-  "Open a terminal running autolith auth, which is where a provider is signed in to until Autolith offers that to its clients."
-  (handler-case
-      (if (uiop:os-macosx-p)
-          (uiop:launch-program
-           (list "osascript" "-e" "tell application \"Terminal\" to do script \"autolith auth\""
-                 "-e" "tell application \"Terminal\" to activate"))
-          (uiop:launch-program
-           (list "sh" "-c"
-                 "for t in \"$TERMINAL\" xdg-terminal-exec foot alacritty kitty wezterm gnome-terminal konsole xterm; do command -v \"$t\" >/dev/null 2>&1 && exec \"$t\" -e autolith auth; done; exit 1")))
-    (error ()
-      (setf (workbench-notice workbench) "Run autolith auth in a terminal to sign in.")))
-  (workbench-redraw workbench)
+  "Offer the providers to sign in to, those of the channel's model list and those this client knows, each with whether a login is stored."
+  (let* ((stored (remove-duplicates
+                  (loop for model in (workbench-models workbench)
+                        when (portable-true-p (portable-get model "credentialStored"))
+                          collect (portable-get model "provider"))
+                  :test #'equal))
+         (names  (sort (remove-duplicates
+                        (append (loop for model in (workbench-models workbench)
+                                      when (stringp (portable-get model "provider"))
+                                        collect (portable-get model "provider"))
+                                (world-providers))
+                        :test #'equal)
+                       #'string<)))
+    (workbench-pick workbench
+                    (mapcar (lambda (name)
+                              (make-choice :label     name
+                                           :detail    (if (member name stored :test #'equal)
+                                                          "signed in"
+                                                          "not signed in")
+                                           :value     name
+                                           :current-p (and (member name stored :test #'equal) t)))
+                            names)
+                    (lambda (name)
+                      (chrome--sign-in-to workbench name))
+                    :title "Sign in to a provider"))
   nil)
 
 (-> chrome--move-agent-here (workbench) null)

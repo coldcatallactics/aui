@@ -192,3 +192,72 @@ Signals CLIENT-ERROR when no server runs or the server refuses."
                             :residence  (autolith::participant-residence participant))))
     (error ()
       nil)))
+
+
+;;;; -- Deleting a Channel --
+
+(-> world-delete-channel (world string) integer)
+(defun world-delete-channel (world channel)
+  "Delete CHANNEL and every channel nested in it, with their histories, and return how many were deleted.
+
+Autolith refuses for a channel that is shown somewhere or still has work
+running; its reason is then signalled as a CLIENT-ERROR."
+  (handler-case (autolith::channel-remove (world-configuration world) (list channel) :tool-name "the window")
+    (autolith::autolith-error (condition)
+      (error 'client-error :message (autolith::autolith-error-message condition)))
+    (error (condition)
+      (error 'client-error
+             :message (format nil "The channel could not be deleted: ~A" (condition-report condition))))))
+
+
+;;;; -- Signing In --
+
+;;; A provider is signed in to by Autolith's own code, the code its auth
+;;; command runs, in this process: a key is saved to Autolith's key store, a
+;;; subscription opens the browser and waits for it. Nothing about either is
+;;; reimplemented here.
+
+(-> world--provider (world string) t)
+(defun world--provider (world name)
+  "Return Autolith's provider registered as NAME for signing in to."
+  (autolith::provider-authentication-provider (world-configuration world) name))
+
+(-> world-sign-in-kind (world string) (or null keyword))
+(defun world-sign-in-kind (world name)
+  "Return how the provider NAME is signed in to: :KEY for an API key, :BROWSER for a login in the browser, or NIL when this client does not know the provider."
+  (handler-case
+      (let ((manager (autolith::provider-credential-manager (world--provider world name))))
+        (if (typep manager 'autolith::api-key-credential-manager)
+            ':key
+            ':browser))
+    (error ()
+      nil)))
+
+(-> world-sign-in (world string &key (:key (or null string))) string)
+(defun world-sign-in (world name &key key)
+  "Sign in to the provider NAME and return what Autolith says about it.
+
+With KEY the key is checked and saved; without, the browser is opened and
+this waits until the login there is done. Signals a CLIENT-ERROR with
+Autolith's reason when the sign-in fails."
+  (handler-case
+      (let ((provider (world--provider world name))
+            (output   (make-string-output-stream)))
+        (autolith::configuration-ensure-directories (world-configuration world))
+        (with-input-from-string (input (format nil "~A~%" (or key "")))
+          (let ((*standard-input*  input)
+                (*standard-output* output))
+            (autolith::provider-authenticate-with-method provider nil
+                                                         :stream         output
+                                                         :open-browser-p (null key)))))
+    (autolith::autolith-error (condition)
+      (error 'client-error :message (autolith::autolith-error-message condition)))
+    (error (condition)
+      (error 'client-error :message (condition-report condition)))))
+
+(-> world-providers () list)
+(defun world-providers ()
+  "Return the names of the providers this client knows how to sign in to."
+  (handler-case (mapcar #'autolith::provider-registration-name (autolith::provider-registrations))
+    (error ()
+      nil)))

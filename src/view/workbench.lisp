@@ -341,6 +341,57 @@
   (workbench-redraw workbench)
   nil)
 
+(-> workbench-run-aside (workbench t function) null)
+(defun workbench-run-aside (workbench request function)
+  "Call FUNCTION on a thread of its own and post what it returns, or why it failed, as the result of REQUEST."
+  (bordeaux-threads:make-thread
+   (lambda ()
+     (multiple-value-bind (outcome value report)
+         (handler-case (values ':ok (funcall function) nil)
+           (error (condition)
+             (values ':condition nil (condition-report condition))))
+       (ui-queue-push (workbench-queue workbench)
+                      (make-instance 'result-event
+                                     :generation (workbench-generation workbench)
+                                     :request    request
+                                     :outcome    outcome
+                                     :value      value
+                                     :report     report))))
+   :name "AUI aside")
+  nil)
+
+(-> workbench-leave (workbench) null)
+(defun workbench-leave (workbench)
+  "Leave the channel shown without attaching to another."
+  (let ((old (workbench-session workbench)))
+    (when old
+      (session-close old)))
+  (incf (workbench-generation workbench))
+  (workbench--reset-channel workbench)
+  (setf (workbench-session workbench)    nil
+        (workbench-attachment workbench) ':none
+        (workbench-overlay workbench)    nil)
+  (workbench-redraw workbench)
+  nil)
+
+(-> workbench-delete-channel (workbench string) null)
+(defun workbench-delete-channel (workbench channel)
+  "Delete CHANNEL, the channels nested in it and their histories, leaving it first when it is the one shown."
+  (when (equal channel (workbench-channel workbench))
+    (workbench-leave workbench))
+  (let ((world (workbench-world workbench)))
+    (workbench-run-aside
+     workbench (list ':delete-channel channel)
+     (lambda ()
+       ;; A channel just left is released by its host a moment later.
+       (loop for attempt from 1
+             do (handler-case (return (world-delete-channel world channel))
+                  (client-error (condition)
+                    (if (< attempt 6)
+                        (sleep 1/2)
+                        (error condition))))))))
+  nil)
+
 (-> workbench-new-channel (workbench &key (:directory (or null string))) null)
 (defun workbench-new-channel (workbench &key directory)
   "Open a new channel in DIRECTORY, by default the directory of the channel shown."
@@ -767,6 +818,18 @@ where, followed by what this window sent that the snapshot does not show yet."
             (setf (workbench-notice workbench)
                   (format nil "Could not change ~A: ~A" name
                           (or (result-event-report event) "the channel refused.")))))))
+      ((and (consp request) (eq (first request) ':delete-channel))
+       (unless ok-p
+         (setf (workbench-notice workbench)
+               (or (result-event-report event) "The channel could not be deleted."))))
+      ((and (consp request) (eq (first request) ':sign-in))
+       (workbench-show-panel
+        workbench (format nil "Sign in to ~A" (second request))
+        (panel--empty (if ok-p
+                          (princ-to-string value)
+                          (format nil "The sign-in did not go through: ~A"
+                                  (or (result-event-report event) "no reason was given.")))))
+       (workbench-refresh workbench "_autolith/models" "_autolith/state"))
       ((and (consp request) (eq (first request) ':panel))
        (panel-take-output workbench (second request)
                           (or (and ok-p (portable-string (portable-get value "text")))

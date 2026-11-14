@@ -73,7 +73,23 @@
                         :value (lambda () (lightfast:copy-text identifier)))
            (make-choice)
            (make-choice :label "Stop serving"
-                        :value (lambda () (workbench-close-channel workbench identifier))))
+                        :value (lambda () (workbench-close-channel workbench identifier)))
+           (make-choice :label "Delete…"
+                        :value (lambda ()
+                                 (workbench-pick
+                                  workbench
+                                  (list (make-choice :label  "Delete"
+                                                     :detail "The channel, the channels nested in it and their histories"
+                                                     :value  ':delete)
+                                        (make-choice :label "Keep"
+                                                     :value ':keep))
+                                  (lambda (answer)
+                                    (when (eq answer ':delete)
+                                      (workbench-delete-channel workbench identifier)))
+                                  :title (format nil "Delete ~A?"
+                                                 (or (getf entry :title)
+                                                     (getf entry :name)
+                                                     (channel-display-name identifier)))))))
      :x (stage-pointer-x stage)
      :y (stage-pointer-y stage)))
   nil)

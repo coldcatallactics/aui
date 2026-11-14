@@ -376,8 +376,8 @@
   (text-style-line-height (text-style ':meta)))
 
 (defmethod block-paint ((block rule-block) x y)
-  "Draw the dither band and the label on a strip of paper."
-  (let* ((style  (text-style ':meta))
+  "Draw the dither band and the label, in bold, on a strip of paper."
+  (let* ((style  (text-style ':meta-bold))
          (height (block-height block))
          (width  (block-width block))
          (band-y (+ y (floor (- height 5) 2)))

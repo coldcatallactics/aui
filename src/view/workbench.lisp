@@ -610,11 +610,15 @@ agent takes it up."
          (setf (workbench-working-p workbench)     nil
                (workbench-working-since workbench) nil
                (workbench-approval workbench)      nil))
-       (workbench-refresh workbench "_autolith/state"))
+       (workbench-refresh workbench "_autolith/state")
+       (workbench-refresh-jobs workbench))
       (:record
        (let ((record (getf fields :record)))
          (when (eq (first record) ':message)
-           (workbench--drop-pending workbench (getf (rest record) :submission)))))
+           (workbench--drop-pending workbench (getf (rest record) :submission))
+           ;; A job that reports back is no longer running.
+           (when (getf (rest record) :job-completion)
+             (workbench-refresh-jobs workbench)))))
       (:status
        (when (member (getf fields :status) '(:provider-request-completed :compaction-completed))
          (workbench-refresh workbench "_autolith/state"))

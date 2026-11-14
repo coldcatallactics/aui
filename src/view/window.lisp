@@ -422,6 +422,43 @@
                   :event lightfast:+event-key+)
     (list editor filter query)))
 
+(-> window--make-system-menu (workbench t) null)
+(defun window--make-system-menu (workbench window)
+  "Give the application its menus in the system's menu bar. Only a Mac has one; elsewhere the keys alone do the work."
+  (let ((menu (lightfast:make-menu-bar :parent window :x 0 :y 0 :width 1 :height 1 :system t)))
+    (if (lightfast:menu-bar-system-p menu)
+        (flet ((item (path shortcut function)
+                 (lightfast:add-menu-item menu path
+                                          (lambda (widget value)
+                                            (declare (ignore widget value))
+                                            (with-stage-guard ("A menu command")
+                                              (funcall function)))
+                                          :shortcut shortcut))
+               (command (character)
+                 (logior lightfast:+modifier-command+ (char-code character))))
+          (item "Channel/New channel" (command #\n)
+                (lambda () (workbench-new-channel workbench)))
+          (item "Channel/New channel in another folder…" 0
+                (lambda () (workbench-new-channel-elsewhere workbench)))
+          (item "Channel/Find a channel…" (command #\o)
+                (lambda () (window-focus-filter workbench)))
+          (item "Channel/Stop the agent" 0
+                (lambda () (workbench-stop workbench)))
+          (item "View/Channels" (command #\t)
+                (lambda ()
+                  (setf (workbench-sidebar-shown-p workbench) (not (workbench-sidebar-shown-p workbench)))
+                  (workbench-redraw workbench)))
+          (item "View/Commands" (command #\k)
+                (lambda () (workbench-show-overlay workbench ':commands)))
+          (item "View/Settings…" (command #\,)
+                (lambda () (workbench-show-overlay workbench ':settings)))
+          (item "View/Newest output" 0
+                (lambda ()
+                  (document-scroll-to-end (workbench-document workbench))
+                  (workbench-redraw workbench))))
+        (lightfast:hide menu)))
+  nil)
+
 (-> window-build (workbench) null)
 (defun window-build (workbench)
   "Create WORKBENCH's window, its stage and its native fields."
@@ -449,6 +486,9 @@
                                   :min-width  (first *window-minimum-size*)
                                   :min-height (rest *window-minimum-size*)))
     (lightfast:window-escape-closes window nil)
+    (when (uiop:os-macosx-p)
+      (with-stage-guard ("Making the menus")
+        (window--make-system-menu workbench window)))
     (let ((natives (window--make-natives workbench window)))
       (setf (stage-natives stage)       natives
             (workbench-editor workbench) (first natives)))

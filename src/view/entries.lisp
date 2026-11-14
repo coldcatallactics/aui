@@ -324,7 +324,7 @@ The marks carry the color; the text stays ink, as Interlisp Paper has it."
                                 :identifier (list ':entry (entry-identifier entry))
                                 :mark       (ecase tone
                                               (:quiet
-                                               ':dot)
+                                               ':point)
                                               (:success
                                                ':check)
                                               ((:warning :failure)

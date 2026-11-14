@@ -69,6 +69,8 @@
                   (lambda () (workbench-submit workbench "(agenda)")))
             (list "Show the jobs"
                   (lambda () (workbench-submit workbench "(tasks)")))
+            (list "Show what it remembers"
+                  (lambda () (workbench-submit workbench "(memories)")))
             (list "Compact the context now"
                   (lambda () (workbench-submit workbench "(compact)")))
             nil

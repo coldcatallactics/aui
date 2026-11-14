@@ -158,6 +158,8 @@ they look the same whatever faces the system has."
        (lightfast:draw-polygon (list left top right top (+ x middle) bottom) :filled t))
       (:dot
        (lightfast:draw-filled-circle (+ x middle) (+ y middle) (max 2 (- middle inset))))
+      (:point
+       (lightfast:draw-filled-rect (+ x middle -1) (+ y middle -1) 3 3))
       (:ring
        (lightfast:draw-circle (+ x middle) (+ y middle) (max 2 (- middle inset))))
       (:square

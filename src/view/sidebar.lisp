@@ -93,6 +93,11 @@
                (case state
                  ((:active :working :cancelling)
                   (paint-mark ':dot (+ x indent) mark-y :size 12 :color (accent-color)))
+                 ((:idle :paused)
+                  ;; Idle with jobs still out: the ring keeps a point of the working green.
+                  (paint-mark ':ring (+ x indent) mark-y :size 12)
+                  (when (getf entry :waiting-for-jobs-p)
+                    (paint-mark ':point (+ x indent) mark-y :size 12 :color (accent-color))))
                  (:absent
                   (paint-fill (+ x indent 5) (+ mark-y 5) :width 2 :height 2))
                  (otherwise

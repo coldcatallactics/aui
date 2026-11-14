@@ -82,7 +82,7 @@
         (list :kind ':channel :id "C4puSYz" :name "review" :title "Read the Makefile" :depth 1
               :state ':working :unread 3 :mentions 0 :pending 0)
         (list :kind ':channel :id "A55TkQx" :name "lightfast-2" :title "Canvas pointer events" :depth 0
-              :state ':idle :unread 0 :mentions 1 :pending 0)
+              :state ':idle :waiting-for-jobs-p t :unread 0 :mentions 1 :pending 0)
         (list :kind ':workspace :key "/home/you/aui/" :name "aui" :path "~/aui" :children-p t :open-p t)
         (list :kind ':channel :id "g4P5Hsc" :name "aui" :title "A window onto the channels" :depth 0
               :state ':absent :unread 0 :mentions 0 :pending 0)

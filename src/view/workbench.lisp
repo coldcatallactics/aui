@@ -525,7 +525,9 @@ agent takes it up."
   "Fetch the jobs again when some are live, or the channel says some are, and the last answer is old."
   (when (and (workbench-attached-p workbench)
              (or (workbench-live-jobs workbench)
-                 (let ((count (getf (workbench-status workbench) :task-live-count)))
+                 ;; Autolith called the count of live jobs :TASK-LIVE-COUNT before 0.67.39.
+                 (let ((count (or (getf (workbench-status workbench) :job-live-count)
+                                  (getf (workbench-status workbench) :task-live-count))))
                    (and (integerp count) (plusp count))))
              (>= (- (get-universal-time) (workbench-jobs-fetched-at workbench)) *jobs-poll-seconds*))
     (workbench-refresh-jobs workbench))

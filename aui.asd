@@ -29,6 +29,7 @@
        (:file "records")
        (:file "history")
        (:file "workspace")
+       (:file "highlight")
        (:file "session")
        (:file "launch")))
      (:module "ui"

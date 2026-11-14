@@ -131,8 +131,47 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 ;;;; -- Code Highlighting --
 
-;;; Highlighting is light: defining words bold in plum, strings green,
-;;; comments italic.
+;;; Code is colored by Autolith's highlighter where it knows the language,
+;;; each role in one of the theme's inks. Where it does not, a lighter pass
+;;; of AUI's own sets defining words bold in plum, strings green and comments
+;;; italic.
+
+(-> code-role-style (keyword) (or null text-style))
+(defun code-role-style (role)
+  "Return the style code of the highlighter's ROLE is set in, or NIL for the code face as it is."
+  (case role
+    ((:syntax-keyword :syntax-heading)
+     (text-style ':code :face ':mono-bold :color *plum*))
+    ((:syntax-function :syntax-type :syntax-property)
+     (text-style ':code :color *blue*))
+    (:syntax-string
+     (text-style ':code :color *green*))
+    ((:syntax-number :syntax-escape)
+     (text-style ':code :color *amber*))
+    (:syntax-comment
+     (text-style ':code :face ':mono-italic))
+    (:removed-gutter
+     (text-style ':code :color *red*))
+    ((:added-gutter :source-gutter)
+     (text-style ':code :color *green*))
+    ((:elision :prompt)
+     (text-style ':code :face ':mono-italic))
+    (otherwise
+     nil)))
+
+(-> code--role-spans (list &key (:plain (or null text-style))) list)
+(defun code--role-spans (parts &key plain)
+  "Return the spans of PARTS, a list of (ROLE . TEXT), each in its role's style and plain text in PLAIN. Neighbours in one style join."
+  (let ((spans nil)
+        (roles nil))
+    (loop for (role . text) in parts
+          do (let ((style (or (code-role-style role) plain)))
+               (if (and spans (eq role (first roles)))
+                   (setf (span-text (first spans)) (concatenate 'string (span-text (first spans)) text))
+                   (progn
+                     (push (make-span text style) spans)
+                     (push role roles)))))
+    (nreverse spans)))
 
 (defparameter *code-defining-words*
   '("defun" "defmacro" "defgeneric" "defmethod" "defclass" "defstruct" "defvar" "defparameter"
@@ -172,6 +211,72 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 (-> code-spans (string (or null string)) list)
 (defun code-spans (code language)
+  "Return the spans of CODE in LANGUAGE, colored by Autolith's highlighter when it knows the language and by AUI's lighter pass when it does not."
+  (let ((parts (and language (source-highlight code :language language))))
+    (if parts
+        (code--role-spans parts)
+        (code--light-spans code language))))
+
+(-> edit-spans (string string &key (:pathname (or null string))) list)
+(defun edit-spans (old new &key pathname)
+  "Return the spans of the edit that replaced OLD with NEW as a numbered diff, or NIL when Autolith's renderer cannot show it.
+
+A line's gutter says whether it was removed or added, in red or green, and
+so does its plain text; what the highlighter recognizes keeps its own ink."
+  (let ((rows (edit-highlight old new :pathname pathname)))
+    (and rows
+         (loop for (row . more) on rows
+               append (code--role-spans row
+                                        :plain (case (first (first row))
+                                                 (:removed-gutter
+                                                  (text-style ':code :color *red*))
+                                                 (:added-gutter
+                                                  (text-style ':code :color *green*))
+                                                 (otherwise
+                                                  nil)))
+               when more
+                 collect (make-span (string #\Newline) nil)))))
+
+(-> patch-p (string) boolean)
+(defun patch-p (text)
+  "Return T when TEXT reads as a unified diff: it has a hunk header and lines that add or remove."
+  (let ((lines (markdown-lines text)))
+    (and (some (lambda (line)
+                 (and (> (length line) 3) (string= "@@ " line :end2 3)))
+               lines)
+         (some (lambda (line)
+                 (and (plusp (length line)) (find (char line 0) "+-")))
+               lines)
+         t)))
+
+(-> patch-spans (string) list)
+(defun patch-spans (text)
+  "Return the spans of the unified diff TEXT: removed lines red, added ones green, hunk headers blue, file headers bold."
+  (let ((removed (text-style ':code :color *red*))
+        (added   (text-style ':code :color *green*))
+        (hunk    (text-style ':code :color *blue*))
+        (bold    (text-style ':code :face ':mono-bold)))
+    (loop for (line . more) on (markdown-lines text)
+          collect (make-span (if more (format nil "~A~%" line) line)
+                             (cond
+                               ((zerop (length line))
+                                nil)
+                               ((or (uiop:string-prefix-p "+++" line)
+                                    (uiop:string-prefix-p "---" line)
+                                    (uiop:string-prefix-p "diff " line)
+                                    (uiop:string-prefix-p "index " line))
+                                bold)
+                               ((uiop:string-prefix-p "@@" line)
+                                hunk)
+                               ((char= (char line 0) #\+)
+                                added)
+                               ((char= (char line 0) #\-)
+                                removed)
+                               (t
+                                nil))))))
+
+(-> code--light-spans (string (or null string)) list)
+(defun code--light-spans (code language)
   "Return the spans of CODE in LANGUAGE: comments italic, defining words bold plum, strings green, the rest plain."
   (let ((bold   (text-style ':code :face ':mono-bold :color *plum*))
         (italic (text-style ':code :face ':mono-italic))

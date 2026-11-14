@@ -410,7 +410,7 @@ lone last choice, as long as the even rows still fit."
 
 (-> pending-paint (workbench &key (:x integer) (:y integer) (:width integer)) null)
 (defun pending-paint (workbench &key x y width)
-  "Draw each message the agent has not taken up yet as one quiet line saying whether it steers or follows."
+  "Draw each message the agent has not taken up yet as one line: a filled label saying whether it steers or follows, then the message."
   (let ((meta (text-style ':meta))
         (bold (text-style ':meta-bold)))
     (loop for (nil text steer-p) in (last (workbench-pending workbench) 3)

@@ -117,7 +117,7 @@
                          :align         (if sender ':left ':right)
                          :fraction      85/100
                          :padding-x     16
-                         :padding-y     9
+                         :padding-y     10
                          :margin-top    22
                          :margin-bottom 22))))
 
@@ -231,8 +231,7 @@ What is removed is red and what is added green, marks and text alike."
                (loop for line in lines
                      for index from 0
                      while (< index *diff-preview-lines*)
-                     do (push (make-span mark style) spans)
-                        (push (make-span (format nil "~A~%" line) nil) spans))
+                     do (push (make-span (format nil "~A~A~%" mark line) style) spans))
                (when (> (length lines) *diff-preview-lines*)
                  (push (make-span (format nil "  … ~D more lines~%" (- (length lines) *diff-preview-lines*))
                                   nil)

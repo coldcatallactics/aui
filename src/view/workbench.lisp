@@ -452,6 +452,9 @@ agent takes it up."
          (unless (workbench--command-p trimmed)
            (setf (workbench-pending workbench)
                  (append (workbench-pending workbench) (list (list identifier trimmed steer-p)))))
+         ;; What a command prints is shown under the command.
+         (setf (projector-invocation (workbench-projector workbench))
+               (and (workbench--command-p trimmed) trimmed))
          (setf (workbench-notice workbench)        nil
                (workbench-history-index workbench) nil)
          (unless (equal trimmed (first (workbench-history workbench)))

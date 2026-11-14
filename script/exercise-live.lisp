@@ -491,12 +491,13 @@ which may happen to a person's own world."
                                          :key #'user-entry-text :test #'equal)))
              ;; A command.
              (exercise-live--type workbench "/status" #xff0d)
-             (exercise-expect "a command prints into the conversation"
+             (exercise-expect "a command prints into the conversation under its name"
                               (exercise-live--until
                                workbench
                                (lambda ()
                                  (some (lambda (entry)
-                                         (search "mock-1" (output-entry-text entry)))
+                                         (and (search "mock-1" (output-entry-text entry))
+                                              (equal "/status" (output-entry-invocation entry))))
                                        (exercise-live--entries workbench 'output-entry)))))
              (exercise-expect "the channel has the title the model gave it"
                               (exercise-live--until workbench

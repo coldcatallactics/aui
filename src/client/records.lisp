@@ -45,7 +45,12 @@
     :initform      nil
     :accessor      projector--output
     :type          (or null output-entry)
-    :documentation "The command output entry still open for more text, or NIL."))
+    :documentation "The command output entry still open for more text, or NIL.")
+   (invocation
+    :initform      nil
+    :accessor      projector-invocation
+    :type          (or null string)
+    :documentation "The command the person just sent, which the output that follows is labelled with, or NIL."))
   (:documentation "The state that turns one channel's records and events into its transcript."))
 
 (-> make-projector (transcript &key (:image-root (or null pathname))) projector)
@@ -501,7 +506,8 @@ its output; that line becomes the entry's invocation."
               (string= (string-trim '(#\Space) trimmed) "⇒ NIL"))
          nil)
         (echo-p
-         (setf (projector--output projector)
+         (setf (projector-invocation projector) nil
+               (projector--output projector)
                (projector--append projector
                                   (make-instance 'output-entry :invocation (subseq trimmed 2)))))
         ;; A notice outside any command's output is a line of its own, not a block.
@@ -515,9 +521,13 @@ its output; that line becomes the entry's invocation."
                    (format nil "~A~%~A" (output-entry-text open) trimmed)
                    trimmed))
          (transcript-touch (projector-transcript projector) open))
+        ;; A slash command is not echoed; its output goes by what the person sent.
         (t
          (setf (projector--output projector)
-               (projector--append projector (make-instance 'output-entry :text trimmed)))))))
+               (projector--append projector
+                                  (make-instance 'output-entry
+                                                 :text       trimmed
+                                                 :invocation (shiftf (projector-invocation projector) nil))))))))
   nil)
 
 (-> projector--live-record (projector list) null)
@@ -562,7 +572,8 @@ are left to the caller."
              (projector--output projector)    nil))
       (:work-finished
        (projector--close-stream projector)
-       (setf (projector--output projector) nil))
+       (setf (projector--output projector)    nil
+             (projector-invocation projector) nil))
       (otherwise
        nil)))
   nil)

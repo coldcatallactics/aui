@@ -133,7 +133,14 @@
                        (equal '("/status") (mapcar #'completion-label (completion-current workbench))))
       (completion-key workbench (make-key-event :code #xff09))
       (exercise-expect "Tab takes the offer" (string= "/status" (composer-text workbench)))
-      (setf (composer-text workbench) "")
+      ;; Sending. The demonstration has no channel, so the composer says so.
+      (setf (composer-text workbench) "hello")
+      (window--editor-key workbench (make-key-event :code #xff0d))
+      (exercise-expect "Enter in the composer sends"
+                       (and (workbench-notice workbench)
+                            (search "Not attached" (workbench-notice workbench))))
+      (setf (workbench-notice workbench) nil
+            (composer-text workbench)    "")
       ;; A narrow window.
       (stage-resize stage 700 900)
       (exercise--draw workbench)

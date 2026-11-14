@@ -144,6 +144,22 @@
     (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
     (fiveam:is (string= "⇒ NIL" (output-entry-text (transcript-last transcript))))))
 
+(fiveam:test one-line-notices-read-as-notices
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector (list :present :text (format nil "∙ continuing with job results~%")))
+    (projector-apply projector (list :present :text (format nil "! provider request failed~%")))
+    (let ((entries (coerce (transcript-entries transcript) 'list)))
+      (fiveam:is (equal '(notice-entry notice-entry) (mapcar #'type-of entries)))
+      (fiveam:is (string= "continuing with job results" (notice-entry-text (first entries))))
+      (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
+      (fiveam:is (eq ':failure (notice-entry-tone (second entries)))))
+    ;; Inside a command's output the same line stays part of the output.
+    (projector-apply projector (list :present :text (format nil "* (tasks)~2%")))
+    (projector-apply projector (list :present :text (format nil "∙ no jobs~%")))
+    (fiveam:is (= 3 (transcript-length transcript)))
+    (fiveam:is (string= "∙ no jobs" (output-entry-text (transcript-last transcript))))))
+
 (fiveam:test portable-values-read-back
   (let ((object (portable-object "name" "model" "value" nil "list" '(:array 1 2))))
     (fiveam:is (string= "model" (portable-get object "name")))

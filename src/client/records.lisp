@@ -428,6 +428,23 @@ transcript yet, so the page is self-contained."
      nil))
   nil)
 
+(defparameter *notice-glyphs* '((#\∙ . :quiet) (#\! . :failure) (#\@ . :quiet) (#\◆ . :quiet) (#\↪ . :quiet))
+  "The glyphs Autolith opens a one-line notice with, and how each should read.")
+
+(-> projector--notice-line (string) (values (or null string) (or null keyword)))
+(defun projector--notice-line (text)
+  "Return the words and tone of TEXT when it is one of Autolith's one-line notices, else NIL.
+
+Such a line opens with a glyph and a space; the glyph is the terminal's way
+of marking it and is dropped."
+  (let ((tone (and (> (length text) 2)
+                   (char= (char text 1) #\Space)
+                   (null (position #\Newline text))
+                   (rest (assoc (char text 0) *notice-glyphs*)))))
+    (if tone
+        (values (string-trim " " (subseq text 2)) tone)
+        (values nil nil))))
+
 (-> projector--present (projector t) null)
 (defun projector--present (projector text)
   "Show the command or Lisp output TEXT, joining what one command prints in several parts.
@@ -452,6 +469,11 @@ its output; that line becomes the entry's invocation."
          (setf (projector--output projector)
                (projector--append projector
                                   (make-instance 'output-entry :invocation (subseq trimmed 2)))))
+        ;; A notice outside any command's output is a line of its own, not a block.
+        ((and (null open) (projector--notice-line trimmed))
+         (multiple-value-bind (words tone) (projector--notice-line trimmed)
+           (projector--close-stream projector)
+           (projector--append projector (make-instance 'notice-entry :tone tone :text words))))
         (open
          (setf (output-entry-text open)
                (if (plusp (length (output-entry-text open)))

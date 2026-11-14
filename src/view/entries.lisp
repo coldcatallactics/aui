@@ -143,14 +143,16 @@
                                                    ':open)
                                                   (t
                                                    ':closed))
-                                    :title      (spans (list (if (reasoning-entry-streaming-p entry)
-                                                                 "Thinking"
-                                                                 "Thought")
-                                                             label)
-                                                       (list (format nil "  ~A"
-                                                                     (entries--one-line
-                                                                      (subseq text 0 (min 160 (length text)))))
-                                                             (text-style ':label)))
+                                    ;; The summary's own emphasis shows; its markers do not.
+                                    :title      (cons (make-span (if (reasoning-entry-streaming-p entry)
+                                                                     "Thinking  "
+                                                                     "Thought  ")
+                                                                 label)
+                                                      (prose-spans
+                                                       (markdown-inline
+                                                        (entries--one-line
+                                                         (subseq text 0 (min 200 (length text)))))
+                                                       (text-style ':label)))
                                     :style      label
                                     :action     toggle
                                     :margin-top 2)))

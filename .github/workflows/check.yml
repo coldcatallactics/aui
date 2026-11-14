@@ -13,11 +13,91 @@ concurrency:
 env:
   # The Autolith release AUI is checked against. AUI loads Autolith's own
   # client code, so the two move together.
-  AUTOLITH_REF: v0.67.39
+  AUTOLITH_REF: v0.67.42
 
 jobs:
+  # Autolith installed from its release, as its installer leaves it, and AUI
+  # built from source against it: what a person who does not develop Autolith
+  # has.
+  macos-release:
+    name: macOS arm64, Autolith from a release
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: aui
+
+      - uses: actions/checkout@v5
+        with:
+          repository: lambda-symbolics/lightfast
+          path: lightfast
+
+      - name: Install tools
+        run: |
+          brew install fltk
+          fltk-config --version
+
+      # Autolith's own installer, given the release to install and told to
+      # fetch it from where the release is published.
+      - name: Install the Autolith release
+        env:
+          AUTOLITH_RELEASE_BASE_URL: https://github.com/lambda-symbolics/autolith/releases/download
+        run: |
+          curl --fail --silent --show-error --location --retry 3 https://sh.lambda-symbolics.com/autolith |
+            sh -s -- --version "$AUTOLITH_REF"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/autolith" --version
+
+      - name: Build AUI
+        run: |
+          cd aui
+          script/build
+          ls -la build/aui
+          cat build/autolith
+
+      - name: Run the tests
+        run: |
+          cd aui
+          script/check --suite aui
+
+      - name: Exercise the interface
+        run: |
+          cd aui
+          script/exercise
+
+      - name: Photograph the demonstration
+        run: |
+          cd aui
+          mkdir -p pictures
+          build/aui --demo --size 1400x900 --shot pictures/macos-release-wide.png
+          build/aui --version
+          ls -la pictures
+
+      - name: Exercise live turns
+        timeout-minutes: 30
+        env:
+          AUI_EXERCISE_SHOTS: ${{ github.workspace }}/aui/pictures/live
+          AUI_EXERCISE_KEEP: ${{ github.workspace }}/aui/pictures/live-world
+        run: |
+          cd aui
+          mkdir -p pictures/live
+          script/exercise-live
+
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aui-macos-release-pictures
+          path: |
+            aui/pictures
+            aui/build/build.log
+          if-no-files-found: warn
+
   macos:
-    name: macOS arm64
+    name: macOS arm64, Autolith from source
     runs-on: macos-15
     timeout-minutes: 75
     steps:

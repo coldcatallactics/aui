@@ -56,20 +56,21 @@
 (-> sidebar--channel-menu (workbench list) null)
 (defun sidebar--channel-menu (workbench entry)
   "Offer what can be done with the channel ENTRY and do what is chosen."
-  (let* ((identifier (getf entry :id))
-         (choice     (lightfast:popup-menu '("Open" "Send a message…" "Copy identifier" "-" "Stop serving"))))
-    (case choice
-      (0
-       (workbench-open workbench :channel identifier))
-      (1
-       (let ((text (lightfast:input-dialog
-                    (format nil "Message to ~A" (channel-display-name identifier)))))
-         (when text
-           (workbench-tell workbench identifier text))))
-      (2
-       (lightfast:copy-text identifier))
-      (4
-       (workbench-close-channel workbench identifier))))
+  (let ((identifier (getf entry :id)))
+    (popup-actions
+     (list (list "Open"
+                 (lambda () (workbench-open workbench :channel identifier)))
+           (list "Send a message…"
+                 (lambda ()
+                   (let ((text (lightfast:input-dialog
+                                (format nil "Message to ~A" (channel-display-name identifier)))))
+                     (when text
+                       (workbench-tell workbench identifier text)))))
+           (list "Copy identifier"
+                 (lambda () (lightfast:copy-text identifier)))
+           nil
+           (list "Stop serving"
+                 (lambda () (workbench-close-channel workbench identifier))))))
   nil)
 
 (-> sidebar--paint-channel (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)

@@ -31,33 +31,70 @@
   (workbench-redraw workbench)
   nil)
 
+(-> chrome--channel-agent (workbench) (or null string))
+(defun chrome--channel-agent (workbench)
+  "Return the name of the agent residing in the channel shown, or NIL when it has none."
+  (unless (workbench-demo-p workbench)
+    (let ((channel (workbench-channel workbench)))
+      (loop for participant in (world-participants (workbench-world workbench))
+            when (and (eq (getf participant :kind) ':agent)
+                      (equal (getf participant :residence) channel))
+              do (return (getf participant :name))))))
+
+(-> chrome--other-agents (workbench) list)
+(defun chrome--other-agents (workbench)
+  "Return the names of the agents that do not reside in the channel shown, parked ones included."
+  (unless (workbench-demo-p workbench)
+    (let ((channel (workbench-channel workbench)))
+      (loop for participant in (world-participants (workbench-world workbench))
+            when (and (eq (getf participant :kind) ':agent)
+                      (not (equal (getf participant :residence) channel))
+                      (stringp (getf participant :name)))
+              collect (getf participant :name)))))
+
 (-> chrome--channel-menu (workbench) null)
 (defun chrome--channel-menu (workbench)
-  "Offer what can be done with the channel shown and do what is chosen."
-  (let ((choice (lightfast:popup-menu
-                 '("New channel here" "Rename the agent…" "Copy channel identifier" "-"
-                   "Show status" "Compact the context now" "Show the agenda" "-"
-                   "Copy the conversation" "New channel in another folder…"))))
-    (case choice
-      (0
-       (workbench-new-channel workbench))
-      (9
-       (workbench-new-channel-elsewhere workbench))
-      (1
-       (let ((name (lightfast:input-dialog "A new name for this channel's agent")))
-         (when name
-           (workbench-submit workbench (format nil "(rename ~S)" name)))))
-      (2
-       (when (workbench-channel workbench)
-         (lightfast:copy-text (workbench-channel workbench))))
-      (4
-       (workbench-submit workbench "(status)"))
-      (5
-       (workbench-submit workbench "(compact)"))
-      (6
-       (workbench-submit workbench "(agenda)"))
-      (8
-       (lightfast:copy-text (transcript-plain-text (workbench-transcript workbench))))))
+  "Offer what can be done with the channel shown and its agent, and do what is chosen."
+  (let ((agent (chrome--channel-agent workbench)))
+    (popup-actions
+     (append
+      (list (list "New channel here"
+                  (lambda () (workbench-new-channel workbench)))
+            (list "New channel in another folder…"
+                  (lambda () (workbench-new-channel-elsewhere workbench)))
+            nil
+            (list "Show status"
+                  (lambda () (workbench-submit workbench "(status)")))
+            (list "Show the agenda"
+                  (lambda () (workbench-submit workbench "(agenda)")))
+            (list "Show the jobs"
+                  (lambda () (workbench-submit workbench "(tasks)")))
+            (list "Compact the context now"
+                  (lambda () (workbench-submit workbench "(compact)")))
+            nil
+            (list "Agent/Rename…"
+                  (lambda ()
+                    (let ((name (lightfast:input-dialog "A new name for this channel's agent"
+                                                        :initial (or agent ""))))
+                      (when name
+                        (workbench-submit workbench (format nil "(rename ~S)" name)))))))
+      (if agent
+          (list (list "Agent/Park it"
+                      (lambda () (workbench-submit workbench (format nil "(dismiss ~S)" agent)))))
+          (list (list "Agent/Create one for this channel"
+                      (lambda () (workbench-submit workbench "(domestic)")))))
+      (mapcar (lambda (name)
+                (list (format nil "Agent/Move here/~A" name)
+                      (lambda () (workbench-submit workbench (format nil "(move ~S)" name)))))
+              (chrome--other-agents workbench))
+      (list nil
+            (list "Copy channel identifier"
+                  (lambda ()
+                    (when (workbench-channel workbench)
+                      (lightfast:copy-text (workbench-channel workbench)))))
+            (list "Copy the conversation"
+                  (lambda ()
+                    (lightfast:copy-text (transcript-plain-text (workbench-transcript workbench)))))))))
   nil)
 
 (-> header-paint

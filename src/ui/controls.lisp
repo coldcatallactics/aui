@@ -110,3 +110,19 @@ Return the height the title bar took, zero without a title."
       (with-inversion (x y width bar)
         (paint-text-in title (text-style ':label-bold) :x (+ x 10) :y y :width (- width 20) :height bar)))
     bar))
+
+
+;;;; -- Menus --
+
+(-> popup-actions (list) null)
+(defun popup-actions (items)
+  "Show a popup menu at the pointer and do what the chosen entry stands for.
+
+Each of ITEMS is (LABEL FUNCTION), or NIL for a divider under the entry
+before it. A LABEL of the form section/entry goes into the submenu section."
+  (let* ((labels (mapcar (lambda (item) (if item (first item) "-")) items))
+         (choice (lightfast:popup-menu labels))
+         (chosen (and choice (nth choice items))))
+    (when chosen
+      (funcall (second chosen))))
+  nil)

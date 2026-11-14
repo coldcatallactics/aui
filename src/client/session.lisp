@@ -103,14 +103,18 @@
 
 ;;;; -- Opening --
 
-(-> session--attach (session string boolean) list)
-(defun session--attach (session identifier started-p)
-  "Attach SESSION to the opened channel IDENTIFIER and return the server's greeting."
+(-> session--attach (session string) list)
+(defun session--attach (session identifier)
+  "Attach SESSION to the opened channel IDENTIFIER and return the server's greeting.
+
+The subscription never claims to have started the channel, so leaving it
+leaves it running, as a terminal that detaches does: an agent at work goes on
+while the person looks at another channel, and the server unloads the channel
+once it has idled."
   (let ((subscription (make-instance 'session-subscription
                                      :session       session
                                      :identifier    identifier
                                      :configuration (world-configuration (session-world session))
-                                     :started-p     started-p
                                      :approves-p    t)))
     (setf (session-identifier session)    identifier
           (session--subscription session) subscription)
@@ -141,27 +145,27 @@
   "Open the channel in the world server, attach to it and deliver its newest history, reporting each step."
   (let ((world (session-world session)))
     (handler-case
-        (multiple-value-bind (identifier started-p)
-            (handler-bind ((autolith::channel-loading-progress
-                             (lambda (progress)
-                               (session--post session 'attachment-event
-                                              :state  ':opening
-                                              :detail (list (autolith::channel-loading-progress-step progress)
-                                                            (autolith::channel-loading-progress-description
-                                                             progress))))))
-              (autolith::world-client-open (world-configuration world)
-                                           :directory       directory
-                                           :channel         channel
-                                           :new-p           new-p
-                                           :permission-mode (world-permission-mode world)
-                                           :immutable-p     (world-immutable-p world)
-                                           :launch          (shiftf (world-launch world) nil)
-                                           :images          images
-                                           ;; A window shows its own progress, so the
-                                           ;; channel skips the terminal's boot screen
-                                           ;; and first-run tour, which wait for a key.
-                                           :switch-p        t))
-          (let ((greeting (session--attach session identifier started-p)))
+        (let ((identifier
+                (handler-bind ((autolith::channel-loading-progress
+                                (lambda (progress)
+                                  (session--post session 'attachment-event
+                                                 :state  ':opening
+                                                 :detail (list (autolith::channel-loading-progress-step progress)
+                                                               (autolith::channel-loading-progress-description
+                                                                progress))))))
+                 (autolith::world-client-open (world-configuration world)
+                                              :directory       directory
+                                              :channel         channel
+                                              :new-p           new-p
+                                              :permission-mode (world-permission-mode world)
+                                              :immutable-p     (world-immutable-p world)
+                                              :launch          (shiftf (world-launch world) nil)
+                                              :images          images
+                                              ;; A window shows its own progress, so the
+                                              ;; channel skips the terminal's boot screen
+                                              ;; and first-run tour, which wait for a key.
+                                              :switch-p        t))))
+          (let ((greeting (session--attach session identifier)))
             (session--post session 'attachment-event
                            :state  ':attached
                            :detail (list :status          (rest (getf (rest greeting) :state))

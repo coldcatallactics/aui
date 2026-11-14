@@ -1,21 +1,35 @@
 #!/usr/bin/env bash
-# Run the AUI test suite in one SBCL process. Pass --suite NAME to select a suite.
+# Run AUI's checks: the test suites, then the source rules and the warning compile.
+#
+#   script/check                    everything
+#   script/check --suite transcript one suite, without the source checks
+#   script/check --source           only the source rules and the warning compile
+#   script/check --fix              repair what the source rules can repair
 
 set -euo pipefail
-
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 suite=aui
+tests=true
+source_checks=true
+source_arguments=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --suite) suite=$2; shift 2 ;;
+    --suite) suite=$2; source_checks=false; shift 2 ;;
+    --source) tests=false; shift ;;
+    --fix) tests=false; source_arguments+=(--fix); shift ;;
+    --no-warnings|--no-parinfer) source_arguments+=("$1"); shift ;;
     *) echo "unknown argument: $1" >&2; exit 64 ;;
   esac
 done
 
 cd "$root"
-# UIOP from the Quicklisp dist is newer than the one SBCL bundles; loading it
-# first and quietly keeps hundreds of redefinition notes out of the output.
-exec sbcl --noinform --non-interactive \
-  --eval "(handler-bind ((warning (function muffle-warning))) (asdf:load-system :uiop))" \
-  --eval "(asdf:load-system :aui/tests)" \
-  --eval "(uiop:quit (if (aui:run-tests :suite (intern (string-upcase \"$suite\") :aui)) 0 1))"
+if [[ $tests == true ]]; then
+  "$root/script/lisp" \
+    --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui/tests))' \
+    --eval "(uiop:quit (if (aui:run-tests :suite (intern (string-upcase \"$suite\") :aui)) 0 1))"
+fi
+if [[ $source_checks == true ]]; then
+  # The source checker is a development tool with dependencies of its own, so
+  # it runs in a plain SBCL apart from AUI's.
+  sbcl --script "$root/script/check-source.lisp" ${source_arguments[@]+"${source_arguments[@]}"}
+fi

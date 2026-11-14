@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# Start AUI. Usage: script/run [DIRECTORY] [--conversation ID] [--demo] [--shot PATH]
-# [--demo-prompt TEXT]. Builds Lightfast's native bridge first when it is stale.
+# Start AUI from source: script/run [aui arguments]. Builds Lightfast's native
+# bridge first when it is stale. bin/aui starts the saved image instead.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-lightfast=$(CDPATH= cd -P "$root/../lightfast" && pwd)
+lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 make -s -C "$lightfast" native
-cd "$root"
-# UIOP from the Quicklisp dist is newer than the one SBCL bundles; loading it
-# first and quietly keeps hundreds of redefinition notes out of the output.
-exec sbcl --noinform --non-interactive \
-  --eval "(handler-bind ((warning (function muffle-warning))) (asdf:load-system :uiop))" \
-  --eval "(asdf:load-system :aui)" \
-  --eval "(aui:main)" \
+exec "$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
+  --eval '(aui:main)' \
   --end-toplevel-options "$@"

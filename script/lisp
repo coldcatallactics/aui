@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Run SBCL with AUI's dependencies set up: script/lisp [SBCL toplevel options].
+#
+# AUI loads Autolith, so it runs on the SBCL Autolith runs on: AUTOLITH_SBCL
+# when set, else the runtime Autolith's bootstrap recorded, else sbcl.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+case ${XDG_DATA_HOME:-} in
+  /*) data_home=$XDG_DATA_HOME ;;
+  *) data_home=$HOME/.local/share ;;
+esac
+sbcl=${AUTOLITH_SBCL:-}
+if [[ -z "$sbcl" && -r "$data_home/autolith/runtimes/command" ]]; then
+  IFS= read -r sbcl < "$data_home/autolith/runtimes/command" || sbcl=
+fi
+if [[ -z "$sbcl" || ! -x "$sbcl" ]]; then
+  sbcl=$(command -v sbcl) || { echo "AUI needs SBCL; install Autolith first." >&2; exit 64; }
+fi
+
+# Warnings from the libraries' own definitions are theirs to report.
+exec "$sbcl" --noinform --dynamic-space-size 4GB --non-interactive \
+  --eval '(handler-bind ((warning (function muffle-warning))) (load "'"$root"'/script/setup.lisp"))' \
+  "$@"

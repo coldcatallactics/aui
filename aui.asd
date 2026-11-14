@@ -51,6 +51,7 @@
        (:file "composer")
        (:file "completion")
        (:file "chrome")
+       (:file "activity")
        (:file "catalogs")
        (:file "sheets")
        (:file "panels")

@@ -205,9 +205,10 @@
   (multiple-value-bind (minutes rest) (floor seconds 60)
     (format nil "~D:~2,'0D" minutes rest)))
 
-(-> status-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
-(defun status-paint (workbench stage &key x y width)
-  "Draw the line under the composer: what the agent is doing or where it works, and how full its context is."
+(-> status-paint
+    (workbench stage &key (:x integer) (:y integer) (:width integer) (:directory-p boolean)) null)
+(defun status-paint (workbench stage &key x y width (directory-p t))
+  "Draw the status line: what the agent is doing, or where it works when DIRECTORY-P and it is idle, and how full its context is."
   (let* ((meta   (text-style ':meta))
          (height *status-height*)
          (right  (+ x width)))
@@ -233,15 +234,19 @@
       ((workbench-working-p workbench)
        (setf (stage-animating-p stage) t)
        (paint-spinner x (+ y (floor (- height 14) 2)) :size 14 :phase (stage-phase stage) :color *green*)
-       (paint-text-in (format nil "Working~@[ ~A~] · Esc stops"
-                              (and (workbench-working-since workbench)
-                                   (chrome--elapsed (- (get-universal-time)
-                                                       (workbench-working-since workbench))))) meta
-                      :x      (+ x 22)
-                      :y      y
-                      :width  (max 0 (- right x 22))
-                      :height height))
-      (t
+       (let* ((working (format nil "Working~@[ ~A~]"
+                               (and (workbench-working-since workbench)
+                                    (chrome--elapsed (- (get-universal-time)
+                                                        (workbench-working-since workbench))))))
+              (hinted  (format nil "~A · Esc stops" working))
+              (room    (max 0 (- right x 22))))
+         ;; The hint goes first where the line is short of room.
+         (paint-text-in (if (<= (text-width hinted meta) room) hinted working) meta
+                        :x      (+ x 22)
+                        :y      y
+                        :width  room
+                        :height height)))
+      (directory-p
        (paint-text-in (short-directory (workbench-directory workbench)) meta
                       :x      x
                       :y      y
@@ -315,7 +320,10 @@ A choice is taken with its number or a click."
          (rows-y   (- (+ y box-h) 8 (* *approval-row-height* (length options))))
          (label-w  (loop for option in options
                          maximize (text-width (approval--label option) bold)))
-         (detail-x (+ x 14 30 label-w 22)))
+         (detail-x (+ x 14 30 label-w 22))
+         ;; A card too narrow for both columns keeps the choices; what each
+         ;; means is then in its tooltip.
+         (detail-p (> (- (+ x width) detail-x 14) 220)))
     (paragraph-layout entry (- width 44))
     (lightfast:with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
       (paragraph-paint entry (+ x 22) (+ y bar 12)))
@@ -340,11 +348,12 @@ A choice is taken with its number or a click."
                                        :width  label-w
                                        :height *approval-row-height*
                                        :color  (and deny-p *red*))
-                        (paint-text-in (approval--sentence (or (getf option :description) "")) meta
-                                       :x      detail-x
-                                       :y      top
-                                       :width  (max 0 (- (+ x width) detail-x 14))
-                                       :height *approval-row-height*)))
+                        (when detail-p
+                          (paint-text-in (approval--sentence (or (getf option :description) "")) meta
+                                         :x      detail-x
+                                         :y      top
+                                         :width  (max 0 (- (+ x width) detail-x 14))
+                                         :height *approval-row-height*))))
                  (if hot-p
                      (with-inversion ((1+ x) top (- width 2) *approval-row-height*)
                        (content))
@@ -356,56 +365,6 @@ A choice is taken with its number or a click."
                              :height  *approval-row-height*
                              :action  (lambda () (workbench-answer workbench choice))
                              :tooltip (getf option :description)))))
-  nil)
-
-
-;;;; -- Jobs --
-
-(defparameter *jobs-shown* 4
-  "How many live jobs are listed above the composer.")
-
-(-> jobs-height (workbench) integer)
-(defun jobs-height (workbench)
-  "Return the height the list of live jobs needs."
-  (* 24 (min *jobs-shown* (length (workbench-live-jobs workbench)))))
-
-(-> jobs-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
-(defun jobs-paint (workbench stage &key x y width)
-  "Draw each live job as one line: a working mark, its role, what it is doing, how long it has run, and a way to cancel it."
-  (let ((meta (text-style ':meta))
-        (bold (text-style ':meta-bold)))
-    (loop for job in (workbench-live-jobs workbench)
-          for row-y from y by 24
-          repeat *jobs-shown*
-          do (let* ((identifier (portable-get job "id"))
-                    (elapsed    (portable-get job "elapsedSeconds"))
-                    (cancel-w   (chip-width "cancel"))
-                    (right      (- (+ x width) cancel-w)))
-               (setf (stage-animating-p stage) t)
-               (if (equal (portable-get job "state") "running")
-                   (paint-spinner (+ x 2) (+ row-y 5) :size 14 :phase (stage-phase stage) :color *green*)
-                   (paint-mark ':ring (+ x 2) (+ row-y 5) :size 14))
-               (when (stringp identifier)
-                 (paint-chip stage (list ':cancel-job identifier) "cancel"
-                             :x       right
-                             :y       row-y
-                             :height  24
-                             :action  (lambda () (workbench-cancel-job workbench identifier))
-                             :tooltip "Cancel this job"))
-               (when (integerp elapsed)
-                 (let ((text (chrome--elapsed elapsed)))
-                   (decf right (+ 8 (text-width text meta)))
-                   (paint-text text right (+ row-y 16) :style meta)))
-               (let ((end (paint-text (princ-to-string (or (portable-get job "role") "job"))
-                                      (+ x 24) (+ row-y 16)
-                                      :style bold)))
-                 (paint-text (text-fit (entries--one-line
-                                        (princ-to-string (or (portable-get job "activity")
-                                                             (portable-get job "state")
-                                                             "")))
-                                       meta (max 0 (- right end 20)))
-                             (+ end 10) (+ row-y 16)
-                             :style meta)))))
   nil)
 
 

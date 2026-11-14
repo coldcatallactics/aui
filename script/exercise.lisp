@@ -204,6 +204,23 @@
                             (search "Not attached" (workbench-notice workbench))))
       (setf (workbench-notice workbench) nil
             (composer-text workbench)    "")
+      ;; A wide window sets the console beside the conversation.
+      (stage-resize stage 1500 900)
+      (exercise--draw workbench)
+      (exercise-expect "a wide window sets the console beside the conversation"
+                       (let ((document (exercise--region workbench ':document))
+                             (stop     (exercise--region workbench ':stop))
+                             (menu     (exercise--region workbench ':channel-menu)))
+                         (and document stop menu
+                              (>= (region-x stop) (+ (region-x document) (region-width document)))
+                              (>= (region-x menu) (+ (region-x document) (region-width document)))
+                              (= (region-height document) 900))))
+      (exercise-expect "what runs is listed by kind, each with its cross"
+                       (and (exercise--region workbench '(:cancel-job "job-1"))
+                            (exercise--region workbench '(:job "job-2"))
+                            (equal '("Agents" "Commands") (mapcar #'first (activity-sections workbench)))))
+      (stage-resize stage 1200 800)
+      (exercise--draw workbench)
       ;; A narrow window.
       (stage-resize stage 700 900)
       (exercise--draw workbench)

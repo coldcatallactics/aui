@@ -359,10 +359,12 @@ delete, so that at the end of the text it still opens the commands."
                                         :action  (lambda ()
                                                    (composer--choose-effort workbench :x chip-x :y (- chip-y 4)))
                                         :tooltip "How much the model reasons")))))
-      (let ((mode   (find (workbench-permission-mode workbench) *permission-modes* :key #'first))
-            (chip-x cursor))
-        (when (< (+ cursor 150) (- (+ x width) 50))
-          (paint-chip stage ':mode (if mode (second mode) "Ask first")
+      (let* ((mode   (find (workbench-permission-mode workbench) *permission-modes* :key #'first))
+             (label  (if mode (second mode) "Ask first"))
+             (chip-x cursor))
+        ;; The mode is shown where there is room for it before the send button.
+        (when (<= (+ cursor (chip-width label :menu-p t)) (- (+ x width) 48))
+          (paint-chip stage ':mode label
                       :x       cursor
                       :y       chip-y
                       :height  24

@@ -16,40 +16,79 @@
 (defvar *window-natives* nil
   "The native fields of the window being built: a property list of :EDITOR, :FILTER and :QUERY.")
 
+(defparameter *console-minimum-reading* 600
+  "The narrowest the conversation may become for the console to stand beside it.")
+
+(defparameter *console-width* '(400 . 460)
+  "The (LEAST . MOST) width of the console beside the conversation.")
+
 (-> window--layout (workbench integer integer) list)
 (defun window--layout (workbench width height)
   "Return where each pane goes in a window WIDTH by HEIGHT, as a property list of (X Y WIDTH HEIGHT) boxes.
 
-:DOCKED-P and :DRAWER-P say how the channel list is shown."
+A window wide enough is laid out in columns: the channel list, the
+conversation and nothing else in the middle, and at the right the console,
+which holds what the channel is, what runs for it, what waits, and the
+composer at its foot. A narrower one stacks the same things around the
+conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
+:SIDE-P whether the console stands beside the conversation."
   (let* ((shown-p    (workbench-sidebar-shown-p workbench))
          (docked-p   (and shown-p (>= width *sidebar-docked-minimum*)))
          (drawer-p   (and shown-p (not docked-p)))
          (side-width (if docked-p *sidebar-width* 0))
          (main-x     side-width)
          (main-width (- width side-width))
-         (column     (max 200 (min (+ *document-measure* 24) (- main-width 40))))
-         (column-x   (+ main-x (floor (- main-width column) 2)))
-         (status-y   (- height *status-height* 6))
+         (side-p     (>= main-width (+ *console-minimum-reading* (first *console-width*))))
+         (console-w  (if side-p
+                         (max (first *console-width*)
+                              (min (rest *console-width*) (floor (* main-width 34/100))))
+                         0))
+         (reading-w  (- main-width console-w))
+         (console-x  (+ main-x reading-w))
+         (column     (if side-p
+                         (- console-w 32)
+                         (max 200 (min (+ *document-measure* 24) (- main-width 40)))))
+         (column-x   (if side-p
+                         (+ console-x 16)
+                         (+ main-x (floor (- main-width column) 2))))
          (composer-h (composer-height workbench column))
-         (composer-y (- status-y composer-h 2))
+         (composer-y (if side-p
+                         (- height composer-h 14)
+                         (- height *status-height* 6 composer-h 2)))
          (notice-h   (if (workbench-notice workbench) 26 0))
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
-         (jobs-h     (jobs-height workbench))
-         (stack-top  (- composer-y 10 notice-h pending-h approval-h jobs-h)))
+         (below      (+ notice-h pending-h approval-h))
+         ;; The activity takes what it needs: beside the conversation, of the
+         ;; room between the console's head and its foot; stacked, a few rows.
+         (head       (+ *header-height* *status-height* 6))
+         (activity-h (if side-p
+                         (activity-height workbench :most (max 0 (- composer-y 18 below head)))
+                         (activity-height workbench :most (+ *activity-heading-height*
+                                                             (* 4 *activity-row-height*)))))
+         (stack-top  (- composer-y 10 below (if side-p 0 activity-h))))
     (list :docked-p   docked-p
           :drawer-p   drawer-p
+          :side-p     side-p
           :sidebar    (list 0 0 (min *sidebar-width* (- width 40)) height)
-          :header     (list main-x 0 main-width *header-height*)
-          :document   (list main-x *header-height* main-width (max 40 (- stack-top *header-height*)))
-          :jobs       (list column-x stack-top column jobs-h)
+          :header     (if side-p
+                          (list console-x 0 console-w *header-height*)
+                          (list main-x 0 main-width *header-height*))
+          :document   (if side-p
+                          (list main-x 0 (- reading-w 3) height)
+                          (list main-x *header-height* main-width (max 40 (- stack-top *header-height*))))
+          :activity   (if side-p
+                          (list column-x head column activity-h)
+                          (list column-x stack-top column activity-h))
           :completion (let ((height (completion-height workbench)))
                         (list column-x (- composer-y height 4) column height))
-          :approval   (list column-x (+ stack-top jobs-h) column approval-h)
-          :pending    (list column-x (+ stack-top jobs-h approval-h) column pending-h)
-          :notice     (list column-x (+ stack-top jobs-h approval-h pending-h) column notice-h)
+          :approval   (list column-x (- composer-y 10 below) column approval-h)
+          :pending    (list column-x (- composer-y 10 notice-h pending-h) column pending-h)
+          :notice     (list column-x (- composer-y 10 notice-h) column notice-h)
           :composer   (list column-x composer-y column composer-h)
-          :status     (list (+ column-x 2) status-y (- column 4) *status-height*))))
+          :status     (if side-p
+                          (list (+ column-x 2) *header-height* (- column 4) *status-height*)
+                          (list (+ column-x 2) (- height *status-height* 6) (- column 4) *status-height*)))))
 
 
 ;;;; -- Painting --
@@ -57,7 +96,8 @@
 (-> window--paint (workbench stage) null)
 (defun window--paint (workbench stage)
   "Draw the whole window: the panes at their places, then the drawer and the overlay over them."
-  (let ((layout (window--layout workbench (stage-width stage) (stage-height stage))))
+  (let* ((layout (window--layout workbench (stage-width stage) (stage-height stage)))
+         (side-p (getf layout :side-p)))
     (flet ((box (name)
              (getf layout name)))
       (when (getf layout :docked-p)
@@ -67,17 +107,34 @@
         (if (and (workbench-attached-p workbench)
                  (plusp (transcript-length (workbench-transcript workbench))))
             (document-paint (workbench-document workbench) stage :x x :y y :width width :height height)
-            (empty-paint workbench stage :x x :y y :width width :height height)))
-      ;; The conversation ends on a band of dither, as it begins under the header's.
-      (destructuring-bind (x y width height) (box :document)
-        (paint-dither x (+ y height -3) :width width :height 3 :step 3))
+            (empty-paint workbench stage :x x :y y :width width :height height))
+        (cond
+          ;; Beside the console the conversation runs the window's whole
+          ;; height, and a band of dither parts the two.
+          (side-p
+           (paint-dither (+ x width) y :width 3 :height height :step 3)
+           (unless (getf layout :docked-p)
+             (paint-button stage ':toggle-sidebar ""
+                           :x       (+ x 14)
+                           :y       (+ y 14)
+                           :width   28
+                           :height  28
+                           :mark    ':panel
+                           :action  (lambda ()
+                                      (setf (workbench-sidebar-shown-p workbench)
+                                            (not (workbench-sidebar-shown-p workbench)))
+                                      (workbench-redraw workbench))
+                           :tooltip "Show the channels (Ctrl+T)")))
+          ;; Stacked, it ends on a band of dither, as it begins under the header's.
+          (t
+           (paint-dither x (+ y height -3) :width width :height 3 :step 3))))
       (destructuring-bind (x y width height) (box :header)
         (declare (ignore height))
         (header-paint workbench stage :x x :y y :width width
-                                      :sidebar-toggle-p (not (getf layout :docked-p))))
-      (destructuring-bind (x y width height) (box :jobs)
+                                      :sidebar-toggle-p (and (not side-p) (not (getf layout :docked-p)))))
+      (destructuring-bind (x y width height) (box :activity)
         (when (plusp height)
-          (jobs-paint workbench stage :x x :y y :width width)))
+          (activity-paint workbench stage :x x :y y :width width :height height)))
       (when (workbench-approval workbench)
         (destructuring-bind (x y width height) (box :approval)
           (approval-paint workbench stage :x x :y y :width width :height height)))
@@ -109,7 +166,8 @@
                 (paragraph-paint draft (+ edit-x 4) edit-y))))))
       (destructuring-bind (x y width height) (box :status)
         (declare (ignore height))
-        (status-paint workbench stage :x x :y y :width width))
+        ;; The console's head already says where the channel works.
+        (status-paint workbench stage :x x :y y :width width :directory-p (not side-p)))
       (destructuring-bind (x y width height) (box :completion)
         (when (plusp height)
           (completion-paint workbench stage :x x :y y :width width)))

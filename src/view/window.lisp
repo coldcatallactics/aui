@@ -249,6 +249,9 @@
     (cond
       ((completion-key workbench event)
        t)
+      ;; The line editor's keys come before the window's, as in the terminal.
+      ((composer-edit-key workbench event)
+       t)
       ((window--shortcut workbench event)
        t)
       ;; The arrows recall what was sent, from an empty composer or while stepping through.

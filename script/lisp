@@ -4,6 +4,8 @@
 # AUI loads Autolith, so it runs on the SBCL Autolith runs on: AUTOLITH_SBCL
 # when set, else the one a release brings, else the one Autolith's bootstrap
 # recorded, else sbcl. script/autolith.sh finds the Autolith and its SBCL.
+# AUI_HEAP names the most the heap may grow to, 4GB unless set: compiling
+# Autolith takes a large one.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -19,6 +21,6 @@ if [[ -n "$autolith_source" ]]; then
 fi
 
 # Warnings from the libraries' own definitions are theirs to report.
-exec "$sbcl" --noinform --dynamic-space-size 4GB --non-interactive \
+exec "$sbcl" --noinform --dynamic-space-size "${AUI_HEAP:-4GB}" --non-interactive \
   --eval '(handler-bind ((warning (function muffle-warning))) (load "'"$root"'/script/setup.lisp"))' \
   "$@"

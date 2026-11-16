@@ -144,7 +144,7 @@ its model setting takes, and those are offered instead."
   (let ((choices (composer--model-choices workbench)))
     (if (null choices)
         (progn
-          (setf (workbench-notice workbench) "The channel has not said yet which models it takes.")
+          (setf (workbench-notice workbench) "The list of models is not known yet.")
           (workbench-redraw workbench))
         (workbench-pick workbench choices
                         (lambda (model)

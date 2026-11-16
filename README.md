@@ -128,28 +128,28 @@ A wide window has three columns:
 Drag the edge between the conversation and the console to resize the console.
 The width is remembered. In a narrower window the title is above the
 conversation and what is running is above the composer. In a window too
-narrow to hold the channel list beside the conversation, the list takes the
-whole window while you look at it: pick a channel, or press Escape, to return
-to the conversation.
+narrow for the channel list beside the conversation, the list is shown over
+the whole window: pick a channel, or press Escape, to return to the
+conversation.
 
 In the channel list you see home, then beneath it each workspace with its
 channels, children under their parents. A green dot means the agent is
 working, a ring means the channel is hosted and idle, a small point means
 nobody serves it. The numbers on the right count unread messages and
 mentions. Click a channel to open it. Right-click it to send it a message,
-stop serving it or delete it. The two buttons at the foot of the list start a
-new channel and delete the one you are looking at. Click the button next to
-the wordmark to hide the list.
+stop serving it or delete it. Use the two buttons at the foot of the list to
+start a new channel or to delete the one you are looking at. Click the button
+next to the wordmark to hide the list.
 
-The folder a channel works in is shown under its title and, while the agent
-is idle, under the composer. Click it to choose another folder.
+The folder the agent works in is shown under the channel's title and, while
+the agent is idle, under the composer. Click it to choose another folder.
 
 An approval is the one card set in white on black, so you do not take it for
 part of the conversation. Answer it with a click or with the number of a
 choice.
 
-A message from another agent stands at the left under that agent's name. The
-button under it takes you to the channel the agent wrote from.
+A message from another agent is shown at the left under that agent's name.
+Click the button under it to go to the channel the agent wrote from.
 
 Running things are grouped as agents, commands, evaluations and model calls.
 Click the cross on a row to cancel it. Right-click the row to copy the call
@@ -160,11 +160,11 @@ Lisp form, as in the terminal. Type either to see the commands, or `@` to see
 who you can mention. Use the chips under the text to pick the model, the
 reasoning effort and the permission mode.
 
-The four buttons in the header open the settings, the files, the commands and
-the channel's menu. The files are the ones the agent linked or named in its
-answers; click one to open it. From the menu you can open the status, the
-plan, the agenda, the memories and the jobs, each in a window of its own,
-sign in to a model provider, and stop the world server.
+Use the four buttons in the header to open the settings, the files, the
+commands and the channel's menu. The files are the ones the agent linked or
+named in its answers; click one to open it. From the menu you can open the
+status, the plan, the agenda, the memories and the jobs, each in a window of
+its own, sign in to a model provider, and stop the world server.
 
 Each tool call, thought and notice is one line in the conversation. Click it
 to open it. Commands, Lisp and edits are highlighted as in the terminal, and

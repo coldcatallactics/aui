@@ -422,7 +422,7 @@ folder."
 (defun workbench-change-directory (workbench)
   "Let the person choose the folder the channel shown works in, and tell the channel to work there."
   (when (workbench-attached-p workbench)
-    (let ((directory (lightfast:choose-directory :title       "The folder this channel works in"
+    (let ((directory (lightfast:choose-directory :title       "A folder for the agent to work in"
                                                  :preset-path (workbench-directory workbench))))
       (when (and directory (plusp (length directory)))
         (workbench-submit workbench
@@ -870,7 +870,7 @@ where, followed by what this window sent that the snapshot does not show yet."
       ((and (consp request) (eq (first request) ':open-link))
        (unless ok-p
          (setf (workbench-notice workbench)
-               (format nil "No program on this machine opened ~A." (second request)))))
+               (format nil "Could not open ~A with any program on this machine." (second request)))))
       ((and (consp request) (eq (first request) ':sign-in))
        (workbench-show-panel
         workbench (format nil "Sign in to ~A" (second request))

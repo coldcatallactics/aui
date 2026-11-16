@@ -193,7 +193,7 @@
   "Ask whether the world server is to be stopped, and stop it on a yes."
   (workbench-pick workbench
                   (list (make-choice :label  "Stop the server"
-                                     :detail "Work in every channel stops; the channels and their histories stay"
+                                     :detail "Work in every channel is stopped; channels and histories are kept"
                                      :value  ':stop)
                         (make-choice :label "Keep it running"
                                      :value ':keep))
@@ -228,7 +228,7 @@ asks for another folder."
                     :width   wide
                     :height  height
                     :action  (lambda () (workbench-change-directory workbench))
-                    :tooltip "Change the folder this channel works in"))
+                    :tooltip "Change the folder the agent works in"))
     wide))
 
 (-> header-paint

@@ -35,7 +35,8 @@
       (exercise--draw workbench)
       (exercise-expect "the window declares its controls"
                        (every (lambda (identifier) (exercise--region workbench identifier))
-                              '(:new-channel :model :effort :mode :attach :stop :channel-menu :document)))
+                              '(:new-channel :delete-channel :model :effort :mode :attach :stop :channel-menu
+                                :open-settings :open-files :open-commands :header-directory :document)))
       (exercise-expect "a wide window docks the channel list"
                        (exercise--region workbench '(:channel "B2Qweni")))
       ;; Scrolling.
@@ -154,6 +155,66 @@
       (exercise-expect "the model chip opens a picker"
                        (eq ':picker (overlay-kind (workbench-overlay workbench))))
       (workbench-show-overlay workbench nil)
+      ;; A channel whose list of models did not arrive still offers the ones its setting takes.
+      (let ((models (workbench-models workbench)))
+        (setf (workbench-models workbench) nil)
+        (exercise--draw workbench)
+        (exercise--click workbench ':model)
+        (exercise-expect "without a list of models the model chip offers the setting's choices"
+                         (and (workbench-overlay workbench)
+                              (equal '("gpt-6.1-sol" "gpt-6.1-terra")
+                                     (mapcar #'choice-label (overlay-choices (workbench-overlay workbench))))))
+        (workbench-show-overlay workbench nil)
+        (setf (workbench-models workbench) models))
+      ;; The foot of the channel list.
+      (exercise--draw workbench)
+      (exercise--click workbench ':delete-channel)
+      (exercise-expect "the button at the list's foot asks before it deletes the channel shown"
+                       (and (workbench-overlay workbench)
+                            (eq ':picker (overlay-kind (workbench-overlay workbench)))
+                            (search "Delete" (overlay-title (workbench-overlay workbench)))))
+      (workbench-show-overlay workbench nil)
+      ;; A message from another agent leads to the channel it wrote from.
+      (let ((message (find-if (lambda (entry)
+                                (and (typep entry 'user-entry) (user-entry-sender entry)))
+                              (transcript-entries transcript))))
+        (document-scroll-to-end document)
+        (exercise--draw workbench)
+        (exercise-expect "a message from another agent has a button to its channel"
+                         (and message
+                              (exercise--region workbench (list ':entry-channel (entry-identifier message))))))
+      ;; The files an answer links.
+      (let* ((directory (uiop:ensure-directory-pathname
+                         (format nil "~Aaui-exercise-~D/" (uiop:temporary-directory) (random 1000000))))
+             (file      (merge-pathnames "notes on fonts.md" directory))
+             (plan      (merge-pathnames "plan.md" directory)))
+        (ensure-directories-exist file)
+        (dolist (written (list file plan))
+          (with-open-file (stream written :direction ':output :if-exists ':supersede)
+            (write-line "placeholder" stream)))
+        (unwind-protect
+             (progn
+               (setf (getf (workbench-status workbench) :cwd) (namestring directory))
+               (transcript-append transcript
+                                  (make-instance 'assistant-entry
+                                                 :text (format nil "See [the notes](notes%20on%20fonts.md#L3), `~A:12`, the notes [again](notes%20on%20fonts.md), `make` and [the site](https://www.fltk.org)."
+                                                               (uiop:native-namestring plan))))
+               (exercise-expect "linked and named files are found from the channel's folder, each once, the last named first"
+                                (equal (list (truename file) (truename plan)) (files-linked workbench)))
+               (exercise-expect "a link to a page is not taken for a file"
+                                (and (link-web-p "https://www.fltk.org")
+                                     (null (link-file "https://www.fltk.org" (namestring directory)))))
+               (exercise--draw workbench)
+               (exercise--click workbench ':open-files)
+               (exercise-expect "the files button lists the files the agent linked"
+                                (and (workbench-overlay workbench)
+                                     (equal '("notes on fonts.md" "plan.md")
+                                            (mapcar #'choice-label
+                                                    (overlay-choices (workbench-overlay workbench))))))
+               (workbench-show-overlay workbench nil))
+          (setf (getf (workbench-status workbench) :cwd) "/home/you/lightfast/")
+          (uiop:delete-directory-tree directory :validate (lambda (checked)
+                                                            (search "aui-exercise-" (namestring checked))))))
       ;; The line editor's keys.
       (setf (composer-text workbench) "one two three")
       (composer-caret-to-end workbench)
@@ -189,10 +250,10 @@
                                                   (<= (+ (region-x region) (region-width region))
                                                       (stage-width stage))))))
                                      (stage--regions stage)))))
-      ;; The same card in a narrow window, where the choices take two rows.
+      ;; The same card in a narrow window.
       (stage-resize stage 620 800)
       (exercise--draw workbench)
-      (exercise-expect "a narrow window wraps the choices"
+      (exercise-expect "a narrow window keeps the choices inside it"
                        (let ((first (exercise--region workbench '(:approval "auto")))
                              (last  (exercise--region workbench '(:approval "deny"))))
                          (and first last
@@ -220,12 +281,20 @@
       (exercise--draw workbench)
       (exercise-expect "a wide window sets the console beside the conversation"
                        (let ((document (exercise--region workbench ':document))
-                             (stop     (exercise--region workbench ':stop))
-                             (menu     (exercise--region workbench ':channel-menu)))
-                         (and document stop menu
-                              (>= (region-x stop) (+ (region-x document) (region-width document)))
+                             (menu     (exercise--region workbench ':channel-menu))
+                             (job      (exercise--region workbench '(:job "job-1"))))
+                         (and document menu job
                               (>= (region-x menu) (+ (region-x document) (region-width document)))
-                              (= (region-height document) 900))))
+                              (>= (region-x job) (+ (region-x document) (region-width document))))))
+      (exercise-expect "the composer stays under the conversation, and under it what the agent does"
+                       (let ((document (exercise--region workbench ':document))
+                             (stop     (exercise--region workbench ':stop))
+                             (meter    (exercise--region workbench ':context-meter)))
+                         (and document stop meter
+                              (< (region-x stop) (+ (region-x document) (region-width document)))
+                              (>= (region-y stop) (+ (region-y document) (region-height document)))
+                              (< (region-x meter) (+ (region-x document) (region-width document)))
+                              (> (region-y meter) (region-y stop)))))
       ;; The edge between the conversation and the console can be dragged.
       (let* ((edge   (exercise--region workbench ':console-edge))
              (before (and edge (region-x edge))))
@@ -248,9 +317,30 @@
       ;; A narrow window.
       (stage-resize stage 700 900)
       (exercise--draw workbench)
-      (exercise-expect "a narrow window keeps the conversation and offers the drawer"
+      (exercise-expect "a window made narrow keeps the conversation and offers the channel list"
                        (and (exercise--region workbench ':toggle-sidebar)
-                            (exercise--region workbench ':document)))
+                            (exercise--region workbench ':document)
+                            (null (exercise--region workbench '(:channel "B2Qweni")))))
+      (exercise--click workbench ':toggle-sidebar)
+      (exercise--draw workbench)
+      (exercise-expect "on a narrow window the channel list takes the whole window"
+                       (let ((row (exercise--region workbench '(:channel "C4puSYz"))))
+                         (and row
+                              (= (region-width row) 700)
+                              (null (exercise--region workbench ':document))
+                              (null (exercise--region workbench ':send))
+                              (null (exercise--region workbench ':stop)))))
+      (window--stage-key workbench (make-key-event :code #xff1b))
+      (exercise--draw workbench)
+      (exercise-expect "Escape returns from the list to the conversation"
+                       (and (exercise--region workbench ':document)
+                            (null (exercise--region workbench '(:channel "C4puSYz")))))
+      ;; An idle channel says where it works, and that can be clicked.
+      (setf (workbench-working-p workbench) nil)
+      (exercise--draw workbench)
+      (exercise-expect "the folder under the composer is a control"
+                       (exercise--region workbench ':status-directory))
+      (setf (workbench-working-p workbench) t)
       (exercise-expect "nothing reported a failure" (null (workbench-notice workbench)))))
   *exercise-failures*)
 

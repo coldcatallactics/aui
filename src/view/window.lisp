@@ -45,15 +45,17 @@
 (defun window--layout (workbench width height)
   "Return where each pane goes in a window WIDTH by HEIGHT, as a property list of (X Y WIDTH HEIGHT) boxes.
 
-A window wide enough is laid out in columns: the channel list, the
-conversation and nothing else in the middle, and at the right the console,
-which holds what the channel is, what runs for it, what waits, and the
-composer at its foot. A narrower one stacks the same things around the
-conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
-:SIDE-P whether the console stands beside the conversation."
-  (let* ((shown-p    (workbench-sidebar-shown-p workbench))
-         (docked-p   (and shown-p (>= width *sidebar-docked-minimum*)))
-         (drawer-p   (and shown-p (not docked-p)))
+The conversation is a column with the composer at its foot and, under the
+composer, the line that says what the agent is doing. A window wide enough
+sets the console at the right of that column: what the channel is and what
+runs for it. A narrower one puts the header above the conversation and the
+running things above the composer. :DOCKED-P says the channel list stands
+beside the conversation, :DRAWER-P that it is shown on a window too narrow
+for that, where it takes the whole window, and :SIDE-P that the console
+stands beside the conversation."
+  (let* ((roomy-p    (>= width *sidebar-docked-minimum*))
+         (docked-p   (and roomy-p (workbench-sidebar-shown-p workbench)))
+         (drawer-p   (and (not roomy-p) (workbench-drawer-open-p workbench)))
          (side-width (if docked-p *sidebar-width* 0))
          (main-x     side-width)
          (main-width (- width side-width))
@@ -65,40 +67,35 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
                          0))
          (reading-w  (- main-width console-w))
          (console-x  (+ main-x reading-w))
-         (column     (if side-p
-                         (- console-w 32)
-                         (max 200 (min (+ *document-measure* 24) (- main-width 40)))))
-         (column-x   (if side-p
-                         (+ console-x 16)
-                         (+ main-x (floor (- main-width column) 2))))
+         (column     (max 200 (min (+ *document-measure* 24) (- reading-w 40))))
+         (column-x   (+ main-x (floor (- reading-w column) 2)))
          (composer-h (composer-height workbench column))
-         (composer-y (if side-p
-                         (- height composer-h 14)
-                         (- height *status-height* 6 composer-h 2)))
+         (composer-y (- height *status-height* 6 composer-h 2))
          (notice-h   (if (workbench-notice workbench) 26 0))
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
          (below      (+ notice-h pending-h approval-h))
-         ;; The activity takes what it needs: beside the conversation, of the
-         ;; room between the console's head and its foot; stacked, a few rows.
-         (head       (+ *header-height* *status-height* 6))
+         ;; The activity takes what it needs: in the console, of the room
+         ;; under its head; stacked, a few rows above the composer.
          (activity-h (if side-p
-                         (activity-height workbench :most (max 0 (- composer-y 18 below head)))
+                         (activity-height workbench :most (max 0 (- height *header-height* 20)))
                          (activity-height workbench :most (+ *activity-heading-height*
                                                              (* 4 *activity-row-height*)))))
+         (top        (if side-p 0 *header-height*))
          (stack-top  (- composer-y 10 below (if side-p 0 activity-h))))
     (list :docked-p   docked-p
           :drawer-p   drawer-p
           :side-p     side-p
-          :sidebar    (list 0 0 (min *sidebar-width* (- width 40)) height)
+          :sidebar    (if drawer-p
+                          (list 0 0 width height)
+                          (list 0 0 *sidebar-width* height))
           :header     (if side-p
                           (list console-x 0 console-w *header-height*)
                           (list main-x 0 main-width *header-height*))
-          :document   (if side-p
-                          (list main-x 0 (- reading-w 3) height)
-                          (list main-x *header-height* main-width (max 40 (- stack-top *header-height*))))
+          :document   (list main-x top (- reading-w (if side-p 3 0)) (max 40 (- stack-top top)))
+          :divider    (list (- console-x 3) 0 3 height)
           :activity   (if side-p
-                          (list column-x head column activity-h)
+                          (list (+ console-x 16) (+ *header-height* 8) (- console-w 32) activity-h)
                           (list column-x stack-top column activity-h))
           :completion (let ((height (completion-height workbench)))
                         (list column-x (- composer-y height 4) column height))
@@ -106,127 +103,154 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
           :pending    (list column-x (- composer-y 10 notice-h pending-h) column pending-h)
           :notice     (list column-x (- composer-y 10 notice-h) column notice-h)
           :composer   (list column-x composer-y column composer-h)
-          :status     (if side-p
-                          (list (+ column-x 2) *header-height* (- column 4) *status-height*)
-                          (list (+ column-x 2) (- height *status-height* 6) (- column 4) *status-height*)))))
+          :status     (list (+ column-x 2) (- height *status-height* 6) (- column 4) *status-height*))))
+
+(-> window--narrow-p (workbench) boolean)
+(defun window--narrow-p (workbench)
+  "Return T when the window is too narrow to hold the channel list beside the conversation."
+  (let ((stage (workbench-stage workbench)))
+    (and stage (< (stage-width stage) *sidebar-docked-minimum*))))
+
+(-> window-drawer-p (workbench) boolean)
+(defun window-drawer-p (workbench)
+  "Return T when the channel list is open on a window too narrow to set it beside the conversation, where it takes the whole window."
+  (and (window--narrow-p workbench)
+       (workbench-drawer-open-p workbench)))
+
+(-> window-show-sidebar (workbench boolean) null)
+(defun window-show-sidebar (workbench shown-p)
+  "Show the channel list when SHOWN-P, or put it away, in the way the window's width calls for, and give the keyboard to what is then in front."
+  (if (window--narrow-p workbench)
+      (setf (workbench-drawer-open-p workbench) shown-p)
+      (setf (workbench-sidebar-shown-p workbench) shown-p))
+  (window-arrange workbench)
+  (if (window-drawer-p workbench)
+      (lightfast:take-focus (second (stage-natives (workbench-stage workbench))))
+      (window-focus-composer workbench))
+  (workbench-redraw workbench)
+  nil)
+
+(-> window-toggle-sidebar (workbench) null)
+(defun window-toggle-sidebar (workbench)
+  "Show the channel list when it is put away, or put it away."
+  (window-show-sidebar workbench
+                       (not (if (window--narrow-p workbench)
+                                (workbench-drawer-open-p workbench)
+                                (workbench-sidebar-shown-p workbench)))))
 
 
 ;;;; -- Painting --
 
+(-> window--paint-console-edge (workbench stage list) null)
+(defun window--paint-console-edge (workbench stage layout)
+  "Draw the band of dither that parts the conversation from the console. The band can be dragged, and where it is left is remembered."
+  (destructuring-bind (x y width height) (getf layout :divider)
+    (paint-dither x y
+                  :width  width
+                  :height height
+                  :step   (if (or (stage-hot-p stage ':console-edge)
+                                  (stage-pressed-p stage ':console-edge))
+                              2
+                              3))
+    (let* ((main-x     (if (getf layout :docked-p) *sidebar-width* 0))
+           (main-width (- (stage-width stage) main-x)))
+      (stage-region stage ':console-edge
+                    :x      (- x 3)
+                    :y      y
+                    :width  10
+                    :height height
+                    :drag   (lambda (phase drag-x drag-y)
+                              (declare (ignore drag-y))
+                              (setf (window-console-share workbench)
+                                    (/ (- (+ main-x main-width) drag-x) main-width))
+                              (when (eq phase ':end)
+                                (setf (preference ':console-share)
+                                      (float (workbench-console-share workbench)))))
+                    :cursor ':west-east)))
+  nil)
+
+(-> window--paint-draft (workbench list) null)
+(defun window--paint-draft (workbench box)
+  "Draw what the composer holds in BOX, the place of its editor, while an overlay has the editor put away."
+  (destructuring-bind (x y width height) box
+    (let* ((text  (composer-text workbench))
+           (draft (make-paragraph (if (plusp (length text))
+                                      (list (make-span text nil))
+                                      (list (make-span "Write to the agent"
+                                                       (text-style ':body :face ':serif-italic))))
+                                  :style (text-style ':body))))
+      (paragraph-layout draft (- width 8))
+      (lightfast:with-clip (x y width height)
+        (paragraph-paint draft (+ x 4) y))))
+  nil)
+
 (-> window--paint (workbench stage) null)
 (defun window--paint (workbench stage)
-  "Draw the whole window: the panes at their places, then the drawer and the overlay over them."
+  "Draw the whole window: the channel list alone when it takes the window, else the panes at their places, and the overlay over them."
   (let* ((layout (window--layout workbench (stage-width stage) (stage-height stage)))
          (side-p (getf layout :side-p)))
     (flet ((box (name)
              (getf layout name)))
-      (when (getf layout :docked-p)
-        (destructuring-bind (x y width height) (box :sidebar)
-          (sidebar-paint workbench stage :x x :y y :width width :height height)))
-      (destructuring-bind (x y width height) (box :document)
-        (if (and (workbench-attached-p workbench)
-                 (plusp (transcript-length (workbench-transcript workbench))))
-            (document-paint (workbench-document workbench) stage :x x :y y :width width :height height)
-            (empty-paint workbench stage :x x :y y :width width :height height))
-        (cond
-          ;; Beside the console the conversation runs the window's whole
-          ;; height, and a band of dither parts the two. The band can be
-          ;; dragged, and where it is left is remembered.
-          (side-p
-           (paint-dither (+ x width) y
-                         :width  3
-                         :height height
-                         :step   (if (or (stage-hot-p stage ':console-edge)
-                                         (stage-pressed-p stage ':console-edge))
-                                     2
-                                     3))
-           (let ((main-x     (if (getf layout :docked-p) *sidebar-width* 0))
-                 (main-width (- (stage-width stage) (if (getf layout :docked-p) *sidebar-width* 0))))
-             (stage-region stage ':console-edge
-                           :x      (+ x width -3)
-                           :y      y
-                           :width  10
-                           :height height
-                           :drag   (lambda (phase drag-x drag-y)
-                                     (declare (ignore drag-y))
-                                     (setf (window-console-share workbench)
-                                           (/ (- (+ main-x main-width) drag-x) main-width))
-                                     (when (eq phase ':end)
-                                       (setf (preference ':console-share)
-                                             (float (workbench-console-share workbench)))))
-                           :cursor ':west-east))
-           (unless (getf layout :docked-p)
+      (cond
+        ;; On a window too narrow for both, the channel list is all there is.
+        ((getf layout :drawer-p)
+         (destructuring-bind (x y width height) (box :sidebar)
+           (sidebar-paint workbench stage :x x :y y :width width :height height)))
+        (t
+         (when (getf layout :docked-p)
+           (destructuring-bind (x y width height) (box :sidebar)
+             (sidebar-paint workbench stage :x x :y y :width width :height height)))
+         (destructuring-bind (x y width height) (box :document)
+           (if (and (workbench-attached-p workbench)
+                    (plusp (transcript-length (workbench-transcript workbench))))
+               (document-paint (workbench-document workbench) stage :x x :y y :width width :height height)
+               (empty-paint workbench stage :x x :y y :width width :height height))
+           ;; The conversation ends on a band of dither above what is written to it.
+           (paint-dither x (+ y height -3) :width width :height 3 :step 3)
+           (when (and side-p (not (getf layout :docked-p)))
              (paint-button stage ':toggle-sidebar ""
                            :x       (+ x 14)
                            :y       (+ y 14)
                            :width   28
                            :height  28
                            :mark    ':panel
-                           :action  (lambda ()
-                                      (setf (workbench-sidebar-shown-p workbench)
-                                            (not (workbench-sidebar-shown-p workbench)))
-                                      (workbench-redraw workbench))
-                           :tooltip "Show the channels (Ctrl+T)")))
-          ;; Stacked, it ends on a band of dither, as it begins under the header's.
-          (t
-           (paint-dither x (+ y height -3) :width width :height 3 :step 3))))
-      (destructuring-bind (x y width height) (box :header)
-        (declare (ignore height))
-        (header-paint workbench stage :x x :y y :width width
-                                      :sidebar-toggle-p (and (not side-p) (not (getf layout :docked-p)))
-                                      :band-p           (not side-p)))
-      (destructuring-bind (x y width height) (box :activity)
-        (when (plusp height)
-          (activity-paint workbench stage :x x :y y :width width :height height)))
-      (when (workbench-approval workbench)
-        (destructuring-bind (x y width height) (box :approval)
-          (approval-paint workbench stage :x x :y y :width width :height height)))
-      (destructuring-bind (x y width height) (box :pending)
-        (declare (ignore height))
-        (pending-paint workbench :x x :y y :width width))
-      (when (workbench-notice workbench)
-        (destructuring-bind (x y width height) (box :notice)
-          (paint-mark ':cross x (+ y 5) :size 14 :color *red*)
-          (paint-text-in (workbench-notice workbench) (text-style ':meta)
-                         :x      (+ x 20)
-                         :y      y
-                         :width  (- width 20)
-                         :height height)))
-      (destructuring-bind (x y width height) (box :composer)
-        (composer-paint workbench stage :x x :y y :width width :height height)
-        ;; With the editor put away behind a drawer or an overlay, its text is drawn in its place.
-        (when (or (getf layout :drawer-p) (workbench-overlay workbench))
-          (destructuring-bind (edit-x edit-y edit-width edit-height)
-              (composer-editor-box workbench :x x :y y :width width :height height)
-            (let* ((text  (composer-text workbench))
-                   (draft (make-paragraph (if (plusp (length text))
-                                              (list (make-span text nil))
-                                              (list (make-span "Write to the agent"
-                                                               (text-style ':body :face ':serif-italic))))
-                                          :style (text-style ':body))))
-              (paragraph-layout draft (- edit-width 8))
-              (lightfast:with-clip (edit-x edit-y edit-width edit-height)
-                (paragraph-paint draft (+ edit-x 4) edit-y))))))
-      (destructuring-bind (x y width height) (box :status)
-        (declare (ignore height))
-        ;; The console's head already says where the channel works.
-        (status-paint workbench stage :x x :y y :width width :directory-p (not side-p)))
-      (destructuring-bind (x y width height) (box :completion)
-        (when (plusp height)
-          (completion-paint workbench stage :x x :y y :width width)))
-      (when (getf layout :drawer-p)
-        (destructuring-bind (x y width height) (box :sidebar)
-          (paint-dither (+ x width) 0 :width (- (stage-width stage) width) :height (stage-height stage) :step 3)
-          (stage-region stage ':drawer-ground
-                        :x      (+ x width)
-                        :y      0
-                        :width  (- (stage-width stage) width)
-                        :height (stage-height stage)
-                        :action (lambda ()
-                                  (setf (workbench-sidebar-shown-p workbench) nil)
-                                  (workbench-redraw workbench))
-                        :cursor ':default)
-          (sidebar-paint workbench stage :x x :y y :width width :height height)))
+                           :action  (lambda () (window-toggle-sidebar workbench))
+                           :tooltip "Show the channels (Ctrl+S)")))
+         (when side-p
+           (window--paint-console-edge workbench stage layout))
+         (destructuring-bind (x y width height) (box :header)
+           (declare (ignore height))
+           (header-paint workbench stage :x x :y y :width width
+                                         :sidebar-toggle-p (and (not side-p) (not (getf layout :docked-p)))
+                                         :band-p           (not side-p)))
+         (destructuring-bind (x y width height) (box :activity)
+           (when (plusp height)
+             (activity-paint workbench stage :x x :y y :width width :height height)))
+         (when (workbench-approval workbench)
+           (destructuring-bind (x y width height) (box :approval)
+             (approval-paint workbench stage :x x :y y :width width :height height)))
+         (destructuring-bind (x y width height) (box :pending)
+           (declare (ignore height))
+           (pending-paint workbench :x x :y y :width width))
+         (when (workbench-notice workbench)
+           (destructuring-bind (x y width height) (box :notice)
+             (paint-mark ':cross x (+ y 5) :size 14 :color *red*)
+             (paint-text-in (workbench-notice workbench) (text-style ':meta)
+                            :x      (+ x 20)
+                            :y      y
+                            :width  (- width 20)
+                            :height height)))
+         (destructuring-bind (x y width height) (box :composer)
+           (composer-paint workbench stage :x x :y y :width width :height height)
+           (when (workbench-overlay workbench)
+             (window--paint-draft workbench
+                                  (composer-editor-box workbench :x x :y y :width width :height height))))
+         (destructuring-bind (x y width height) (box :status)
+           (declare (ignore height))
+           (status-paint workbench stage :x x :y y :width width))
+         (destructuring-bind (x y width height) (box :completion)
+           (when (plusp height)
+             (completion-paint workbench stage :x x :y y :width width)))))
       (overlay-paint workbench stage)))
   nil)
 
@@ -261,7 +285,7 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
       (window--place filter
                      (destructuring-bind (x y box-width box-height) (getf layout :sidebar)
                        (declare (ignore box-height))
-                       (list (+ x 17) (+ y 104) (- box-width 34) 30))
+                       (list (+ x 17) (+ y 60) (- box-width 34) 30))
                      (and (not overlay) (or drawer-p (getf layout :docked-p))))
       (let ((box (and overlay (overlay-input-box overlay width height))))
         (window--place query (or box (list 0 0 1 1)) (and box t)))))
@@ -278,10 +302,8 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
 (-> window-focus-filter (workbench) null)
 (defun window-focus-filter (workbench)
   "Show the channel list and give its filter field the keyboard."
-  (setf (workbench-sidebar-shown-p workbench) t)
-  (window-arrange workbench)
+  (window-show-sidebar workbench t)
   (lightfast:take-focus (second (stage-natives (workbench-stage workbench))))
-  (workbench-redraw workbench)
   nil)
 
 
@@ -299,9 +321,8 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
       ((and command-p (eql key #\,))
        (workbench-show-overlay workbench ':settings)
        t)
-      ((and command-p (eql key #\t))
-       (setf (workbench-sidebar-shown-p workbench) (not (workbench-sidebar-shown-p workbench)))
-       (workbench-redraw workbench)
+      ((and command-p (eql key #\s))
+       (window-toggle-sidebar workbench)
        t)
       ((and command-p (eql key #\n))
        (workbench-new-channel workbench)
@@ -373,9 +394,6 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
        t)
       ((eq key ':escape)
        (cond
-         ((and (workbench-sidebar-shown-p workbench)
-               (< (stage-width (workbench-stage workbench)) *sidebar-docked-minimum*))
-          (setf (workbench-sidebar-shown-p workbench) nil))
          ((workbench-working-p workbench)
           (workbench-stop workbench)))
        (workbench-redraw workbench)
@@ -400,9 +418,16 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
     ((window--shortcut workbench event)
      t)
     ((eq (key-event-key event) ':escape)
-     (when (workbench-working-p workbench)
-       (workbench-stop workbench))
+     (cond
+       ((window-drawer-p workbench)
+        (window-toggle-sidebar workbench))
+       ((workbench-working-p workbench)
+        (workbench-stop workbench)))
      t)
+    ;; With the channel list over the whole window there is no composer to type into.
+    ((window-drawer-p workbench)
+     (lightfast:take-focus (second (stage-natives (workbench-stage workbench))))
+     nil)
     ((window--approval-key workbench event)
      t)
     ((and (key-event-command-p event) (eql (key-event-key event) #\c))
@@ -496,19 +521,25 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
                     (let* ((key-event (parse-key-event value))
                            (key       (key-event-key key-event)))
                       (cond
+                        ;; Escape empties the filter; from an empty one it leaves the list.
                         ((eq key ':escape)
-                         (setf (lightfast:value filter)     ""
-                               (workbench-filter workbench) "")
-                         (window-focus-composer workbench)
+                         (if (plusp (length (workbench-filter workbench)))
+                             (setf (lightfast:value filter)     ""
+                                   (workbench-filter workbench) "")
+                             (sidebar--close-drawer workbench))
+                         (window-arrange workbench)
+                         (unless (window-drawer-p workbench)
+                           (window-focus-composer workbench))
                          (workbench-redraw workbench)
                          (lightfast:consume-event))
                         ((member key '(:enter :keypad-enter))
                          (let ((first (find ':channel (sidebar--visible-entries workbench)
                                             :key (lambda (entry) (getf entry :kind)))))
                            (when first
-                             (workbench-open workbench :channel (getf first :id))
                              (setf (lightfast:value filter)     ""
                                    (workbench-filter workbench) "")
+                             (sidebar--open workbench (getf first :id))
+                             (window-arrange workbench)
                              (window-focus-composer workbench)))
                          (lightfast:consume-event))
                         ((window--shortcut workbench key-event)
@@ -556,10 +587,8 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
                 (lambda () (window-focus-filter workbench)))
           (item "Channel/Stop the agent" 0
                 (lambda () (workbench-stop workbench)))
-          (item "View/Channels" (command #\t)
-                (lambda ()
-                  (setf (workbench-sidebar-shown-p workbench) (not (workbench-sidebar-shown-p workbench)))
-                  (workbench-redraw workbench)))
+          (item "View/Channels" (command #\s)
+                (lambda () (window-toggle-sidebar workbench)))
           (item "View/Commands" (command #\k)
                 (lambda () (workbench-show-overlay workbench ':commands)))
           (item "View/Settings…" (command #\,)
@@ -585,7 +614,11 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
                              :key-handler  (lambda (event) (window--stage-key workbench event))
                              :drop-handler (lambda (dropped) (window--drop workbench dropped)))))
     (setf (workbench-window workbench) window
-          (workbench-stage workbench)  stage)
+          (workbench-stage workbench)  stage
+          *link-handler*               (lambda (link)
+                                         (workbench-open-link workbench link))
+          *entry-channel-opener*       (lambda (identifier)
+                                         (workbench-open workbench :channel identifier)))
     ;; A size given on the command line is pinned, so a tiling compositor
     ;; floats the window at it and other layouts can be looked at.
     (if (launch-size launch)
@@ -608,15 +641,16 @@ conversation. :DOCKED-P and :DRAWER-P say how the channel list is shown and
                          (lambda (resized)
                            (lightfast:refresh-geometry resized)
                            (stage-resize stage (lightfast:widget-width resized) (lightfast:widget-height resized))
+                           ;; A list opened over a narrow window does not come
+                           ;; back when the window is made narrow again.
+                           (unless (window--narrow-p workbench)
+                             (setf (workbench-drawer-open-p workbench) nil))
                            (window-arrange workbench)))
     (lightfast:on window
                   (lambda (widget event value)
                     (declare (ignore widget event value))
                     (workbench-close workbench))
-                  :event lightfast:+event-close+)
-    ;; The drawer starts closed on a window too narrow to dock it.
-    (when (< (first size) *sidebar-docked-minimum*)
-      (setf (workbench-sidebar-shown-p workbench) nil)))
+                  :event lightfast:+event-close+))
   nil)
 
 (-> window-show (workbench) null)
@@ -635,12 +669,8 @@ have made of it."
       (lightfast:wait 0.05))
     (lightfast:refresh-geometry window)
     (stage-resize stage (lightfast:widget-width window) (lightfast:widget-height window))
-    ;; A window too narrow to dock the channel list starts with the drawer
-    ;; closed, unless the start asked to see the channels.
-    (when (and (< (stage-width stage) *sidebar-docked-minimum*)
-               (not (launch-pick-p launch))
-               (not (equal (launch-view launch) "channels")))
-      (setf (workbench-sidebar-shown-p workbench) nil))
     (window-arrange workbench)
-    (window-focus-composer workbench))
+    (if (window-drawer-p workbench)
+        (lightfast:take-focus (second (stage-natives stage)))
+        (window-focus-composer workbench)))
   nil)

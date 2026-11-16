@@ -236,7 +236,7 @@ asks for another folder."
                (:band-p boolean))
     null)
 (defun header-paint (workbench stage &key x y width sidebar-toggle-p (band-p t))
-  "Draw the header: the channel's title, a line about it in the interface's voice, and the buttons for the settings, the commands and the channel's menu.
+  "Draw the header: the channel's title, under it the channel's identifier and the folder it works in, and the buttons for the settings, the linked files, the commands and the channel's menu.
 
 BAND-P draws the band of dither that parts the header from a conversation
 beneath it."
@@ -252,11 +252,8 @@ beneath it."
                     :width   30
                     :height  30
                     :mark    ':panel
-                    :action  (lambda ()
-                               (setf (workbench-sidebar-shown-p workbench)
-                                     (not (workbench-sidebar-shown-p workbench)))
-                               (workbench-redraw workbench))
-                    :tooltip "Show the channels (Ctrl+T)"))
+                    :action  (lambda () (window-toggle-sidebar workbench))
+                    :tooltip "Show the channels (Ctrl+S)"))
     (flet ((button (identifier mark action tooltip)
              (paint-button stage identifier ""
                            :x       (- right 30)
@@ -276,16 +273,26 @@ beneath it."
       (button ':open-commands ':slash
               (lambda () (workbench-show-overlay workbench ':commands))
               "Commands (Ctrl+K)")
-      (button ':open-settings ':cog
+      (when (workbench-channel workbench)
+        (button ':open-files ':page
+                (lambda () (files-show workbench))
+                "Files linked in this conversation"))
+      (button ':open-settings ':sliders
               (lambda () (workbench-show-overlay workbench ':settings))
               "Settings (Ctrl+,)")
       (decf right 8))
     (paint-text (text-fit (workbench-title workbench) title (- right left)) left (+ y 30) :style title)
-    (let ((line (format nil "~@[~A · ~]~A"
-                        (and (workbench-channel workbench)
-                             (channel-display-name (workbench-channel workbench)))
-                        (short-directory (workbench-directory workbench)))))
-      (paint-text (text-fit line meta (- right left)) left (+ y 50) :style meta))
+    (let ((cursor (if (workbench-channel workbench)
+                      (paint-text (text-fit (format nil "~A · " (channel-display-name (workbench-channel workbench)))
+                                            meta (- right left))
+                                  left (+ y 50)
+                                  :style meta)
+                      left)))
+      (chrome-paint-directory workbench stage ':header-directory
+                              :x      (- cursor 4)
+                              :y      (- (+ y 50) (text-baseline meta))
+                              :width  (max 0 (- right cursor -4))
+                              :height (text-style-line-height meta)))
     ;; Over a conversation the header ends on a band of dither, not a rule.
     (when band-p
       (paint-dither x (+ y *header-height* -3) :width width :height 3 :step 3)))
@@ -308,16 +315,17 @@ beneath it."
   (multiple-value-bind (minutes rest) (floor seconds 60)
     (format nil "~D:~2,'0D" minutes rest)))
 
-(-> status-paint
-    (workbench stage &key (:x integer) (:y integer) (:width integer) (:directory-p boolean)) null)
-(defun status-paint (workbench stage &key x y width (directory-p t))
-  "Draw the status line: what the agent is doing, or where it works when DIRECTORY-P and it is idle, and how full its context is."
+(-> status-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
+(defun status-paint (workbench stage &key x y width)
+  "Draw the line under the composer: that the agent works and for how long, or the folder it works in while it is idle, and at the right how full its context is.
+
+A count of context that Autolith estimated instead of measured opens with a tilde."
   (let* ((meta   (text-style ':meta))
          (height *status-height*)
          (right  (+ x width)))
-    (multiple-value-bind (used limit) (workbench-context workbench)
+    (multiple-value-bind (used limit estimated-p) (workbench-context workbench)
       (when (and used limit (plusp limit))
-        (let* ((label   (format nil "~A / ~A" (chrome--count used) (chrome--count limit)))
+        (let* ((label   (format nil "~:[~;~~~]~A / ~A" estimated-p (chrome--count used) (chrome--count limit)))
                (label-w (text-width label meta))
                (bar-w   64)
                (bar-x   (- right label-w 10 bar-w))
@@ -331,7 +339,8 @@ beneath it."
                         :y       y
                         :width   (- right bar-x)
                         :height  height
-                        :tooltip (format nil "Context: ~D of ~D tokens" used limit))
+                        :tooltip (format nil "Context: ~:[~;about ~]~D of ~D tokens~:[~;, estimated~]"
+                                         estimated-p used limit estimated-p))
           (setf right (- bar-x 14)))))
     (cond
       ((workbench-working-p workbench)
@@ -345,12 +354,12 @@ beneath it."
                       :y      y
                       :width  (max 0 (- right x 22))
                       :height height))
-      (directory-p
-       (paint-text-in (short-directory (workbench-directory workbench)) meta
-                      :x      x
-                      :y      y
-                      :width  (max 0 (- right x))
-                      :height height))))
+      (t
+       (chrome-paint-directory workbench stage ':status-directory
+                               :x      (- x 4)
+                               :y      (+ y (floor (- height (text-style-line-height meta)) 2))
+                               :width  (max 0 (- right x -4))
+                               :height (text-style-line-height meta)))))
   nil)
 
 
@@ -455,8 +464,7 @@ A choice is taken with its number or a click."
           do (let* ((choice (getf option :value))
                     (region (list ':approval choice))
                     (deny-p (equal choice "deny"))
-                    (hot-p  (stage-hot-p stage region))
-                    (top    row-y))
+                    (hot-p  (stage-hot-p stage region)))
                (flet ((content ()
                         (paint-text-in (format nil "~D" (1+ index)) bold
                                        :x      (+ x 14)

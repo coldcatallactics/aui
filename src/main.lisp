@@ -56,7 +56,8 @@ reports them, not the moment before it answered."
       (t
        (world-start-watching (workbench-world workbench))
        (if (launch-pick-p launch)
-           (setf (workbench-sidebar-shown-p workbench) t)
+           (setf (workbench-sidebar-shown-p workbench) t
+                 (workbench-drawer-open-p workbench)   t)
            (workbench-open workbench
                            :channel (launch-channel launch)
                            :images  (launch-images launch)))))
@@ -95,7 +96,8 @@ reports them, not the moment before it answered."
                         :note    "The name of the agent in @mentions."
                         :initial "lightfast"))
         ((equal view "channels")
-         (setf (workbench-sidebar-shown-p workbench) t))
+         (setf (workbench-sidebar-shown-p workbench) t
+               (workbench-drawer-open-p workbench)   t))
         ((equal view "top")
          (setf (document-following-p (workbench-document workbench)) nil
                (document-scroll (workbench-document workbench))      0)))))

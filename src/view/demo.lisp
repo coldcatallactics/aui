@@ -88,20 +88,21 @@
 (-> demo--tree () list)
 (defun demo--tree ()
   "Return the demonstration's channel tree in the shape of Autolith's sidebar entries."
-  (list (list :kind ':inbox :id "inbox" :unread 2)
+  (list (list :kind ':inbox :id "home" :unread 2)
         (list :kind ':workspace :key "/home/you/lightfast/" :name "lightfast" :path "~/lightfast"
-              :children-p t :open-p t)
-        (list :kind ':channel :id "B2Qweni" :name "lightfast" :title "Port the bridge to macOS" :depth 0
-              :state ':active :current-p t :unread 0 :mentions 0 :pending 0)
+              :indent 2 :children-p t :open-p t)
+        (list :kind ':channel :id "B2Qweni" :name "bridge-port" :title "Port the bridge to macOS" :depth 0
+              :indent 2 :state ':active :current-p t :unread 0 :mentions 0 :pending 0)
         (list :kind ':channel :id "C4puSYz" :name "review" :title "Read the Makefile" :depth 1
-              :state ':working :unread 3 :mentions 0 :pending 0)
-        (list :kind ':channel :id "A55TkQx" :name "lightfast-2" :title "Canvas pointer events" :depth 0
-              :state ':idle :waiting-for-jobs-p t :unread 0 :mentions 1 :pending 0)
-        (list :kind ':workspace :key "/home/you/aui/" :name "aui" :path "~/aui" :children-p t :open-p t)
-        (list :kind ':channel :id "g4P5Hsc" :name "aui" :title "A window onto the channels" :depth 0
-              :state ':absent :unread 0 :mentions 0 :pending 0)
-        (list :kind ':workspace :key "/home/you/notes/" :name "notes" :path "~/notes" :children-p t
-              :open-p nil :hidden 4)))
+              :indent 2 :state ':working :unread 3 :mentions 0 :pending 0)
+        (list :kind ':channel :id "A55TkQx" :name "pointer-events" :title "Canvas pointer events" :depth 0
+              :indent 2 :state ':idle :waiting-for-jobs-p t :unread 0 :mentions 1 :pending 0)
+        (list :kind ':workspace :key "/home/you/aui/" :name "aui" :path "~/aui" :indent 2 :children-p t
+              :open-p t)
+        (list :kind ':channel :id "g4P5Hsc" :name "window" :title "A window onto the channels" :depth 0
+              :indent 2 :state ':absent :unread 0 :mentions 0 :pending 0)
+        (list :kind ':workspace :key "/home/you/notes/" :name "notes" :path "~/notes" :indent 2
+              :children-p t :open-p nil :hidden 4)))
 
 (-> demo--operations () list)
 (defun demo--operations ()

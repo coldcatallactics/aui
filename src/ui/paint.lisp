@@ -215,19 +215,28 @@ they look the same whatever faces the system has."
       (:panel
        (lightfast:draw-rect left top (- right left) (- bottom top))
        (lightfast:draw-filled-rect left top (max 2 (floor (- right left) 3)) (- bottom top)))
-      (:cog
-       (let ((radius (max 2 (- middle inset 1))))
-         (lightfast:draw-line-style :width 2)
-         (lightfast:draw-circle (+ x middle) (+ y middle) radius)
-         (dotimes (index 8)
-           (let* ((angle (* 2 pi (/ index 8)))
-                  (near  (+ radius 1))
-                  (far   (+ radius 3)))
-             (lightfast:draw-line (+ x middle (round (* near (sin angle))))
-                                  (- (+ y middle) (round (* near (cos angle))))
-                                  (+ x middle (round (* far (sin angle))))
-                                  (- (+ y middle) (round (* far (cos angle)))))))
-         (lightfast:draw-line-style)))
+      ;; Three sliders across the whole box, each with its knob somewhere
+      ;; else: what is set here.
+      (:sliders
+       (loop for row in (list (+ y (floor size 5)) (+ y middle) (- (+ y size) (floor size 5)))
+             for part in '(11/16 1/4 9/16)
+             do (let ((knob (+ x (round (* part size)))))
+                  (lightfast:draw-filled-rect x (1- row) size 2)
+                  (lightfast:draw-filled-rect (- knob 2) (- row 3) 4 6))))
+      ;; A sheet with its corner folded: a file.
+      (:page
+       (let* ((left   (1+ left))
+              (right  (1- right))
+              (top    (- top 2))
+              (bottom (+ bottom 2))
+              (fold   (max 3 (floor (- right left) 2))))
+         (lightfast:draw-line left top (- right fold) top)
+         (lightfast:draw-line (- right fold) top right (+ top fold))
+         (lightfast:draw-line right (+ top fold) right bottom)
+         (lightfast:draw-line right bottom left bottom)
+         (lightfast:draw-line left bottom left top)
+         (lightfast:draw-line (- right fold) top (- right fold) (+ top fold))
+         (lightfast:draw-line (- right fold) (+ top fold) right (+ top fold))))
       (:slash
        (lightfast:draw-line-style :width 2)
        (lightfast:draw-line (- right 1) top (+ left 1) bottom)

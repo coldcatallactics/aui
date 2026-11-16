@@ -132,7 +132,12 @@
     :initform      t
     :accessor      workbench-sidebar-shown-p
     :type          boolean
-    :documentation "Whether the person wants the channel list visible.")
+    :documentation "Whether the person wants the channel list beside the conversation, on a window wide enough for both.")
+   (drawer-open-p
+    :initform      nil
+    :accessor      workbench-drawer-open-p
+    :type          boolean
+    :documentation "Whether the channel list is open on a window too narrow to hold it beside the conversation, where it takes the whole window.")
    (sidebar-scroll
     :initform      0
     :accessor      workbench-sidebar-scroll
@@ -269,14 +274,15 @@
   (or (portable-string (getf (workbench-status workbench) :cwd))
       (world-working-directory (workbench-world workbench))))
 
-(-> workbench-context (workbench) (values (or null integer) (or null integer)))
+(-> workbench-context (workbench) (values (or null integer) (or null integer) boolean))
 (defun workbench-context (workbench)
-  "Return the tokens of context used and the context limit, each NIL when unknown."
+  "Return the tokens of context used and the context limit, each NIL when unknown, and whether Autolith estimated the use instead of measuring it."
   (let ((usage (portable-get (workbench-state workbench) "usage")))
     (values (let ((used (portable-get usage "contextUsed")))
               (and (integerp used) used))
             (let ((limit (portable-get usage "contextLimit")))
-              (and (integerp limit) limit)))))
+              (and (integerp limit) limit))
+            (eq (portable-get usage "contextMeasured") ':false))))
 
 (-> short-directory (string) string)
 (defun short-directory (directory)

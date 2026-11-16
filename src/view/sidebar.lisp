@@ -2,11 +2,14 @@
 
 ;;;; -- Sidebar --
 
-;;; The world's channels at the window's left: the inbox, then each workspace
-;;; with its channels, children under their parents. The tree is Autolith's
-;;; own sidebar model, the one its terminal draws; this file only gives it a
-;;; face. The current channel is inverted, a working agent carries the green
-;;; dot, and unread counts sit at the right as small inverted badges.
+;;; The world's channels at the window's left: home, then beneath it each
+;;; workspace with its channels, children under their parents. The tree is
+;;; Autolith's own sidebar model, the one its terminal draws; this file only
+;;; gives it a face. The current channel is inverted, a working agent carries
+;;; the green dot, and unread counts sit at the right as small inverted
+;;; badges. A new channel and the deletion of the one shown are at the list's
+;;; foot, where the terminal has them. On a window too narrow to hold the
+;;; list beside the conversation it takes the whole window.
 
 (defparameter *sidebar-width* 292
   "The width of the docked channel list.")
@@ -16,6 +19,22 @@
 
 (defparameter *sidebar-docked-minimum* 980
   "The narrowest window that still docks the channel list beside the conversation.")
+
+(defparameter *sidebar-home-indent* 12
+  "How far the workspaces and channels beneath home are set in from it.")
+
+(defparameter *sidebar-list-top* 106
+  "How far below the channel list's top edge its rows begin, under the heading and the filter.")
+
+(defparameter *sidebar-footer-height* 56
+  "The room at the channel list's foot for the buttons that make and delete a channel.")
+
+(-> sidebar--indent (list) integer)
+(defun sidebar--indent (entry)
+  "Return how far ENTRY's row is set in for standing beneath home."
+  (if (plusp (or (getf entry :indent) 0))
+      *sidebar-home-indent*
+      0))
 
 (-> sidebar-entries (workbench) list)
 (defun sidebar-entries (workbench)
@@ -53,6 +72,50 @@
     (values (or name (channel-display-name (getf entry :id)))
             title)))
 
+(-> sidebar--entry-label (workbench string) string)
+(defun sidebar--entry-label (workbench identifier)
+  "Return what the channel IDENTIFIER goes by in the list: its title, else its agent's name, else its identifier as people read it."
+  (let ((entry (find identifier (sidebar-entries workbench)
+                     :key  (lambda (entry)
+                             (getf entry :id))
+                     :test #'equal)))
+    (or (portable-string (getf entry :title))
+        (portable-string (getf entry :name))
+        (channel-display-name identifier))))
+
+(-> sidebar-confirm-delete (workbench string) null)
+(defun sidebar-confirm-delete (workbench identifier)
+  "Ask whether the channel IDENTIFIER is to be deleted, and delete it on a yes."
+  (workbench-pick workbench
+                  (list (make-choice :label  "Delete"
+                                     :detail "The channel, the channels nested in it and their histories"
+                                     :value  ':delete)
+                        (make-choice :label "Keep"
+                                     :value ':keep))
+                  (lambda (answer)
+                    (when (eq answer ':delete)
+                      (workbench-delete-channel workbench identifier)))
+                  :title (format nil "Delete ~A?" (sidebar--entry-label workbench identifier)))
+  nil)
+
+(-> sidebar--close-drawer (workbench) null)
+(defun sidebar--close-drawer (workbench)
+  "Put the channel list away when it takes the whole window, so that what was chosen in it is seen."
+  (setf (workbench-drawer-open-p workbench) nil)
+  nil)
+
+(-> sidebar--open (workbench string) null)
+(defun sidebar--open (workbench identifier)
+  "Show the channel IDENTIFIER, chosen in the list."
+  (sidebar--close-drawer workbench)
+  (if (equal identifier (workbench-channel workbench))
+      (progn
+        (window-arrange workbench)
+        (window-focus-composer workbench)
+        (workbench-redraw workbench))
+      (workbench-open workbench :channel identifier))
+  nil)
+
 (-> sidebar--channel-menu (workbench list) null)
 (defun sidebar--channel-menu (workbench entry)
   "Offer what can be done with the channel ENTRY in a menu at the pointer, and do what is chosen."
@@ -61,7 +124,7 @@
     (workbench-menu
      workbench
      (list (make-choice :label "Open"
-                        :value (lambda () (workbench-open workbench :channel identifier)))
+                        :value (lambda () (sidebar--open workbench identifier)))
            (make-choice :label "Send a message…"
                         :value (lambda ()
                                  (workbench-ask workbench
@@ -75,21 +138,7 @@
            (make-choice :label "Stop serving"
                         :value (lambda () (workbench-close-channel workbench identifier)))
            (make-choice :label "Delete…"
-                        :value (lambda ()
-                                 (workbench-pick
-                                  workbench
-                                  (list (make-choice :label  "Delete"
-                                                     :detail "The channel, the channels nested in it and their histories"
-                                                     :value  ':delete)
-                                        (make-choice :label "Keep"
-                                                     :value ':keep))
-                                  (lambda (answer)
-                                    (when (eq answer ':delete)
-                                      (workbench-delete-channel workbench identifier)))
-                                  :title (format nil "Delete ~A?"
-                                                 (or (getf entry :title)
-                                                     (getf entry :name)
-                                                     (channel-display-name identifier)))))))
+                        :value (lambda () (sidebar-confirm-delete workbench identifier))))
      :x (stage-pointer-x stage)
      :y (stage-pointer-y stage)))
   nil)
@@ -103,7 +152,7 @@
                          (equal identifier (workbench-channel workbench))))
          (hot-p      (stage-hot-p stage region))
          (state      (getf entry :state))
-         (indent     (+ 14 (* 16 (or (getf entry :depth) 0))))
+         (indent     (+ 14 (sidebar--indent entry) (* 16 (or (getf entry :depth) 0))))
          (height     *sidebar-row-height*)
          (unread     (or (getf entry :unread) 0))
          (mentions   (or (getf entry :mentions) 0))
@@ -156,9 +205,7 @@
                   :y       y
                   :width   width
                   :height  height
-                  :action  (lambda ()
-                             (unless (equal identifier (workbench-channel workbench))
-                               (workbench-open workbench :channel identifier)))
+                  :action  (lambda () (sidebar--open workbench identifier))
                   :menu    (lambda () (sidebar--channel-menu workbench entry))
                   :tooltip (channel-display-name identifier)))
   nil)
@@ -171,13 +218,15 @@
          (height *sidebar-row-height*)
          (bold   (text-style ':meta-bold))
          (meta   (text-style ':meta))
-         (hot-p  (stage-hot-p stage region)))
+         (hot-p  (stage-hot-p stage region))
+         (left   (+ x (sidebar--indent entry))))
     (flet ((content ()
-             (paint-mark (if (getf entry :open-p) ':open ':closed) (+ x 12) (+ y (floor (- height 10) 2))
+             (paint-mark (if (getf entry :open-p) ':open ':closed) (+ left 12) (+ y (floor (- height 10) 2))
                          :size 10)
              (let* ((right (- (+ x width) 10))
-                    (end   (paint-text (text-fit (or (getf entry :name) "") bold (- width 60)) (+ x 28) (+ y (floor (- height (text-style-line-height bold)) 2)
-                                                                                                         (text-baseline bold))
+                    (end   (paint-text (text-fit (or (getf entry :name) "") bold (- width 60 (- left x)))
+                                       (+ left 28)
+                                       (+ y (floor (- height (text-style-line-height bold)) 2) (text-baseline bold))
                                        :style bold)))
                (when (and (not (getf entry :open-p)) (getf entry :hidden))
                  (decf right (+ 6 (paint-badge (format nil "+~D" (getf entry :hidden))
@@ -205,9 +254,9 @@
                             (workbench-redraw workbench))))
   nil)
 
-(-> sidebar--paint-inbox (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
-(defun sidebar--paint-inbox (workbench stage entry &key x y width)
-  "Draw the inbox row with the count of what waits there unread."
+(-> sidebar--paint-home (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun sidebar--paint-home (workbench stage entry &key x y width)
+  "Draw the row of home, the channel every other one stands beneath, with the count of what waits there unread."
   (let* ((identifier (getf entry :id))
          (region     (list ':channel identifier))
          (height     *sidebar-row-height*)
@@ -215,7 +264,7 @@
          (hot-p      (stage-hot-p stage region))
          (unread     (or (getf entry :unread) 0)))
     (flet ((content ()
-             (paint-text-in "Inbox" (text-style ':small :face ':serif-bold)
+             (paint-text-in "Home" (text-style ':small :face ':serif-bold)
                             :x      (+ x 14)
                             :y      y
                             :width  (- width 80)
@@ -227,27 +276,57 @@
             (content))
           (content)))
     (stage-region stage region
-                  :x      x
-                  :y      y
-                  :width  width
-                  :height height
-                  :action (lambda ()
-                            (unless (equal identifier (workbench-channel workbench))
-                              (workbench-open workbench :channel identifier)))))
+                  :x       x
+                  :y       y
+                  :width   width
+                  :height  height
+                  :action  (lambda () (sidebar--open workbench identifier))
+                  :tooltip "Home: what was sent to you, with every channel beneath it"))
+  nil)
+
+(-> sidebar--paint-footer (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
+(defun sidebar--paint-footer (workbench stage &key x y width)
+  "Draw the two buttons at the list's foot: a new channel, and the deletion of the channel shown."
+  (let* ((channel  (workbench-channel workbench))
+         (delete-w 104)
+         (new-w    (- width 28 8 delete-w)))
+    (paint-fill x y :width width :height *sidebar-footer-height* :color *paper*)
+    (paint-button stage ':new-channel "New channel"
+                  :x         (+ x 14)
+                  :y         (+ y 10)
+                  :width     new-w
+                  :height    34
+                  :mark      ':plus
+                  :mark-size 13
+                  :action    (lambda ()
+                               (sidebar--close-drawer workbench)
+                               (workbench-new-channel workbench))
+                  :tooltip   (format nil "A new channel in ~A (Ctrl+N)"
+                                     (short-directory (workbench-directory workbench))))
+    (paint-button stage ':delete-channel "Delete…"
+                  :x         (+ x 14 new-w 8)
+                  :y         (+ y 10)
+                  :width     delete-w
+                  :height    34
+                  :style     (text-style ':label-bold :color *red*)
+                  :enabled-p (and channel t)
+                  :action    (lambda ()
+                               (when channel
+                                 (sidebar-confirm-delete workbench channel)))
+                  :tooltip   "Delete the channel shown, the channels nested in it and their histories"))
   nil)
 
 (-> sidebar-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sidebar-paint (workbench stage &key x y width height)
-  "Draw the channel list in the box under its heading: the wordmark, the button that puts the list away, the way to a new channel and the field that narrows the list."
+  "Draw the channel list in the box: the wordmark with the button that puts the list away, the field that narrows it, its rows, and at its foot the buttons for a new channel and for deleting the one shown."
   (let* ((entries     (sidebar--visible-entries workbench))
-         (top         (+ y 150))
-         (bottom      (- (+ y height) 12))
+         (top         (+ y *sidebar-list-top*))
+         (bottom      (- (+ y height) *sidebar-footer-height*))
          (list-height (max 0 (- bottom top)))
          (content     (* *sidebar-row-height* (length entries)))
          (scroll      (max 0 (min (workbench-sidebar-scroll workbench) (max 0 (- content list-height))))))
     (setf (workbench-sidebar-scroll workbench) scroll)
     (paint-fill x y :width width :height height :color *paper*)
-    ;; Heading: the wordmark, the way to put the list away, and the way to a new channel.
     (paint-text "Autolith" (+ x 14) (+ y 40) :style (text-style ':title))
     (paint-button stage ':hide-sidebar ""
                   :x       (- (+ x width) 42)
@@ -255,28 +334,17 @@
                   :width   28
                   :height  28
                   :mark    ':panel
-                  :action  (lambda ()
-                             (setf (workbench-sidebar-shown-p workbench) nil)
-                             (workbench-redraw workbench))
-                  :tooltip "Hide the channels (Ctrl+T)")
-    (paint-button stage ':new-channel "New channel"
-                  :x         (+ x 14)
-                  :y         (+ y 58)
-                  :width     (- width 28)
-                  :height    34
-                  :mark      ':plus
-                  :mark-size 13
-                  :action    (lambda () (workbench-new-channel workbench))
-                  :tooltip   (format nil "A new channel in ~A" (short-directory (workbench-directory workbench))))
+                  :action  (lambda () (window-toggle-sidebar workbench))
+                  :tooltip "Hide the channels (Ctrl+S)")
     ;; The filter field is a native input laid over this frame; while an
     ;; overlay has it put away, what it holds is drawn in its place.
-    (paint-frame (+ x 14) (+ y 102) :width (- width 28) :height 34)
+    (paint-frame (+ x 14) (+ y 58) :width (- width 28) :height 34)
     (when (workbench-overlay workbench)
       (let ((filter (workbench-filter workbench)))
         (paint-text-in (if (plusp (length filter)) filter "Find a channel")
                        (text-style ':list :face (if (plusp (length filter)) ':serif ':serif-italic))
                        :x      (+ x 20)
-                       :y      (+ y 102)
+                       :y      (+ y 58)
                        :width  (- width 40)
                        :height 34)))
     (stage-region stage ':sidebar-list
@@ -295,7 +363,7 @@
             do (when (and (< row-y bottom) (> (+ row-y *sidebar-row-height*) top))
                  (ecase (getf entry :kind)
                    (:inbox
-                    (sidebar--paint-inbox workbench stage entry :x x :y row-y :width width))
+                    (sidebar--paint-home workbench stage entry :x x :y row-y :width width))
                    (:workspace
                     (sidebar--paint-workspace workbench stage entry :x x :y row-y :width width))
                    (:channel
@@ -307,5 +375,6 @@
                        :x      (+ x 14)
                        :y      top
                        :width  (- width 28)
-                       :height 40))))
+                       :height 40)))
+    (sidebar--paint-footer workbench stage :x x :y bottom :width width))
   nil)

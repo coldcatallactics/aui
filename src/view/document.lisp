@@ -185,6 +185,17 @@ showed."
       (funcall (document-load-earlier document))))
   nil)
 
+(-> document-scroll-to-entry (document entry) null)
+(defun document-scroll-to-entry (document entry)
+  "Scroll DOCUMENT so that ENTRY stands at the top of the view. The view follows the newest entry again only when that leaves it at the bottom."
+  (let ((item (find entry (document--items document) :key #'item-entry)))
+    (when item
+      (let* ((maximum (document--maximum-scroll document))
+             (target  (max 0 (min maximum (- (item-top item) 12)))))
+        (setf (document-scroll document)      target
+              (document-following-p document) (>= target maximum)))))
+  nil)
+
 (-> document-scroll-to-end (document) null)
 (defun document-scroll-to-end (document)
   "Show DOCUMENT's newest entry and keep following it."

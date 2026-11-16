@@ -402,33 +402,56 @@ beneath it."
 
 (-> approval-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun approval-paint (workbench stage &key x y width height)
-  "Draw the approval card: a window titled with what is asked, the request in the typewriter face, and the choices as a numbered list, what each means beside it.
+  "Draw the approval card: what is asked in a title bar, the request in the typewriter face, and the choices as a numbered list, what each means beside it.
 
+The card is the one thing in the window set in paper on ink, so that a
+question waiting for the person is not taken for part of the conversation.
 A choice is taken with its number or a click."
   (let* ((approval (workbench-approval workbench))
          (options  (getf approval :options))
          (box-h    (- height *shadow-offset* 10))
-         (bar      (paint-window-frame x y
-                                       :width  width
-                                       :height box-h
-                                       :title  (format nil "Approve: ~A" (or (getf approval :title) "request"))))
+         (bar      28)
          (entry    (make-paragraph (list (make-span (or (getf approval :entry) "") nil))
                                    :style (text-style ':code) :wrap ':anywhere))
-         (bold     (text-style ':label-bold))
-         (meta     (text-style ':meta))
          (rows-y   (- (+ y box-h) 8 (* *approval-row-height* (length options))))
          (label-w  (loop for option in options
-                         maximize (text-width (approval--label option) bold)))
+                         maximize (text-width (approval--label option) (text-style ':label-bold))))
          (detail-x (+ x 14 30 label-w 22))
          ;; A card too narrow for both columns keeps the choices; what each
          ;; means is then in its tooltip.
          (detail-p (> (- (+ x width) detail-x 14) 220)))
     (paragraph-layout entry (- width 44))
-    (lightfast:with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
-      (paragraph-paint entry (+ x 22) (+ y bar 12)))
+    (paint-dither (+ x *shadow-offset*) (+ y box-h) :width width :height *shadow-offset*)
+    (paint-dither (+ x width) (+ y *shadow-offset*) :width *shadow-offset* :height (- box-h *shadow-offset*))
+    (stage-region stage ':approval-card :x x :y y :width width :height box-h :cursor ':default)
+    (with-inversion (x y width box-h)
+      (with-inversion ((+ x 3) (+ y 3) (- width 6) (- bar 3))
+        (paint-text-in (format nil "Approve: ~A" (or (getf approval :title) "request")) (text-style ':label-bold)
+                       :x      (+ x 10)
+                       :y      (+ y 3)
+                       :width  (- width 20)
+                       :height (- bar 3)))
+      (lightfast:with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
+        (paragraph-paint entry (+ x 22) (+ y bar 12)))
+      (approval--paint-choices workbench stage options
+                               :x        x
+                               :y        rows-y
+                               :width    width
+                               :label-w  label-w
+                               :detail-x (and detail-p detail-x))))
+  nil)
+
+(-> approval--paint-choices
+    (workbench stage list
+               &key (:x integer) (:y integer) (:width integer) (:label-w integer) (:detail-x (or null integer)))
+    null)
+(defun approval--paint-choices (workbench stage options &key x y width label-w detail-x)
+  "Draw the choices OPTIONS of the approval card from Y down, one to a row: its number, its label LABEL-W wide, and from DETAIL-X what it means, when there is room for that."
+  (let ((bold (text-style ':label-bold))
+        (meta (text-style ':meta)))
     (loop for option in options
           for index from 0
-          for row-y from rows-y by *approval-row-height*
+          for top from y by *approval-row-height*
           do (let* ((choice (getf option :value))
                     (region (list ':approval choice))
                     (deny-p (equal choice "deny"))
@@ -447,20 +470,20 @@ A choice is taken with its number or a click."
                                        :width  label-w
                                        :height *approval-row-height*
                                        :color  (and deny-p *red*))
-                        (when detail-p
+                        (when detail-x
                           (paint-text-in (approval--sentence (or (getf option :description) "")) meta
                                          :x      detail-x
                                          :y      top
                                          :width  (max 0 (- (+ x width) detail-x 14))
                                          :height *approval-row-height*))))
                  (if hot-p
-                     (with-inversion ((1+ x) top (- width 2) *approval-row-height*)
+                     (with-inversion ((+ x 3) top (- width 6) *approval-row-height*)
                        (content))
                      (content)))
                (stage-region stage region
-                             :x       (1+ x)
+                             :x       (+ x 3)
                              :y       top
-                             :width   (- width 2)
+                             :width   (- width 6)
                              :height  *approval-row-height*
                              :action  (lambda () (workbench-answer workbench choice))
                              :tooltip (getf option :description)))))

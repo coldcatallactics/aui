@@ -475,11 +475,11 @@
          t)))
 
 (defparameter *interface-commands*
-  '("settings" "model" "effort" "permissions" "open" "new" "agenda" "memories")
+  '("settings" "model" "effort" "permissions" "open" "new" "delete" "agenda" "memories")
   "Commands that, given no argument, open a picker or a page in the terminal and a view of its own in the window.")
 
 (defparameter *terminal-only-commands*
-  '("onboard" "quit" "exit" "detach" "rollback" "auth" "complain" "wtf")
+  '("onboard" "close" "exit" "detach" "rollback" "auth" "complain" "wtf")
   "Commands that need a terminal and have no counterpart in the window yet; they are not offered.")
 
 (-> command-text-name (string) (values (or null string) boolean))
@@ -527,6 +527,10 @@ name is NIL when TEXT is neither."
      t)
     ((equal name "new")
      (workbench-new-channel workbench)
+     t)
+    ((equal name "delete")
+     (when (workbench-channel workbench)
+       (sidebar-confirm-delete workbench (workbench-channel workbench)))
      t)
     (t
      nil)))

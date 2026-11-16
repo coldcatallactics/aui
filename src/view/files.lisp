@@ -6,8 +6,9 @@
 ;;; agent named. A link to a page goes to the browser. A link to a file of
 ;;; this machine is found from the folder the channel works in, whatever form
 ;;; the agent gave it (a file URL, a path, a path with a line number after
-;;; it), and handed to the program the system opens such a file with. The
-;;; list gathers every such file an answer links or names in code.
+;;; it), and handed to the program the system opens such a file with. What
+;;; an answer may name as a file is read here too; the digest gathers those
+;;; names into the list of files a conversation touched.
 
 ;;;; -- What a Link Names --
 
@@ -71,10 +72,11 @@
 (defun link--candidates (link)
   "Return the paths LINK may mean, the most literal first.
 
-A file URL loses its scheme and host. After the path as written come the
-path without a fragment and the path without a line number, since an agent
-often points into a file, and then the same with percent signs read, as a
-link spells a space."
+A file URL loses its scheme and host, and so does the workspace URI
+Autolith's tools name a file by. After the path as written come the path
+without a fragment and the path without a line number, since an agent often
+points into a file, and then the same with percent signs read, as a link
+spells a space."
   (let* ((path  (cond
                   ((uiop:string-prefix-p "file://localhost/" link)
                    (subseq link 16))
@@ -82,6 +84,8 @@ link spells a space."
                    (subseq link 7))
                   ((uiop:string-prefix-p "file:" link)
                    (subseq link 5))
+                  ((uiop:string-prefix-p "workspace:" link)
+                   (subseq link 10))
                   (t
                    link)))
          (hash  (position #\# path))
@@ -194,36 +198,3 @@ above the composer."
                                (null (position #\Space words)))
                           (push words names))))))))
     (nreverse names)))
-
-(-> files-linked (workbench) list)
-(defun files-linked (workbench)
-  "Return the files of this machine that the agent's answers in the conversation shown link or name, the one named last first, each once, as pathnames."
-  (let ((directory (workbench-directory workbench))
-        (files     nil))
-    (loop for entry across (transcript-entries (workbench-transcript workbench))
-          do (when (typep entry 'assistant-entry)
-               (dolist (name (files--named (assistant-entry-text entry)))
-                 (let ((file (link-file name directory)))
-                   (when (and file (pathname-name file))
-                     (setf files (cons file (remove file files :test #'equal))))))))
-    files))
-
-(-> files-show (workbench) null)
-(defun files-show (workbench)
-  "Offer the files the agent linked or named in the conversation shown; the one chosen is opened."
-  (let ((files (files-linked workbench)))
-    (if (null files)
-        (workbench-show-panel workbench "Files"
-                              (panel--empty "The agent has linked no file of this machine in this conversation yet."))
-        (workbench-pick workbench
-                        (mapcar (lambda (file)
-                                  (make-choice :label  (file-namestring file)
-                                               :detail (short-directory
-                                                        (uiop:native-namestring
-                                                         (uiop:pathname-directory-pathname file)))
-                                               :value  (uiop:native-namestring file)))
-                                files)
-                        (lambda (name)
-                          (workbench-open-link workbench name))
-                        :title "Files")))
-  nil)

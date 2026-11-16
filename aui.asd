@@ -51,6 +51,7 @@
        (:file "document")
        (:file "workbench")
        (:file "files")
+       (:file "digest")
        (:file "overlay")
        (:file "sidebar")
        (:file "composer")

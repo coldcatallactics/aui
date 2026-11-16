@@ -200,6 +200,15 @@
     :accessor      workbench--waiting-read-at
     :type          integer
     :documentation "When the snapshot of waiting messages was last read, in internal time units.")
+   (digest
+    :initform      nil
+    :accessor      workbench--digest
+    :documentation "What was read from the conversation shown for the console: its plan, files and messages, or NIL before the first reading.")
+   (console-scroll
+    :initform      0
+    :accessor      workbench-console-scroll
+    :type          integer
+    :documentation "How far the console's sections are scrolled.")
    (console-share
     :initform      nil
     :accessor      workbench-console-share
@@ -321,6 +330,8 @@ folder."
           (workbench--waiting workbench)          nil
           (workbench--waiting-pathname workbench) nil
           (workbench--waiting-read-at workbench)  0
+          (workbench--digest workbench)           nil
+          (workbench-console-scroll workbench)    0
           (workbench-jobs workbench)          nil
           (workbench-progress workbench)      nil
           (workbench-failure workbench)       nil

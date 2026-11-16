@@ -17,6 +17,10 @@
 
 ;;;; -- A Model That Is a Script --
 
+(defparameter *mock-title*
+  "{\"title\": \"A short title\", \"agent_name\": \"bridge-builder\"}"
+  "What the mock answers when Autolith asks for a channel's title and its agent's name.")
+
 (defparameter *mock-answer*
   "## What I found
 
@@ -144,7 +148,8 @@ That is all of it.
   "Answer REQUEST on STREAM as a model would, by what the person or a tool said last.
 
 A request without tools is one of Autolith's own, a title or a
-classification, and gets a short line. A tool's result gets a closing
+classification, and gets the title and the agent's name as Autolith asks for
+them. A tool's result gets a closing
 sentence. A message that mentions a shell gets a call to the shell tool.
 Anything else gets a thought and the Markdown answer, slowly when the message
 says so."
@@ -171,7 +176,7 @@ says so."
       (mock--send-event stream (mock--chunk (autolith::json-object "role" "assistant" "content" "")))
       (cond
         ((null tools)
-         (say "A short title")
+         (say *mock-title*)
          (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
         ((equal (autolith::json-get last "role") "tool")
          (say "The command ran and printed what you see above.")
@@ -238,7 +243,7 @@ says so."
                                   "index"         0
                                   "finish_reason" "stop"
                                   "message"       (autolith::json-object "role"    "assistant"
-                                                                         "content" "A short title")))
+                                                                         "content" *mock-title*)))
                "usage"   (autolith::json-object "prompt_tokens" 10 "completion_tokens" 3 "total_tokens" 13))))))))
   nil)
 
@@ -516,6 +521,17 @@ which may happen to a person's own world."
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (search "short title" (workbench-title workbench)))))
+             (exercise-expect "the channel list names the agent as the model named it"
+                              (exercise-live--until
+                               workbench
+                               (lambda ()
+                                 (equal "bridge-builder"
+                                        (getf (find (workbench-channel workbench)
+                                                    (world-entries (workbench-world workbench))
+                                                    :key  (lambda (entry)
+                                                            (getf entry :id))
+                                                    :test #'equal)
+                                              :name)))))
              ;; The chips under the composer change the channel itself.
              (workbench-set-setting workbench "reasoning-effort" "low")
              (exercise-expect "the effort chip changes the channel's effort"

@@ -330,6 +330,17 @@ stands beside the conversation."
       ((and command-p (eql key #\o))
        (window-focus-filter workbench)
        t)
+      ;; With the channel list over the whole window, the page keys turn its pages.
+      ((and (member key '(:page-up :page-down)) (window-drawer-p workbench))
+       (let ((page (* *sidebar-row-height*
+                      (max 1 (1- (floor (- (stage-height (workbench-stage workbench))
+                                           *sidebar-list-top*
+                                           *sidebar-footer-height*)
+                                        *sidebar-row-height*))))))
+         (setf (workbench-sidebar-scroll workbench)
+               (max 0 (+ (workbench-sidebar-scroll workbench) (if (eq key ':page-up) (- page) page)))))
+       (workbench-redraw workbench)
+       t)
       ((eq key ':page-up)
        (document-scroll-by (workbench-document workbench)
                            (- (max 80 (- (fourth (document--viewport (workbench-document workbench))) 60))))

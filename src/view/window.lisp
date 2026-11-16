@@ -47,8 +47,9 @@
 
 The conversation is a column with the composer at its foot and, under the
 composer, the line that says what the agent is doing. A window wide enough
-sets the console at the right of that column: what the channel is and what
-runs for it. A narrower one puts the header above the conversation and the
+sets the console at the right of that column: what the channel is, what runs
+for it, and under that the plan, the files and the messages read from the
+conversation. A narrower one puts the header above the conversation and the
 running things above the composer. :DOCKED-P says the channel list stands
 beside the conversation, :DRAWER-P that it is shown on a window too narrow
 for that, where it takes the whole window, and :SIDE-P that the console
@@ -75,12 +76,14 @@ stands beside the conversation."
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
          (below      (+ notice-h pending-h approval-h))
-         ;; The activity takes what it needs: in the console, of the room
-         ;; under its head; stacked, a few rows above the composer.
+         ;; The activity takes what it needs: in the console, of the upper
+         ;; half of the room under its head; stacked, a few rows above the
+         ;; composer.
          (activity-h (if side-p
-                         (activity-height workbench :most (max 0 (- height *header-height* 20)))
+                         (activity-height workbench :most (max 0 (floor (- height *header-height* 20) 2)))
                          (activity-height workbench :most (+ *activity-heading-height*
                                                              (* 4 *activity-row-height*)))))
+         (console-y  (+ *header-height* 8 activity-h))
          (top        (if side-p 0 *header-height*))
          (stack-top  (- composer-y 10 below (if side-p 0 activity-h))))
     (list :docked-p   docked-p
@@ -97,6 +100,7 @@ stands beside the conversation."
           :activity   (if side-p
                           (list (+ console-x 16) (+ *header-height* 8) (- console-w 32) activity-h)
                           (list column-x stack-top column activity-h))
+          :console    (list (+ console-x 16) console-y (- console-w 32) (max 0 (- height console-y 12)))
           :completion (let ((height (completion-height workbench)))
                         (list column-x (- composer-y height 4) column height))
           :approval   (list column-x (- composer-y 10 below) column approval-h)
@@ -226,6 +230,10 @@ stands beside the conversation."
          (destructuring-bind (x y width height) (box :activity)
            (when (plusp height)
              (activity-paint workbench stage :x x :y y :width width :height height)))
+         (when side-p
+           (destructuring-bind (x y width height) (box :console)
+             (when (plusp height)
+               (console-paint workbench stage :x x :y y :width width :height height))))
          (when (workbench-approval workbench)
            (destructuring-bind (x y width height) (box :approval)
              (approval-paint workbench stage :x x :y y :width width :height height)))

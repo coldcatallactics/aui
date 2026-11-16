@@ -61,6 +61,7 @@
        (:file "catalogs")
        (:file "sheets")
        (:file "panels")
+       (:file "console")
        (:file "window")
        (:file "demo")))
      (:file "main"))))

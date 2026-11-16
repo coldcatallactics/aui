@@ -201,6 +201,21 @@
                                                                (uiop:native-namestring plan))))
                (exercise-expect "linked and named files are found from the channel's folder, each once, the last named first"
                                 (equal (list (truename file) (truename plan)) (files-linked workbench)))
+               ;; A file a tool changed says so in the console.
+               (transcript-append transcript
+                                  (make-instance 'tool-entry
+                                                 :name "resource.edit" :status ':completed
+                                                 :arguments '(("uri" . "workspace:plan.md"))))
+               (stage-resize stage 1500 900)
+               (exercise--draw workbench)
+               (exercise-expect "the console lists the files, the one a tool changed marked and first"
+                                (and (equal (list (cons (truename plan) t) (cons (truename file) nil))
+                                            (digest-files (workbench-digest workbench)))
+                                     (exercise--region workbench
+                                                       (list ':console-file
+                                                             (uiop:native-namestring (truename plan))))))
+               (stage-resize stage 1200 800)
+               (exercise--draw workbench)
                (exercise-expect "a link to a page is not taken for a file"
                                 (and (link-web-p "https://www.fltk.org")
                                      (null (link-file "https://www.fltk.org" (namestring directory)))))
@@ -208,7 +223,7 @@
                (exercise--click workbench ':open-files)
                (exercise-expect "the files button lists the files the agent linked"
                                 (and (workbench-overlay workbench)
-                                     (equal '("notes on fonts.md" "plan.md")
+                                     (equal '("plan.md" "notes on fonts.md")
                                             (mapcar #'choice-label
                                                     (overlay-choices (workbench-overlay workbench))))))
                (workbench-show-overlay workbench nil))
@@ -308,6 +323,31 @@
         (exercise-expect "dragging the console's edge makes it wider"
                          (let ((after (exercise--region workbench ':console-edge)))
                            (and before after (< (region-x after) (- before 80))))))
+      ;; Under what runs, the console holds what was read from the conversation.
+      (let ((first (find-if (lambda (entry)
+                              (typep entry 'user-entry))
+                            (transcript-entries transcript))))
+        (exercise-expect "the console names the plan and the messages"
+                         (and (exercise--region workbench '(:console-section :plan))
+                              (exercise--region workbench '(:console-section :messages))
+                              (exercise--region workbench (list ':console-message (entry-identifier first)))))
+        (document-scroll-to-end document)
+        (exercise--draw workbench)
+        (exercise--click workbench (list ':console-message (entry-identifier first)))
+        (exercise--draw workbench)
+        (exercise-expect "a click on a message shows it in the conversation"
+                         (and (not (document-following-p document))
+                              (< (document-scroll document) 40)))
+        (exercise--click workbench '(:console-section :messages))
+        (exercise--draw workbench)
+        (exercise-expect "a click on a part's name puts the part away"
+                         (and (console--closed-p ':messages)
+                              (exercise--region workbench '(:console-section :messages))
+                              (null (exercise--region workbench (list ':console-message (entry-identifier first))))))
+        (exercise--click workbench '(:console-section :messages))
+        (exercise--draw workbench)
+        (document-scroll-to-end document)
+        (exercise--draw workbench))
       (exercise-expect "what runs is listed by kind, each with its cross"
                        (and (exercise--region workbench '(:cancel-job "job-1"))
                             (exercise--region workbench '(:job "job-2"))

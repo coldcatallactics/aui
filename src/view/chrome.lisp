@@ -175,6 +175,8 @@
         (list (make-choice)
               (item "Sign in to a model provider…"
                     (lambda () (chrome--sign-in workbench)))
+              (item "Stop the world server…"
+                    (lambda () (chrome--confirm-stop-server workbench)))
               (item "Copy the channel identifier"
                     (lambda ()
                       (when (workbench-channel workbench)
@@ -185,6 +187,49 @@
        :x x
        :y y)))
   nil)
+
+(-> chrome--confirm-stop-server (workbench) null)
+(defun chrome--confirm-stop-server (workbench)
+  "Ask whether the world server is to be stopped, and stop it on a yes."
+  (workbench-pick workbench
+                  (list (make-choice :label  "Stop the server"
+                                     :detail "Work in every channel stops; the channels and their histories stay"
+                                     :value  ':stop)
+                        (make-choice :label "Keep it running"
+                                     :value ':keep))
+                  (lambda (answer)
+                    (when (eq answer ':stop)
+                      (workbench-stop-server workbench)))
+                  :title "Stop the world server?")
+  nil)
+
+(-> chrome-paint-directory
+    (workbench stage t &key (:x integer) (:y integer) (:width integer) (:height integer)) integer)
+(defun chrome-paint-directory (workbench stage identifier &key x y width height)
+  "Draw the folder the channel shown works in, cut at its start to fit WIDTH, and return the width it took.
+
+On an attached channel the folder is a region named IDENTIFIER: a click on it
+asks for another folder."
+  (let* ((meta      (text-style ':meta))
+         (text      (text-fit-tail (short-directory (workbench-directory workbench)) meta (max 0 (- width 8))))
+         (wide      (+ 8 (text-width text meta)))
+         (enabled-p (workbench-attached-p workbench))
+         (hot-p     (and enabled-p (stage-hot-p stage identifier))))
+    (flet ((content ()
+             (paint-text-in text meta :x (+ x 4) :y y :width (- wide 8) :height height)))
+      (if hot-p
+          (with-inversion (x y wide height)
+            (content))
+          (content)))
+    (when enabled-p
+      (stage-region stage identifier
+                    :x       x
+                    :y       y
+                    :width   wide
+                    :height  height
+                    :action  (lambda () (workbench-change-directory workbench))
+                    :tooltip "Change the folder this channel works in"))
+    wide))
 
 (-> header-paint
     (workbench stage &key (:x integer) (:y integer) (:width integer) (:sidebar-toggle-p boolean)

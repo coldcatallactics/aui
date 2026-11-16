@@ -168,34 +168,54 @@
              (autolith::world-server-running-p configuration))
          t)))
 
+(-> world--run-autolith (world &rest string) (values (or null integer) (or null string)))
+(defun world--run-autolith (world &rest arguments)
+  "Run the autolith command on ARGUMENTS for WORLD, and return its exit code and the last thing it said, NIL when it said nothing.
+
+The command is the launcher of the Autolith this client was built against. A
+site configuration root this start named goes to it through its environment."
+  (let ((site (autolith::config :site-config-root (world-configuration world))))
+    (multiple-value-bind (output complaint code)
+        (uiop:run-program (append (when site
+                                    (list "env" (format nil "AUTOLITH_SITE_CONFIG_ROOT=~A"
+                                                        (uiop:native-namestring site))))
+                                  (cons (installation-program) arguments))
+                          :input               nil
+                          :output              ':string
+                          :error-output        ':string
+                          :ignore-error-status t)
+      (let ((said (world--last-line (if (plusp (length (world--last-line complaint)))
+                                        complaint
+                                        output))))
+        (values code (and (plusp (length said)) said))))))
+
 (-> world-start-server (world) null)
 (defun world-start-server (world)
   "Start WORLD's server with the autolith command when none runs, and return once that command has finished.
 
-The command is the launcher of the Autolith this client was built against. It
-prepares the image and the helpers a server needs before it starts one, which
-a release needs on its first start, so the server AUI starts is the one a
-terminal would have started. A site configuration root this start named goes
-to the command through its environment. Signal a CLIENT-ERROR with what the
-command said when it fails and no server runs."
+The command prepares the image and the helpers a server needs before it
+starts one, which a release needs on its first start, so the server AUI
+starts is the one a terminal would have started. Signal a CLIENT-ERROR with
+what the command said when it fails and no server runs."
   (unless (world-served-p world)
-    (let ((site (autolith::config :site-config-root (world-configuration world))))
-      (multiple-value-bind (output complaint code)
-          (uiop:run-program (append (when site
-                                      (list "env" (format nil "AUTOLITH_SITE_CONFIG_ROOT=~A"
-                                                          (uiop:native-namestring site))))
-                                    (list (installation-program) "start"))
-                            :input               nil
-                            :output              ':string
-                            :error-output        ':string
-                            :ignore-error-status t)
-        (unless (or (eql code 0) (world-served-p world))
-          (let ((said (world--last-line (if (plusp (length (world--last-line complaint)))
-                                            complaint
-                                            output))))
-            (error 'client-error
-                   :message (format nil "The world server did not start~:[.~;: ~:*~A~]"
-                                    (and (plusp (length said)) said))))))))
+    (multiple-value-bind (code said) (world--run-autolith world "start")
+      (unless (or (eql code 0) (world-served-p world))
+        (error 'client-error
+               :message (format nil "The world server did not start~:[.~;: ~:*~A~]" said)))))
+  nil)
+
+(-> world-stop-server (world) null)
+(defun world-stop-server (world)
+  "Stop WORLD's server with the autolith command, and with it the work in every channel, and return once that command has finished.
+
+The channels and their histories stay; the next channel opened starts a
+server again. Signal a CLIENT-ERROR with what the command said when it fails
+and the server still answers."
+  (when (world--entry world)
+    (multiple-value-bind (code said) (world--run-autolith world "stop")
+      (unless (or (eql code 0) (null (world--entry world)))
+        (error 'client-error
+               :message (format nil "The world server did not stop~:[.~;: ~:*~A~]" said)))))
   nil)
 
 (-> world-request (world keyword &rest t) list)

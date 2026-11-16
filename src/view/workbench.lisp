@@ -407,6 +407,27 @@
                              :directory (namestring (uiop:ensure-directory-pathname directory)))))
   nil)
 
+(-> workbench-change-directory (workbench) null)
+(defun workbench-change-directory (workbench)
+  "Let the person choose the folder the channel shown works in, and tell the channel to work there."
+  (when (workbench-attached-p workbench)
+    (let ((directory (lightfast:choose-directory :title       "The folder this channel works in"
+                                                 :preset-path (workbench-directory workbench))))
+      (when (and directory (plusp (length directory)))
+        (workbench-submit workbench
+                          (format nil "(cwd ~S)" (namestring (uiop:ensure-directory-pathname directory)))))))
+  nil)
+
+(-> workbench-stop-server (workbench) null)
+(defun workbench-stop-server (workbench)
+  "Stop the world server, and with it the work in every channel. The channel shown closes with it; opening a channel starts a server again."
+  (unless (workbench-demo-p workbench)
+    (let ((world (workbench-world workbench)))
+      (workbench-run-aside workbench ':stop-server
+                           (lambda ()
+                             (world-stop-server world)))))
+  nil)
+
 (-> workbench-load-earlier (workbench) null)
 (defun workbench-load-earlier (workbench)
   "Fetch the page of history before the earliest entry shown."

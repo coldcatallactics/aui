@@ -120,22 +120,33 @@ Stepping past the newest returns to an empty composer."
                                 models)))
     (or usable models)))
 
+(-> composer--model-choices (workbench) list)
+(defun composer--model-choices (workbench)
+  "Return the models to choose among, each with its provider where the channel says it.
+
+They are the channel's list of models. A channel whose list did not arrive,
+as happens while one of its providers cannot be asked, still names the models
+its model setting takes, and those are offered instead."
+  (let ((current (workbench-model workbench)))
+    (or (mapcar (lambda (model)
+                  (make-choice :label     (or (portable-get model "id") "")
+                               :detail    (portable-string (portable-get model "provider"))
+                               :value     (portable-get model "id")
+                               :current-p (equal (portable-get model "id") current)))
+                (composer--offered-models workbench))
+        (mapcar (lambda (name)
+                  (make-choice :label name :value name :current-p (equal name current)))
+                (composer--setting-options workbench "model")))))
+
 (-> composer--choose-model (workbench) null)
 (defun composer--choose-model (workbench)
-  "Offer the models in a list that can be narrowed by typing, each with its provider, and select the one chosen."
-  (let ((models  (composer--offered-models workbench))
-        (current (workbench-model workbench)))
-    (if (null models)
+  "Offer the models in a list that can be narrowed by typing, and select the one chosen."
+  (let ((choices (composer--model-choices workbench)))
+    (if (null choices)
         (progn
-          (setf (workbench-notice workbench) "No model list is available from this channel yet.")
+          (setf (workbench-notice workbench) "The channel has not said yet which models it takes.")
           (workbench-redraw workbench))
-        (workbench-pick workbench
-                        (mapcar (lambda (model)
-                                  (make-choice :label     (or (portable-get model "id") "")
-                                               :detail    (portable-string (portable-get model "provider"))
-                                               :value     (portable-get model "id")
-                                               :current-p (equal (portable-get model "id") current)))
-                                models)
+        (workbench-pick workbench choices
                         (lambda (model)
                           (workbench-set-setting workbench "model" model))
                         :title "Model")))

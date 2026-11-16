@@ -91,9 +91,11 @@ plain fact. A key, a window or a list is never the subject of a verb: "Stop
 Menus, pickers, prompts and panels are overlays drawn on the stage
 (`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
 share the faces. A file chooser is the one exception. A wide window sets the
-console (title, activity, approval, composer) beside the conversation; a
-narrow one stacks them. Both come from `window--layout`, so a pane is added
-there once and appears in both. An overlay opened from another is drawn over
+console (title, activity) beside the conversation; a narrow one stacks them
+around it. The composer, what waits above it and the status line stay under
+the conversation in both, and the channel list takes the whole of a window
+too narrow to hold it beside the conversation. All of it comes from
+`window--layout`, so a pane is added there once and appears in every layout. An overlay opened from another is drawn over
 it, each dimming the one beneath. What the window itself remembers between
 runs, such as the console's width, goes through `preference` in
 `src/model/preferences.lisp`; Autolith's settings stay Autolith's.

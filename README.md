@@ -92,11 +92,11 @@ aui open ID                  # a specific channel, by identifier or a part of it
 aui open                     # no channel yet: pick one from the list
 aui --model MODEL --permissions auto
 aui -C ~/work/project        # as if started in that directory
-aui lg status                # every other sub-command runs as under autolith
+aui status                   # every other sub-command runs as under autolith
 ```
 
 If no world server is running, the first `aui` starts one with
-`autolith localgroup start`, so it is the server a terminal would start. The options for a channel (`--model`, `--provider`,
+`autolith start`, so it is the server a terminal would start. The options for a channel (`--model`, `--provider`,
 `--permissions`, `--immutable`, `--image`, `--site-config-root`) are
 Autolith's own and mean what they mean there. A start without a window
 (`--detached`, `--pristine`) and every sub-command except `open` run in
@@ -119,21 +119,37 @@ Options of AUI's own:
 A wide window has three columns:
 
 - On the left, the list of channels.
-- In the middle, the conversation and nothing else.
-- On the right, the console: the channel's title, identifier and directory,
-  how full its context is, what is running, what is waiting, an approval when
-  one is asked for, and the composer at the bottom.
+- In the middle, the conversation. Under it you write: the composer, an
+  approval when one is asked for, the messages that wait, and one line that
+  says whether the agent is working and how full its context is.
+- On the right, the console: the channel's title, identifier and folder, and
+  what is running.
 
 Drag the edge between the conversation and the console to resize the console.
-The width is remembered. In a narrow window the same things are stacked above
-and below the conversation, and the channel list is a drawer.
+The width is remembered. In a narrower window the title is above the
+conversation and what is running is above the composer. In a window too
+narrow to hold the channel list beside the conversation, the list takes the
+whole window while you look at it: pick a channel, or press Escape, to return
+to the conversation.
 
-In the channel list you see the inbox, then each workspace with its channels,
-children under their parents. A green dot means the agent is working, a ring
-means the channel is hosted and idle, a small point means nobody serves it.
-The numbers on the right count unread messages and mentions. Click a channel
-to open it. Right-click it to send it a message, stop serving it or delete
-it. Click the button next to the wordmark to hide the list.
+In the channel list you see home, then beneath it each workspace with its
+channels, children under their parents. A green dot means the agent is
+working, a ring means the channel is hosted and idle, a small point means
+nobody serves it. The numbers on the right count unread messages and
+mentions. Click a channel to open it. Right-click it to send it a message,
+stop serving it or delete it. The two buttons at the foot of the list start a
+new channel and delete the one you are looking at. Click the button next to
+the wordmark to hide the list.
+
+The folder a channel works in is shown under its title and, while the agent
+is idle, under the composer. Click it to choose another folder.
+
+An approval is the one card set in white on black, so you do not take it for
+part of the conversation. Answer it with a click or with the number of a
+choice.
+
+A message from another agent stands at the left under that agent's name. The
+button under it takes you to the channel the agent wrote from.
 
 Running things are grouped as agents, commands, evaluations and model calls.
 Click the cross on a row to cancel it. Right-click the row to copy the call
@@ -144,14 +160,18 @@ Lisp form, as in the terminal. Type either to see the commands, or `@` to see
 who you can mention. Use the chips under the text to pick the model, the
 reasoning effort and the permission mode.
 
-The three buttons in the header open the settings, the commands and the
-channel's menu. From the menu you can open the status, the plan, the agenda,
-the memories and the jobs, each in a window of its own, and sign in to a
-model provider.
+The four buttons in the header open the settings, the files, the commands and
+the channel's menu. The files are the ones the agent linked or named in its
+answers; click one to open it. From the menu you can open the status, the
+plan, the agenda, the memories and the jobs, each in a window of its own,
+sign in to a model provider, and stop the world server.
 
 Each tool call, thought and notice is one line in the conversation. Click it
-to open it. Commands, Lisp and edits are highlighted as in the terminal. Drag
-across the conversation to select text, then copy it.
+to open it. Commands, Lisp and edits are highlighted as in the terminal, and
+in Lisp the two parentheses of a pair have one color. Drag across the
+conversation to select text, then copy it. Click a link to open it: a page in
+the browser, a file in the program your system has for it. A path is looked
+up from the channel's folder.
 
 | key | action |
 |---|---|
@@ -159,7 +179,7 @@ across the conversation to select text, then copy it.
 | Shift+Enter | break the line |
 | Tab | take the highlighted completion; while the agent is working, queue a follow-up |
 | Up, Down | step through completions, or through what you sent |
-| Escape | put a list or the drawer away; otherwise stop the agent |
+| Escape | put a list away; otherwise stop the agent |
 | 1 to 9 | answer a waiting approval with that choice, when the composer is empty |
 | Ctrl+A, Ctrl+E | the start and the end of the line |
 | Ctrl+U, Ctrl+K | delete to the start and to the end of the line |
@@ -168,7 +188,7 @@ across the conversation to select text, then copy it.
 | Alt+B, Alt+F | move by words |
 | Ctrl+K | commands, when there is nothing after the caret to delete |
 | Ctrl+, | settings |
-| Ctrl+T | show or hide the channel list |
+| Ctrl+S | show or hide the channel list |
 | Ctrl+O | find a channel |
 | Ctrl+N | a new channel in this directory |
 | Page Up, Page Down | scroll the conversation |

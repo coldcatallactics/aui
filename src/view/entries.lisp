@@ -353,6 +353,18 @@ What is removed is red and what is added green, marks and text alike."
             (and status
                  (list (make-code-block status :label (if failed-p "failed" "result")))))))))
 
+(-> entries--argument-blocks (list) list)
+(defun entries--argument-blocks (arguments)
+  "Return the blocks that list ARGUMENTS, an association list of names and decoded values, one to a line; none when there are none."
+  (when arguments
+    (list (make-code-block
+           (format nil "~{~A~^~%~}"
+                   (mapcar (lambda (member)
+                             (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
+                           arguments))
+           :label         "arguments"
+           :margin-bottom 8))))
+
 (-> entries--tool-detail (tool-entry) flow-block)
 (defun entries--tool-detail (entry)
   "Return the opened detail of ENTRY's call: what it was asked, as a command, Lisp source, a diff or its arguments, and what it returned."
@@ -373,27 +385,20 @@ What is removed is red and what is added green, marks and text alike."
        :children
        (append
         (cond
+          ;; A command, and whatever else the call was given, such as the
+          ;; shell session it runs in.
           ((stringp command)
-           (list (make-code-block command
+           (cons (make-code-block command
                                   :label         "command"
                                   :spans         (code-spans command "bash")
-                                  :margin-bottom 8)))
+                                  :margin-bottom 8)
+                 (entries--argument-blocks (remove "command" arguments :key #'first :test #'equal))))
           (source
-           (append
-            (list (make-code-block source
-                                   :label         source-name
-                                   :spans         (code-spans source "lisp")
-                                   :margin-bottom 8))
-            ;; Whatever else the call was given, beside its source.
-            (let ((others (remove source-name arguments :key #'first :test #'equal)))
-              (when others
-                (list (make-code-block
-                       (format nil "~{~A~^~%~}"
-                               (mapcar (lambda (member)
-                                         (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
-                                       others))
-                       :label         "arguments"
-                       :margin-bottom 8))))))
+           (cons (make-code-block source
+                                  :label         source-name
+                                  :spans         (code-spans source "lisp")
+                                  :margin-bottom 8)
+                 (entries--argument-blocks (remove source-name arguments :key #'first :test #'equal))))
           ((or (stringp old-text) (stringp new-text))
            (let* ((path (entries--argument entry "path" "uri"))
                   (old  (if (stringp old-text) old-text ""))
@@ -403,14 +408,8 @@ What is removed is red and what is added green, marks and text alike."
                                     :spans         (or (edit-spans old new :pathname (and (stringp path) path))
                                                        (entries--diff-spans old new))
                                     :margin-bottom 8))))
-          (arguments
-           (list (make-code-block
-                  (format nil "~{~A~^~%~}"
-                          (mapcar (lambda (member)
-                                    (format nil "~A: ~A" (first member) (entries--value-text (rest member))))
-                                  arguments))
-                  :label         "arguments"
-                  :margin-bottom 8))))
+          (t
+           (entries--argument-blocks arguments)))
         (when output
           (entries--result-blocks entry output)))))))
 

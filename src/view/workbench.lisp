@@ -270,8 +270,13 @@
 
 (-> workbench-directory (workbench) string)
 (defun workbench-directory (workbench)
-  "Return the shown channel's working directory, or the launch directory before a channel is attached."
-  (or (portable-string (getf (workbench-status workbench) :cwd))
+  "Return the folder the shown channel works in, or the launch directory before a channel is attached.
+
+The channel's state, fetched after each piece of work, names the folder it
+works in now; the status it sends by itself can be older than a change of
+folder."
+  (or (portable-string (portable-get (workbench-state workbench) "workspace"))
+      (portable-string (getf (workbench-status workbench) :cwd))
       (world-working-directory (workbench-world workbench))))
 
 (-> workbench-context (workbench) (values (or null integer) (or null integer) boolean))
@@ -666,6 +671,10 @@ agent takes it up."
 (-> workbench--note-status (workbench list) null)
 (defun workbench--note-status (workbench status)
   "Take the channel's STATUS property list as its current one and derive whether it works."
+  ;; A folder that changed under the window makes the fetched state stale.
+  (let ((known (getf (workbench-status workbench) :cwd)))
+    (when (and known (not (equal known (getf status :cwd))))
+      (workbench-refresh workbench "_autolith/state")))
   (setf (workbench-status workbench) status)
   (let ((working-p (and (member (getf status :state) '(:active :working :cancelling)) t)))
     (unless (eq working-p (workbench-working-p workbench))

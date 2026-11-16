@@ -558,6 +558,15 @@ which may happen to a person's own world."
                                                   :test #'equal)))
                                    (and row (equal "auto" (portable-get row "value")))))
                                :seconds 30))
+             ;; The channel works where the person says.
+             (let ((folder (namestring (uiop:ensure-directory-pathname (format nil "~A/work/elsewhere" root)))))
+               (ensure-directories-exist folder)
+               (workbench-submit workbench (format nil "(cwd ~S)" folder))
+               (exercise-expect "a channel's folder can be changed, and the window follows"
+                                (exercise-live--until workbench
+                                                      (lambda ()
+                                                        (equal folder (workbench-directory workbench)))
+                                                      :seconds 30)))
              ;; The same channel again, from its history.
              (let ((channel (workbench-channel workbench)))
                (workbench-open workbench :channel channel)
@@ -590,9 +599,16 @@ which may happen to a person's own world."
                                                    :key  (lambda (entry)
                                                            (getf entry :id))
                                                    :test #'equal))))
-                                 :seconds 60))))
+                                 :seconds 60)))
+             ;; The world server was started for this exercise alone, and the window stops it.
+             (workbench-stop-server workbench)
+             (exercise-expect "the window stops the world server"
+                              (exercise-live--until workbench
+                                                    (lambda ()
+                                                      (not (world-served-p (workbench-world workbench))))
+                                                    :seconds 60)))
         (workbench-close workbench)
-        ;; The world server was started for this exercise alone.
+        ;; A server the exercise did not get as far as stopping is stopped here.
         (uiop:run-program (list (installation-program) "stop")
                           :ignore-error-status t))))
   *exercise-failures*)

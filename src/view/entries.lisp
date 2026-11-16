@@ -531,7 +531,15 @@ else is one section."
                                                                    (text-style ':label :face ':mono-italic))))
                                      :trailing   (and (entry-time entry) (entries--clock (entry-time entry)))
                                      :style      (text-style ':label)
-                                     :action     (and detail toggle)
+                                     ;; A notice with more to say opens; one about
+                                     ;; another channel leads there.
+                                     :action     (cond
+                                                   (detail
+                                                    toggle)
+                                                   ((and (notice-entry-channel entry) *entry-channel-opener*)
+                                                    (let ((opener  *entry-channel-opener*)
+                                                          (channel (notice-entry-channel entry)))
+                                                      (lambda () (funcall opener channel)))))
                                      :margin-top 4)))
         (if expanded-p
             (list row

@@ -122,8 +122,13 @@ A wide window has three columns:
 - In the middle, the conversation. Under it you write: the composer, an
   approval when one is asked for, the messages that wait, and one line that
   says whether the agent is working and how full its context is.
-- On the right, the console: the channel's title, identifier and folder, and
-  what is running.
+- On the right, the console: the channel's title, identifier and folder, what
+  is running, and under that three parts read from the conversation. The plan
+  is the agent's latest, with the step in hand set apart. The files are the
+  ones the agent changed, linked or named; click one to open it. The messages
+  are what was sent to the agent, as a table of contents; click one to see it
+  in the conversation. Click a part's name to put the part away or bring it
+  back.
 
 Drag the edge between the conversation and the console to resize the console.
 The width is remembered. In a narrower window the title is above the

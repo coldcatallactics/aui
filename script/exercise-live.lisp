@@ -577,7 +577,7 @@ which may happen to a person's own world."
                                  :seconds 60))))
         (workbench-close workbench)
         ;; The world server was started for this exercise alone.
-        (uiop:run-program (list (installation-program) "localgroup" "stop")
+        (uiop:run-program (list (installation-program) "stop")
                           :ignore-error-status t))))
   *exercise-failures*)
 

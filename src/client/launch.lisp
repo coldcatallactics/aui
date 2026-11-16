@@ -8,7 +8,7 @@
 ;;; Options that concern the channel (--model, --provider, --permissions,
 ;;; --immutable, --image, --site-config-root) reach the world server exactly
 ;;; as a terminal sends them. Only a start that would open a channel in a
-;;; terminal opens it in a window instead. Everything else (auth, models, lg,
+;;; terminal opens it in a window instead. Everything else (auth, models, status,
 ;;; update, data, usage, replay, an unattended or a rescue start) has no
 ;;; window, and this process becomes autolith to do it: Autolith's own image
 ;;; holds the person's private definitions and knows which of them still
@@ -141,7 +141,7 @@
   (clingon:make-command
    :name        "open"
    :description "open a channel in a window, or pick one"
-   :usage       "[ID] [--detached]"
+   :usage       "[TARGET]"
    :handler     #'identity))
 
 (-> launch-command () clingon:command)

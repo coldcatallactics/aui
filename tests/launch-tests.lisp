@@ -48,13 +48,13 @@
 (fiveam:test the-command-keeps-autolith's-sub-commands
   (let ((names (mapcar #'clingon:command-name (clingon:command-sub-commands (launch-command)))))
     (fiveam:is (member "open" names :test #'string=))
-    (fiveam:is (member "localgroup" names :test #'string=))
+    (fiveam:is (member "status" names :test #'string=))
     (fiveam:is (member "auth" names :test #'string=))
     (fiveam:is (= 1 (count "open" names :test #'string=)))))
 
 (fiveam:test what-has-no-window-is-autolith's
   (fiveam:is (launch--windowless-p (launch--read '("models"))))
-  (fiveam:is (launch--windowless-p (launch--read '("localgroup" "status"))))
+  (fiveam:is (launch--windowless-p (launch--read '("status"))))
   (fiveam:is (launch--windowless-p (launch--read '("--detached"))))
   (fiveam:is (launch--windowless-p (launch--read '("open" "--detached"))))
   (fiveam:is (launch--windowless-p (launch--read '("--pristine"))))

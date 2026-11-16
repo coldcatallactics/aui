@@ -184,7 +184,7 @@ command said when it fails and no server runs."
           (uiop:run-program (append (when site
                                       (list "env" (format nil "AUTOLITH_SITE_CONFIG_ROOT=~A"
                                                           (uiop:native-namestring site))))
-                                    (list (installation-program) "localgroup" "start"))
+                                    (list (installation-program) "start"))
                             :input               nil
                             :output              ':string
                             :error-output        ':string

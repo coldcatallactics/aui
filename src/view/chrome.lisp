@@ -231,12 +231,21 @@ asks for another folder."
                     :tooltip "Change the folder the agent works in"))
     wide))
 
+(-> chrome--agent-name (workbench) (or null string))
+(defun chrome--agent-name (workbench)
+  "Return the name the channel list gives the agent of the channel shown, the name it is mentioned by, or NIL when the list has none."
+  (let ((entry (find (workbench-channel workbench) (sidebar-entries workbench)
+                     :key  (lambda (entry)
+                             (getf entry :id))
+                     :test #'equal)))
+    (portable-string (getf entry :name))))
+
 (-> header-paint
     (workbench stage &key (:x integer) (:y integer) (:width integer) (:sidebar-toggle-p boolean)
                (:band-p boolean))
     null)
 (defun header-paint (workbench stage &key x y width sidebar-toggle-p (band-p t))
-  "Draw the header: the channel's title, under it the channel's identifier and the folder it works in, and the buttons for the settings, the linked files, the commands and the channel's menu.
+  "Draw the header: the channel's title, under it the agent's name, the channel's identifier and the folder it works in, and the buttons for the settings, the linked files, the commands and the channel's menu.
 
 BAND-P draws the band of dither that parts the header from a conversation
 beneath it."
@@ -283,7 +292,9 @@ beneath it."
       (decf right 8))
     (paint-text (text-fit (workbench-title workbench) title (- right left)) left (+ y 30) :style title)
     (let ((cursor (if (workbench-channel workbench)
-                      (paint-text (text-fit (format nil "~A · " (channel-display-name (workbench-channel workbench)))
+                      (paint-text (text-fit (format nil "~@[~A · ~]~A · "
+                                                    (chrome--agent-name workbench)
+                                                    (channel-display-name (workbench-channel workbench)))
                                             meta (- right left))
                                   left (+ y 50)
                                   :style meta)

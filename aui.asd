@@ -50,6 +50,7 @@
        (:file "entries")
        (:file "document")
        (:file "workbench")
+       (:file "files")
        (:file "overlay")
        (:file "sidebar")
        (:file "composer")

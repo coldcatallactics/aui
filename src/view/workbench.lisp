@@ -822,6 +822,14 @@ where, followed by what this window sent that the snapshot does not show yet."
        (unless ok-p
          (setf (workbench-notice workbench)
                (or (result-event-report event) "The channel could not be deleted."))))
+      ((eq request ':stop-server)
+       (unless ok-p
+         (setf (workbench-notice workbench)
+               (or (result-event-report event) "The world server did not stop."))))
+      ((and (consp request) (eq (first request) ':open-link))
+       (unless ok-p
+         (setf (workbench-notice workbench)
+               (format nil "No program on this machine opened ~A." (second request)))))
       ((and (consp request) (eq (first request) ':sign-in))
        (workbench-show-panel
         workbench (format nil "Sign in to ~A" (second request))

@@ -97,13 +97,14 @@
                           :tooltip (and (stringp link) link)))))))
   nil)
 
+(defvar *link-handler* nil
+  "Called with a link's target when the link is clicked. The window sets it; without one a click on a link does nothing.")
+
 (-> open-link (string) null)
-(defun open-link (url)
-  "Open URL in the person's browser."
-  (handler-case
-      (uiop:launch-program (list (if (uiop:os-macosx-p) "open" "xdg-open") url))
-    (error ()
-      nil))
+(defun open-link (link)
+  "Open what LINK leads to, the way the window was told to."
+  (when *link-handler*
+    (funcall *link-handler* link))
   nil)
 
 

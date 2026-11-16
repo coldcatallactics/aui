@@ -60,6 +60,44 @@ a label the mark sits on the middle of the label's letters, not of the box."
       (stage-region stage identifier :x x :y y :width width :height height :action action :tooltip tooltip)))
   nil)
 
+(defclass button-block (flow-block)
+  ((identifier
+    :initarg       :identifier
+    :reader        button-block-identifier
+    :documentation "Names the button's region.")
+   (label
+    :initarg       :label
+    :reader        button-block-label
+    :type          string
+    :documentation "The words on the button.")
+   (action
+    :initarg       :action
+    :reader        button-block-action
+    :type          function
+    :documentation "Called when the button is clicked."))
+  (:documentation "A button standing in the flow of a conversation, as wide as its words."))
+
+(defmethod block-layout ((block button-block) width)
+  "A button is one row high whatever the width."
+  (declare (ignore width))
+  30)
+
+(defmethod block-paint ((block button-block) x y)
+  "Draw the button at the block's left edge, as wide as its label needs."
+  (when *paint-stage*
+    (let ((label (button-block-label block)))
+      (paint-button *paint-stage* (button-block-identifier block) label
+                    :x      x
+                    :y      y
+                    :width  (min (block-width block) (+ 28 (text-width label (text-style ':label-bold))))
+                    :height (block-height block)
+                    :action (button-block-action block))))
+  nil)
+
+(defmethod block-leaves ((block button-block))
+  "A button holds no text to select."
+  nil)
+
 (-> chip-width (string &key (:menu-p boolean)) integer)
 (defun chip-width (label &key menu-p)
   "Return the width a chip showing LABEL takes."

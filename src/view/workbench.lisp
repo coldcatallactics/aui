@@ -750,6 +750,7 @@ where, followed by what this window sent that the snapshot does not show yet."
        (let ((projector (workbench-projector workbench)))
          (setf (workbench-attachment workbench)   ':attached
                (workbench-progress workbench)     nil
+               (projector-channel projector)      (ui-event-channel event)
                (projector-boundary projector)     (or (getf detail :record-sequence) 0)
                (projector-image-root projector)   (getf detail :image-root)
                ;; A request under way at attachment is shown from its records.

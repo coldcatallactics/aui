@@ -76,6 +76,10 @@
                                ("plan" . ((("step" . "Make the Makefile portable") ("status" . "completed"))
                                           (("step" . "Guard the fontconfig code") ("status" . "in_progress"))
                                           (("step" . "Run the checks on a Mac") ("status" . "pending"))))))
+   (make-instance 'user-entry
+                  :sender "review"
+                  :origin "C4puSYz"
+                  :text   "The Makefile reads well. One thing: `fltk-config --ldflags` already names the frameworks, so the line that adds them again can go.")
    (make-instance 'user-entry :text "Thanks. Run the checks on a Mac next.")
    (make-instance 'tool-entry
                   :call-identifier "demo-4" :name "shell.run" :status ':running

@@ -50,7 +50,12 @@
     :initform      nil
     :accessor      projector-invocation
     :type          (or null string)
-    :documentation "The command the person just sent, which the output that follows is labelled with, or NIL."))
+    :documentation "The command the person just sent, which the output that follows is labelled with, or NIL.")
+   (channel
+    :initform      nil
+    :accessor      projector-channel
+    :type          (or null string)
+    :documentation "The identifier of the channel whose records these are, once known."))
   (:documentation "The state that turns one channel's records and events into its transcript."))
 
 (-> make-projector (transcript &key (:image-root (or null pathname))) projector)
@@ -147,9 +152,12 @@ holding the text, so a malformed call still shows what was asked."
                                    (getf completion :job-id))
                    :detail (and (stringp summary) (plusp (length summary)) summary))))
 
-(-> record--request-entry (list (or null integer)) entry)
-(defun record--request-entry (request time)
-  "Return the entry for an operation REQUEST that started a turn: a channel message, or a notice naming the operation."
+(-> record--request-entry (list (or null integer) (or null string)) entry)
+(defun record--request-entry (request time channel)
+  "Return the entry for an operation REQUEST that started a turn: a channel message, or a notice naming the operation.
+
+A message keeps the channel its sender wrote from, unless that is CHANNEL,
+the one the request arrived in."
   (let ((message (getf request :message)))
     (cond
       ((and message (member (getf message :kind) '(:mention :subscription)))
@@ -164,7 +172,8 @@ holding the text, so a malformed call still shows what was asked."
                       :time   time
                       :text   (or (getf message :text) (getf request :summary) "")
                       :sender (or (getf message :sender-name) "participant")
-                      :origin (getf message :target)))
+                      :origin (let ((origin (or (getf message :source) (getf message :target))))
+                                (and (stringp origin) (not (equal origin channel)) origin))))
       (t
        (make-instance 'notice-entry
                       :time   time
@@ -193,7 +202,7 @@ holding the text, so a malformed call still shows what was asked."
         ((getf properties :job-completion)
          (record--job-notice (getf properties :job-completion) time))
         ((getf properties :operation-request)
-         (record--request-entry (getf properties :operation-request) time))
+         (record--request-entry (getf properties :operation-request) time (projector-channel projector)))
         ((getf properties :automatic-p)
          (make-instance 'notice-entry
                         :time time

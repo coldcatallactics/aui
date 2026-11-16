@@ -89,37 +89,62 @@
 
 ;;;; -- Messages --
 
+(defvar *entry-channel-opener* nil
+  "Called with a channel's identifier to show that channel. The window sets it; without one a message does not lead to the channel it came from.")
+
+(-> entries--message-body (user-entry) list)
+(defun entries--message-body (entry)
+  "Return the blocks of what ENTRY's message holds: its images, then its text, which is Markdown whose line breaks are meant."
+  (let ((text (user-entry-text entry)))
+    (append
+     (mapcar (lambda (pathname)
+               (make-instance 'image-block :pathname pathname :margin-bottom 8))
+             (user-entry-images entry))
+     (when (plusp (length text))
+       (let ((blocks (prose-blocks text :breaks-p t)))
+         (when blocks
+           (setf (block-margin-top (first blocks))           0
+                 (block-margin-bottom (first (last blocks))) 0))
+         blocks)))))
+
+(-> entries--participant-blocks (user-entry list) list)
+(defun entries--participant-blocks (entry body)
+  "Return the blocks of a message from another participant: its name in large letters, BODY, and a button that leads to the channel it wrote from."
+  (let ((origin (user-entry-origin entry))
+        (opener *entry-channel-opener*)
+        (name   (text-style ':heading-2)))
+    (list (make-instance
+           'box-block
+           :children      (append
+                           (list (make-text-block (spans (list (user-entry-sender entry) name))
+                                                  :style name :margin-bottom 4))
+                           body
+                           (when (and origin opener)
+                             (list (make-instance 'button-block
+                                                  :identifier (list ':entry-channel (entry-identifier entry))
+                                                  :label      (format nil "Go to ~A" (channel-display-name origin))
+                                                  :action     (lambda () (funcall opener origin))
+                                                  :margin-top 10))))
+           :frame-p       nil
+           :padding-x     0
+           :padding-y     0
+           :margin-top    22
+           :margin-bottom 22))))
+
 (defmethod entry-blocks ((entry user-entry) toggle)
-  "The person's message in a framed box at the right; a message from elsewhere says who sent it."
+  "The person's message in a framed box at the right, as in any chat. A message from another participant stands at the left without a frame, under its name."
   (declare (ignore toggle))
-  (let* ((sender (user-entry-sender entry))
-         (text   (user-entry-text entry))
-         (body   (append
-                  (when sender
-                    (list (make-text-block
-                           (spans (list (format nil "~A~@[ in ~A~]" sender
-                                                (and (user-entry-origin entry)
-                                                     (channel-display-name (user-entry-origin entry))))
-                                        (text-style ':meta-bold)))
-                           :style (text-style ':meta-bold) :margin-bottom 4)))
-                  (mapcar (lambda (pathname)
-                            (make-instance 'image-block :pathname pathname :margin-bottom 8))
-                          (user-entry-images entry))
-                  ;; What a person typed is Markdown too, and its line breaks are meant.
-                  (when (plusp (length text))
-                    (let ((blocks (prose-blocks text :breaks-p t)))
-                      (when blocks
-                        (setf (block-margin-top (first blocks))           0
-                              (block-margin-bottom (first (last blocks))) 0))
-                      blocks)))))
-    (list (make-instance 'box-block
-                         :children      (or body (list (make-text-block (list (make-span "" nil)))))
-                         :align         (if sender ':left ':right)
-                         :fraction      85/100
-                         :padding-x     16
-                         :padding-y     10
-                         :margin-top    22
-                         :margin-bottom 22))))
+  (let ((body (entries--message-body entry)))
+    (if (user-entry-sender entry)
+        (entries--participant-blocks entry body)
+        (list (make-instance 'box-block
+                             :children      (or body (list (make-text-block (list (make-span "" nil)))))
+                             :align         ':right
+                             :fraction      85/100
+                             :padding-x     16
+                             :padding-y     10
+                             :margin-top    22
+                             :margin-bottom 22)))))
 
 (defmethod entry-blocks ((entry assistant-entry) toggle)
   "The agent's answer as prose."

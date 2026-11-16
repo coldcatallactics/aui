@@ -247,3 +247,66 @@
     (let ((notice (first (coerce (transcript-entries transcript) 'list))))
       (fiveam:is (string= "2 relevant memories exist" (notice-entry-text notice)))
       (fiveam:is (string= (format nil "(memory \"w-1\")~%(memory \"Q-2\")") (notice-entry-detail notice))))))
+
+(fiveam:test schema-lookups-that-follow-one-another-are-one-entry
+  (let* ((projector (make-projector (make-transcript)))
+         (entries   (records->entries
+                     projector
+                     (list (list :message :seq 1 :time 4000000000 :role :user :content "Look around.")
+                           (test-item-record 2 "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"shell\"}]}")
+                           (test-item-record 3 "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"lisp\"},{\"type\":\"namespace\",\"name\":\"shell\"}]}")
+                           (test-item-record 4 "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Looked.\"}]}")
+                           (test-item-record 5 "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"plan\"}]}")))))
+    (fiveam:is (equal '(user-entry schemas-entry assistant-entry schemas-entry) (mapcar #'type-of entries)))
+    (fiveam:is (equal '("shell" "lisp") (schemas-entry-names (second entries))))
+    (fiveam:is (equal '("plan") (schemas-entry-names (fourth entries))))))
+
+(fiveam:test a-live-schema-lookup-is-taken-from-its-record
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector (list ':status :status ':provider-request-started))
+    (dolist (name '("shell" "lisp"))
+      (projector-apply projector
+                       (list ':record
+                             :record (test-item-record 9 (format nil "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"~A\"}]}" name)))))
+    ;; An answer's own record is still left to its events.
+    (projector-apply projector
+                     (list ':record
+                           :record (test-item-record 10 "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Done.\"}]}")))
+    (let ((entries (coerce (transcript-entries transcript) 'list)))
+      (fiveam:is (equal '(schemas-entry) (mapcar #'type-of entries)))
+      (fiveam:is (equal '("shell" "lisp") (schemas-entry-names (first entries)))))))
+
+(fiveam:test a-message-from-another-channel-keeps-where-it-was-written
+  (flet ((message (source)
+           (list :message :seq 1 :time 4000000000 :role :user :content "x"
+                          :operation-request (list :operation "channel"
+                                                   :summary   "The Makefile reads well."
+                                                   :message   (list :sender-name "review"
+                                                                    :source      source
+                                                                    :target      "B2Qweni"
+                                                                    :kind        ':direct)))))
+    (let ((projector (make-projector (make-transcript))))
+      (setf (projector-channel projector) "B2Qweni")
+      (let ((from-child (first (records->entries projector (list (message "C4puSYz")))))
+            (from-here  (first (records->entries projector (list (message "B2Qweni"))))))
+        (fiveam:is (string= "review" (user-entry-sender from-child)))
+        (fiveam:is (string= "The Makefile reads well." (user-entry-text from-child)))
+        (fiveam:is (equal "C4puSYz" (user-entry-origin from-child)))
+        (fiveam:is (null (user-entry-origin from-here)))))))
+
+(fiveam:test parentheses-take-the-role-of-their-depth
+  (fiveam:is (equal '((:syntax-parenthesis-1 . "(")
+                      (:plain . "a ")
+                      (:syntax-parenthesis-2 . "(")
+                      (:syntax-string . "\"(\"")
+                      (:syntax-parenthesis-2 . ")")
+                      (:syntax-parenthesis-1 . ")"))
+                    (highlight--nest '((:plain . "(a (") (:syntax-string . "\"(\"") (:plain . "))"))
+                                     "(a (\"(\"))")))
+  ;; Parts that do not spell the source are left alone.
+  (fiveam:is (equal '((:plain . "(a)"))
+                    (highlight--nest '((:plain . "(a)")) "(a) ")))
+  (fiveam:is (highlight--lisp-p "lisp" nil))
+  (fiveam:is (highlight--lisp-p nil "src/view/window.lisp"))
+  (fiveam:is (not (highlight--lisp-p "bash" "src/view/window.lisp"))))

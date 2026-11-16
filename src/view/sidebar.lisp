@@ -106,15 +106,24 @@
 
 (-> sidebar--open (workbench string) null)
 (defun sidebar--open (workbench identifier)
-  "Show the channel IDENTIFIER, chosen in the list."
+  "Show the channel IDENTIFIER, chosen in the list, and give the keyboard to the composer."
   (sidebar--close-drawer workbench)
-  (if (equal identifier (workbench-channel workbench))
-      (progn
-        (window-arrange workbench)
-        (window-focus-composer workbench)
-        (workbench-redraw workbench))
-      (workbench-open workbench :channel identifier))
+  (unless (equal identifier (workbench-channel workbench))
+    (workbench-open workbench :channel identifier))
+  (window-arrange workbench)
+  (window-focus-composer workbench)
+  (workbench-redraw workbench)
   nil)
+
+(-> sidebar--home-p (workbench (or null string)) boolean)
+(defun sidebar--home-p (workbench identifier)
+  "Return T when IDENTIFIER names home, the channel every other one stands beneath, which is never deleted."
+  (and identifier
+       (find-if (lambda (entry)
+                  (and (eq (getf entry :kind) ':inbox)
+                       (equal (getf entry :id) identifier)))
+                (sidebar-entries workbench))
+       t))
 
 (-> sidebar--channel-menu (workbench list) null)
 (defun sidebar--channel-menu (workbench entry)
@@ -300,7 +309,9 @@
                   :mark-size 13
                   :action    (lambda ()
                                (sidebar--close-drawer workbench)
-                               (workbench-new-channel workbench))
+                               (workbench-new-channel workbench)
+                               (window-arrange workbench)
+                               (window-focus-composer workbench))
                   :tooltip   (format nil "A new channel in ~A (Ctrl+N)"
                                      (short-directory (workbench-directory workbench))))
     (paint-button stage ':delete-channel "Delete…"
@@ -309,10 +320,9 @@
                   :width     delete-w
                   :height    34
                   :style     (text-style ':label-bold :color *red*)
-                  :enabled-p (and channel t)
+                  :enabled-p (and channel (not (sidebar--home-p workbench channel)))
                   :action    (lambda ()
-                               (when channel
-                                 (sidebar-confirm-delete workbench channel)))
+                               (sidebar-confirm-delete workbench channel))
                   :tooltip   "Delete the channel shown, the channels nested in it and their histories"))
   nil)
 

@@ -549,9 +549,7 @@ stands beside the conversation."
                            (when first
                              (setf (lightfast:value filter)     ""
                                    (workbench-filter workbench) "")
-                             (sidebar--open workbench (getf first :id))
-                             (window-arrange workbench)
-                             (window-focus-composer workbench)))
+                             (sidebar--open workbench (getf first :id))))
                          (lightfast:consume-event))
                         ((window--shortcut workbench key-event)
                          (lightfast:consume-event)))))

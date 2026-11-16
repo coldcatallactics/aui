@@ -163,9 +163,23 @@ reports them, not the moment before it answered."
             (round (- (get-internal-real-time) started) internal-time-units-per-second)))
   nil)
 
+(defparameter *nursery-megabytes* 8
+  "How much the process allocates between two collections of garbage.
+
+SBCL's own measure is a twentieth of the heap it may grow to, some two
+hundred megabytes here, and what a window allocates is short-lived: left to
+that measure it would hold all of it as garbage until the first collection.")
+
+(-> main--keep-small () null)
+(defun main--keep-small ()
+  "Have garbage collected often, so that the process holds little more than what it uses."
+  (setf (sb-ext:bytes-consed-between-gcs) (* *nursery-megabytes* 1024 1024))
+  nil)
+
 (-> main (&optional list) null)
 (defun main (&optional (arguments (uiop:command-line-arguments)))
   "Run aui with the command line ARGUMENTS and exit the process when the window closes."
+  (main--keep-small)
   (let ((status 0))
     (handler-case
         (let ((launch (launch-parse arguments)))

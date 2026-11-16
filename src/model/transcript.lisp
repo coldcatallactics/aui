@@ -183,6 +183,15 @@
     :documentation "The command or form whose output this is, when it is one."))
   (:documentation "What a command or a local Lisp form printed."))
 
+(defclass schemas-entry (entry)
+  ((names
+    :initarg       :names
+    :initform      nil
+    :accessor      schemas-entry-names
+    :type          list
+    :documentation "The names of the groups of tools, in the order the agent first looked each up."))
+  (:documentation "The agent looked up how groups of its tools are called. Lookups that follow one another are one entry."))
+
 (defclass marker-entry (entry)
   ((label
     :initarg       :label

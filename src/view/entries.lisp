@@ -550,6 +550,21 @@ else is one section."
                                  :margin-bottom 8))
             (list row))))))
 
+(defmethod entry-blocks ((entry schemas-entry) toggle)
+  "A quiet line naming the groups of tools the agent looked up."
+  (declare (ignore toggle))
+  (list (make-instance 'row-block
+                       :identifier (list ':entry (entry-identifier entry))
+                       :mark       ':point
+                       :title      (cons (make-span "Tool schemas  " (text-style ':label))
+                                         (loop for name in (schemas-entry-names entry)
+                                               for first-p = t then nil
+                                               unless first-p
+                                                 collect (make-span ", " (text-style ':label))
+                                               collect (make-span name (text-style ':label :color *blue*))))
+                       :style      (text-style ':label)
+                       :margin-top 4)))
+
 (defmethod entry-blocks ((entry output-entry) toggle)
   "What a command printed, in the typewriter face under the form that printed it."
   (declare (ignore toggle))

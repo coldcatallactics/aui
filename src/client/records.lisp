@@ -234,6 +234,9 @@ the one the request arrived in."
                             :call-identifier (autolith::json-get item "call_id")
                             :name            (or (autolith::function-call-canonical-name item) "tool")
                             :arguments       (json-arguments (autolith::json-get item "arguments"))))
+            ((equal type "tool_search_output")
+             (let ((names (autolith::application--tool-search-namespaces item)))
+               (and names (make-instance 'schemas-entry :time time :names names))))
             ((equal type "web_search_call")
              (make-instance 'tool-entry
                             :time      time
@@ -244,6 +247,27 @@ the one the request arrived in."
              nil)))
       (error ()
         nil))))
+
+(-> record--schemas-p (list) boolean)
+(defun record--schemas-p (record)
+  "Return T when RECORD is the provider item that reports a lookup of tool schemas, which no live event carries."
+  (let ((wire-json (getf (rest record) :wire-json)))
+    (and (eq (first record) ':provider-item)
+         (stringp wire-json)
+         (search "tool_search_output" wire-json)
+         t)))
+
+(-> record--join-schemas (entry (or null entry)) boolean)
+(defun record--join-schemas (entry previous)
+  "Add the names of the schema lookup ENTRY to PREVIOUS when both are lookups, and return whether that was done.
+
+Lookups that follow one another read as one, as in the terminal."
+  (when (and (typep entry 'schemas-entry) (typep previous 'schemas-entry))
+    (setf (schemas-entry-names previous)
+          (remove-duplicates (append (schemas-entry-names previous) (schemas-entry-names entry))
+                             :test     #'string=
+                             :from-end t))
+    t))
 
 (-> record--seconds (list) (or null real))
 (defun record--seconds (properties)
@@ -368,7 +392,7 @@ transcript yet, so the page is self-contained."
                                                  (and output (princ-to-string output)))
                     (tool-entry-seconds entry) (record--seconds properties))))
           (let ((entry (record->entry projector record)))
-            (when entry
+            (when (and entry (not (record--join-schemas entry (first entries))))
               (when (and (typep entry 'tool-entry) (tool-entry-call-identifier entry))
                 (setf (gethash (tool-entry-call-identifier entry) calls) entry))
               (push entry entries)))))
@@ -613,11 +637,20 @@ its output; that line becomes the entry's invocation."
   (let ((sequence (record-sequence record)))
     (when (or (null sequence) (> sequence (projector-boundary projector)))
       (when (or (projector-catch-up-p projector)
-                (not (member (first record) '(:provider-item :tool-result))))
-        (let ((entry (record->entry projector record)))
-          (when entry
-            (projector--close-stream projector)
-            (projector--append projector entry))))))
+                (not (member (first record) '(:provider-item :tool-result)))
+                (record--schemas-p record))
+        (let* ((entry      (record->entry projector record))
+               (transcript (projector-transcript projector))
+               (count      (transcript-length transcript))
+               (last       (and (plusp count) (transcript-entry transcript (1- count)))))
+          (cond
+            ((null entry)
+             nil)
+            ((record--join-schemas entry last)
+             (transcript-touch transcript last))
+            (t
+             (projector--close-stream projector)
+             (projector--append projector entry)))))))
   nil)
 
 (-> projector-apply (projector list) null)

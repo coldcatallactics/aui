@@ -156,6 +156,17 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
      (text-style ':code :color *green*))
     ((:elision :prompt)
      (text-style ':code :face ':mono-italic))
+    ;; Parentheses by depth: the outermost in ink, then each accent in turn.
+    (:syntax-parenthesis-2
+     (text-style ':code :color *blue*))
+    (:syntax-parenthesis-3
+     (text-style ':code :color *plum*))
+    (:syntax-parenthesis-4
+     (text-style ':code :color *green*))
+    (:syntax-parenthesis-5
+     (text-style ':code :color *amber*))
+    (:syntax-parenthesis-6
+     (text-style ':code :color *red*))
     (otherwise
      nil)))
 

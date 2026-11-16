@@ -76,7 +76,7 @@
                                                                   (("step" . "Check it") ("status" . "in_progress"))))))
                            (make-instance 'assistant-entry :text "The `Makefile` is fixed; `make` builds it.")))
         (transcript-append transcript entry))
-      (let ((digest (make-digest :transcript transcript :directory directory)))
+      (let ((digest (digest-create transcript directory)))
         (digest--read digest)
         ;; The plan is its latest update.
         (fiveam:is (equal '(2 3) (multiple-value-list (digest-plan-progress digest))))
@@ -84,8 +84,21 @@
         (fiveam:is (equal '(("Makefile" . t) ("notes.md" . nil) ("src/window.lisp" . nil))
                           (loop for (file . changed-p) in (digest-files digest)
                                 collect (cons (enough-namestring file (truename directory)) changed-p))))
-        (fiveam:is (equal "src" (file-place (first (third (digest-files digest))) directory)))
-        (fiveam:is (equal "" (file-place (first (first (digest-files digest))) directory)))
+        (fiveam:is (equal "src" (file-place (first (third (digest-files digest))) (digest-root digest))))
+        (fiveam:is (equal "" (file-place (first (first (digest-files digest))) (digest-root digest))))
         ;; The messages are the person's and the other participants', oldest first.
         (fiveam:is (equal '("Why does the build fail?" "The Makefile reads well.")
                           (mapcar #'user-entry-text (digest-messages digest))))))))
+
+(fiveam:test a-folder-reached-through-a-link-still-places-its-files
+  (with-test-folder (directory "src/window.lisp")
+    (let ((link (format nil "~Aaui-links-way-~D" (uiop:temporary-directory) (random 1000000))))
+      (uiop:run-program (list "ln" "-s" (string-right-trim "/" directory) link))
+      (unwind-protect
+           (let* ((transcript (make-transcript))
+                  (digest     (digest-create transcript (format nil "~A/" link))))
+             (transcript-append transcript (make-instance 'assistant-entry :text "See `src/window.lisp`."))
+             (digest--read digest)
+             (fiveam:is (= 1 (length (digest-files digest))))
+             (fiveam:is (equal "src" (file-place (first (first (digest-files digest))) (digest-root digest)))))
+        (delete-file link)))))

@@ -168,9 +168,11 @@
   nil)
 
 (-> console--paint-file
-    (workbench stage pathname &key (:x integer) (:y integer) (:width integer) (:changed-p boolean)) null)
-(defun console--paint-file (workbench stage file &key x y width changed-p)
-  "Draw one file the agent touched: its name, where it lies from the channel's folder, and that it was changed when CHANGED-P. A click opens it."
+    (workbench stage pathname
+               &key (:x integer) (:y integer) (:width integer) (:place string) (:changed-p boolean))
+    null)
+(defun console--paint-file (workbench stage file &key x y width (place "") changed-p)
+  "Draw one file the agent touched: its name, PLACE, where it lies from the channel's folder, and that it was changed when CHANGED-P. A click opens it."
   (let* ((name       (uiop:native-namestring file))
          (identifier (list ':console-file name))
          (height     *console-row-height*)
@@ -186,7 +188,7 @@
                     (room   (- right changed-w end 12)))
                (paint-text-in fitted label :x (+ x 22) :y y :width (- end x 22) :height height)
                (when (> room 40)
-                 (paint-text-in (text-fit-tail (file-place file (workbench-directory workbench)) meta room) meta
+                 (paint-text-in (text-fit-tail place meta room) meta
                                 :x      (+ end 10)
                                 :y      y
                                 :width  room
@@ -218,7 +220,12 @@
     (loop for (file . changed-p) in (subseq files 0 (min *console-files-shown* (length files)))
           for row-y from y by *console-row-height*
           do (when (and (< row-y *paint-bottom*) (> (+ row-y *console-row-height*) *paint-top*))
-               (console--paint-file workbench stage file :x x :y row-y :width width :changed-p changed-p)))
+               (console--paint-file workbench stage file
+                                    :x         x
+                                    :y         row-y
+                                    :width     width
+                                    :place     (file-place file (digest-root digest))
+                                    :changed-p changed-p)))
     (when (plusp hidden)
       (let ((row-y      (+ y (* *console-row-height* *console-files-shown*)))
             (identifier ':console-more-files))

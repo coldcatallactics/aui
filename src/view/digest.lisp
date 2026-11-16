@@ -19,12 +19,29 @@
   (length      -1  :type integer)
   (working-p   nil :type boolean)
   (directory   ""  :type string)
+  (root        ""  :type string)
   (plan        nil)
   (plan-layout nil :type list)
   (files       nil :type list)
   (messages    nil :type list)
   (named       (make-hash-table :test #'eq)    :type hash-table)
   (resolved    (make-hash-table :test #'equal) :type hash-table))
+
+(-> digest-create (transcript string) digest)
+(defun digest-create (transcript directory)
+  "Return an unread digest of TRANSCRIPT for a channel that works in DIRECTORY.
+
+The folder's true name is found once and kept as the digest's root. Files
+are known by their true names, and a folder reached through a link, as the
+temporary folder of a Mac is, has another than the one it goes by."
+  (make-digest :transcript transcript
+               :directory  directory
+               :root       (handler-case
+                               (uiop:native-namestring
+                                (truename (uiop:ensure-directory-pathname
+                                           (uiop:parse-native-namestring directory))))
+                             (error ()
+                               directory))))
 
 (-> digest--names (digest assistant-entry) list)
 (defun digest--names (digest entry)
@@ -96,7 +113,7 @@ the agent, by the person and by other participants, oldest first."
     (unless (and digest
                  (eq transcript (digest-transcript digest))
                  (string= directory (digest-directory digest)))
-      (setf digest                        (make-digest :transcript transcript :directory directory)
+      (setf digest                        (digest-create transcript directory)
             (workbench--digest workbench) digest))
     (unless (and (= length (digest-length digest))
                  (eq working-p (digest-working-p digest)))
@@ -132,10 +149,10 @@ the agent, by the person and by other participants, oldest first."
   (mapcar #'first (digest-files (workbench-digest workbench))))
 
 (-> file-place (pathname string) string)
-(defun file-place (file directory)
-  "Return where FILE lies as a person reads it: its folder from DIRECTORY when it lies beneath that, else from the home folder or the root. A file in DIRECTORY itself lies nowhere to speak of."
+(defun file-place (file root)
+  "Return where FILE lies as a person reads it: its folder from ROOT, the true name of the channel's folder, when it lies beneath that, else from the home folder or the top. A file in ROOT itself lies nowhere to speak of."
   (let ((folder (uiop:native-namestring (uiop:pathname-directory-pathname file)))
-        (root   (uiop:native-namestring (uiop:ensure-directory-pathname directory))))
+        (root   (uiop:native-namestring (uiop:ensure-directory-pathname root))))
     (if (uiop:string-prefix-p root folder)
         (string-right-trim "/" (subseq folder (length root)))
         (short-directory folder))))
@@ -143,8 +160,9 @@ the agent, by the person and by other participants, oldest first."
 (-> files-show (workbench) null)
 (defun files-show (workbench)
   "Offer the files the agent changed, linked or named in the conversation shown; the one chosen is opened."
-  (let ((files     (digest-files (workbench-digest workbench)))
-        (directory (workbench-directory workbench)))
+  (let* ((digest (workbench-digest workbench))
+         (files  (digest-files digest))
+         (root   (digest-root digest)))
     (if (null files)
         (workbench-show-panel workbench "Files"
                               (panel--empty "The agent has changed or linked no file of this machine in this conversation yet."))
@@ -152,7 +170,7 @@ the agent, by the person and by other participants, oldest first."
                         (loop for (file . changed-p) in files
                               collect (make-choice :label  (file-namestring file)
                                                    :detail (format nil "~:[~;changed  ~]~A" changed-p
-                                                                   (file-place file directory))
+                                                                   (file-place file root))
                                                    :value  (uiop:native-namestring file)))
                         (lambda (name)
                           (workbench-open-link workbench name))

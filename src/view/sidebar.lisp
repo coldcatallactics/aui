@@ -154,6 +154,23 @@
      :y (stage-pointer-y stage)))
   nil)
 
+(-> paint-channel-state (t integer integer &key (:waiting-for-jobs-p boolean)) null)
+(defun paint-channel-state (state x y &key waiting-for-jobs-p)
+  "Draw the mark of a channel in STATE in the 12 by 12 box at X, Y: the green dot for one at work, a ring for one that rests, with a green point in it when WAITING-FOR-JOBS-P, and a speck for one the server does not hold."
+  (case state
+    ((:active :working :cancelling)
+     (paint-mark ':dot x y :size 12 :color (accent-color)))
+    ((:idle :paused)
+     ;; Idle with jobs still out: the ring keeps a point of the working green.
+     (paint-mark ':ring x y :size 12)
+     (when waiting-for-jobs-p
+       (paint-mark ':point x y :size 12 :color (accent-color))))
+    (:absent
+     (paint-fill (+ x 5) (+ y 5) :width 2 :height 2))
+    (otherwise
+     (paint-mark ':ring x y :size 12)))
+  nil)
+
 (-> sidebar--paint-channel (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
 (defun sidebar--paint-channel (workbench stage entry &key x y width)
   "Draw one channel row: its state mark, its agent's name and title, and what is unread."
@@ -171,18 +188,8 @@
     (flet ((content ()
              (let ((mark-y (+ y (floor (- height 12) 2)))
                    (right  (- (+ x width) 10)))
-               (case state
-                 ((:active :working :cancelling)
-                  (paint-mark ':dot (+ x indent) mark-y :size 12 :color (accent-color)))
-                 ((:idle :paused)
-                  ;; Idle with jobs still out: the ring keeps a point of the working green.
-                  (paint-mark ':ring (+ x indent) mark-y :size 12)
-                  (when (getf entry :waiting-for-jobs-p)
-                    (paint-mark ':point (+ x indent) mark-y :size 12 :color (accent-color))))
-                 (:absent
-                  (paint-fill (+ x indent 5) (+ mark-y 5) :width 2 :height 2))
-                 (otherwise
-                  (paint-mark ':ring (+ x indent) mark-y :size 12)))
+               (paint-channel-state state (+ x indent) mark-y
+                                    :waiting-for-jobs-p (and (getf entry :waiting-for-jobs-p) t))
                (when (plusp mentions)
                  (decf right (+ 6 (paint-badge (format nil "@~D" mentions) :right right :y y :height height))))
                (when (plusp unread)

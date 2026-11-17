@@ -13,7 +13,7 @@ concurrency:
 env:
   # The Autolith release AUI is checked against. AUI loads Autolith's own
   # client code, so the two move together.
-  AUTOLITH_REF: v0.67.53
+  AUTOLITH_REF: v0.67.55
 
 jobs:
   # Autolith installed from its release, as its installer leaves it, and AUI

@@ -169,7 +169,9 @@ once it has idled."
                    :detail (list :status          (rest (getf (rest greeting) :state))
                                  :record-sequence (getf (rest greeting) :record-sequence)
                                  :image-root      (history-image-root (world-configuration world)
-                                                                      identifier)))
+                                                                      identifier)
+                                 :goal-record     (history-goal-record (world-configuration world)
+                                                                       identifier)))
     (session--deliver-history session :through (getf (rest greeting) :record-sequence)))
   nil)
 

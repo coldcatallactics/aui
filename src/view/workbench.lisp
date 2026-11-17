@@ -204,6 +204,16 @@
     :initform      nil
     :accessor      workbench--digest
     :documentation "What was read from the conversation shown for the console: its plan, files and messages, or NIL before the first reading.")
+   (goal-record
+    :initform      nil
+    :accessor      workbench--goal-record
+    :type          list
+    :documentation "The newest goal record seen of the channel shown, or NIL when none was seen.")
+   (goal-layout
+    :initform      nil
+    :accessor      workbench--goal-layout
+    :type          list
+    :documentation "The goal's objective as last laid out for the console, as (OBJECTIVE WIDTH BLOCK), or NIL.")
    (console-scroll
     :initform      0
     :accessor      workbench-console-scroll
@@ -298,6 +308,20 @@ folder."
               (and (integerp limit) limit))
             (eq (portable-get usage "contextMeasured") ':false))))
 
+(-> workbench-goal (workbench) list)
+(defun workbench-goal (workbench)
+  "Return the goal of the channel shown as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT, or NIL when it has none.
+
+A channel whose state names its goal is taken at its word. One served by an
+Autolith that does not name it there has the goal of the newest goal record
+seen: the one at the head of the newest part of its history, those on the
+pages of history read so far, and those that arrive while the window looks."
+  (let ((state (workbench-state workbench)))
+    (if (portable-member-p state "goal")
+        (portable-goal (portable-get state "goal"))
+        (let ((record (workbench--goal-record workbench)))
+          (and record (record-goal record))))))
+
 (-> short-directory (string) string)
 (defun short-directory (directory)
   "Return DIRECTORY with the home directory written as a tilde and no trailing slash."
@@ -331,6 +355,7 @@ folder."
           (workbench--waiting-pathname workbench) nil
           (workbench--waiting-read-at workbench)  0
           (workbench--digest workbench)           nil
+          (workbench--goal-record workbench)      nil
           (workbench-console-scroll workbench)    0
           (workbench-jobs workbench)          nil
           (workbench-progress workbench)      nil
@@ -438,6 +463,20 @@ folder."
       (when (and directory (plusp (length directory)))
         (workbench-submit workbench
                           (format nil "(cwd ~S)" (namestring (uiop:ensure-directory-pathname directory)))))))
+  nil)
+
+(-> workbench-goal-request (workbench keyword) null)
+(defun workbench-goal-request (workbench action)
+  "Do ACTION with the goal of the channel shown: :PAUSE, :RESUME or :CLEAR it, or :UPDATE it to what the person then types."
+  (when (workbench-attached-p workbench)
+    (if (eq action ':update)
+        (workbench-ask workbench "Change the goal"
+                       (lambda (objective)
+                         (let ((objective (string-trim '(#\Space #\Newline #\Tab) objective)))
+                           (when (plusp (length objective))
+                             (workbench-submit workbench (format nil "(goal :update ~S)" objective)))))
+                       :initial (or (getf (workbench-goal workbench) :objective) ""))
+        (workbench-submit workbench (format nil "(goal ~(~S~))" action))))
   nil)
 
 (-> workbench-stop-server (workbench) null)
@@ -781,7 +820,11 @@ where, followed by what this window sent that the snapshot does not show yet."
            (workbench--drop-pending workbench (getf (rest record) :submission))
            ;; A job that reports back is no longer running.
            (when (getf (rest record) :job-completion)
-             (workbench-refresh-jobs workbench)))))
+             (workbench-refresh-jobs workbench)))
+         (when (eq (first record) ':goal)
+           (setf (workbench--goal-record workbench)
+                 (records-newest-goal (list record) (workbench--goal-record workbench)))
+           (workbench-refresh workbench "_autolith/state"))))
       (:status
        (when (member (getf fields :status) '(:provider-request-completed :compaction-completed))
          (workbench-refresh workbench "_autolith/state"))
@@ -804,6 +847,9 @@ where, followed by what this window sent that the snapshot does not show yet."
                (projector-channel projector)      (ui-event-channel event)
                (projector-boundary projector)     (or (getf detail :record-sequence) 0)
                (projector-image-root projector)   (getf detail :image-root)
+               (workbench--goal-record workbench) (records-newest-goal
+                                                   (list (getf detail :goal-record))
+                                                   (workbench--goal-record workbench))
                ;; A request under way at attachment is shown from its records.
                (projector-catch-up-p projector)   (and (getf (getf detail :status) :active-turn-p) t)))
        (workbench--note-status workbench (getf detail :status))
@@ -917,6 +963,8 @@ where, followed by what this window sent that the snapshot does not show yet."
        (let ((projector (workbench-projector workbench)))
          (transcript-prepend (workbench-transcript workbench)
                              (records->entries projector (history-event-records event)))
+         (setf (workbench--goal-record workbench)
+               (records-newest-goal (history-event-records event) (workbench--goal-record workbench)))
          (setf (document-more-p (workbench-document workbench)) (history-event-more-p event))))
       (attachment-event
        (workbench--attachment-event workbench event))

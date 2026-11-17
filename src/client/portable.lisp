@@ -21,6 +21,14 @@
             finally (return default))
       default))
 
+(-> portable-member-p (t string) boolean)
+(defun portable-member-p (object key)
+  "Return T when the portable object OBJECT has a member KEY, whatever that member holds, null included."
+  (and (portable-object-p object)
+       (loop for (name) on (rest object) by (partial #'nthcdr 2)
+               thereis (equal name key))
+       t))
+
 (-> portable-true-p (t) boolean)
 (defun portable-true-p (value)
   "Return T when VALUE is a portable true: anything but false, null and NIL."

@@ -171,6 +171,19 @@ takes. A conversation with no durable history yet yields no records."
     (error ()
       nil)))
 
+(-> history-goal-record (t string) list)
+(defun history-goal-record (configuration identifier)
+  "Return the goal record that stood when the newest part of channel IDENTIFIER's history was begun, or NIL when there was none or the channel has no durable history yet.
+
+Autolith writes it at the head of each part of a conversation's log, so the
+goal of a long conversation is known without reading the whole of it."
+  (handler-case
+      (let ((record (autolith::conversation-latest-goal-record
+                     (autolith::conversation-replay-load configuration identifier))))
+        (and (consp record) (eq (first record) ':goal) record))
+    (error ()
+      nil)))
+
 
 ;;;; -- What Waits --
 

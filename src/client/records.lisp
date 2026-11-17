@@ -118,6 +118,51 @@ holding the text, so a malformed call still shows what was asked."
   (let ((time (getf (rest record) :time)))
     (and (integerp time) time)))
 
+(defparameter *goal-statuses* '(:active :paused :complete :verified :blocked :exhausted :cancelled :failed)
+  "What a channel's goal can be said to be while the channel has one.")
+
+(-> goal--create (t t &key (:kind t) (:created-at t)) list)
+(defun goal--create (objective status &key kind created-at)
+  "Return the goal with OBJECTIVE that is STATUS as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT, or NIL when the two do not state a goal.
+
+STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
+:MISSION when KIND says so and :GOAL otherwise."
+  (let ((status (and (or (stringp status) (symbolp status))
+                     (find status *goal-statuses* :test #'string-equal))))
+    (and status
+         (stringp objective)
+         (plusp (length objective))
+         (list :objective  objective
+               :status     status
+               :kind       (if (and (or (stringp kind) (symbolp kind)) (string-equal kind "mission"))
+                               ':mission
+                               ':goal)
+               :created-at (and (integerp created-at) created-at)))))
+
+(-> record-goal (list) list)
+(defun record-goal (record)
+  "Return the goal the durable goal RECORD states, or NIL when it records that the channel's goal was cleared."
+  (let ((properties (rest record)))
+    (goal--create (getf properties :objective) (getf properties :status)
+                  :kind       (getf properties :kind)
+                  :created-at (getf properties :created-at))))
+
+(-> portable-goal (t) list)
+(defun portable-goal (object)
+  "Return the goal the portable OBJECT of a channel's state names, or NIL when it names none."
+  (goal--create (portable-get object "objective") (portable-get object "status")
+                :kind       (portable-get object "kind")
+                :created-at (portable-get object "createdAt")))
+
+(-> records-newest-goal (list list) list)
+(defun records-newest-goal (records known)
+  "Return the newest goal record among RECORDS and KNOWN, a goal record or NIL: the one with the highest sequence."
+  (dolist (record records known)
+    (when (and (eq (first record) ':goal)
+               (or (null known)
+                   (>= (or (record-sequence record) 0) (or (record-sequence known) 0))))
+      (setf known record))))
+
 (-> record--image-pathnames (projector list) list)
 (defun record--image-pathnames (projector descriptors)
   "Return the namestrings of the image artifacts DESCRIPTORS name that exist below PROJECTOR's image root."

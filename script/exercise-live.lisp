@@ -595,6 +595,14 @@ which may happen to a person's own world."
                                  (and (eq ':complete (getf (workbench-goal workbench) :status))
                                       (exercise-live--idle-p workbench)))
                                :seconds 180))
+             ;; An Autolith from 0.67.57 on names the goal in the channel's state.
+             (let ((state (workbench-state workbench)))
+               (format t "~&  note  the goal is read from ~:[the newest goal record~;the channel's state~]~%"
+                       (portable-member-p state "goal"))
+               (exercise-expect "a state that names the goal names the one the window shows"
+                                (or (not (portable-member-p state "goal"))
+                                    (equal "Keep the bridge building."
+                                           (portable-get (portable-get state "goal") "objective")))))
              (stage-resize (workbench-stage workbench) 1500 900)
              (exercise--draw workbench)
              (exercise-expect "the console names the goal and offers to change or clear it"

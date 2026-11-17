@@ -123,12 +123,14 @@ A wide window has three columns:
   approval when one is asked for, the messages that wait, and one line that
   says whether the agent is working and how full its context is.
 - On the right, the console: the channel's title, identifier and folder, what
-  is running, and under that three parts read from the conversation. The plan
-  is the agent's latest, with the step in hand set apart. The files are the
-  ones the agent changed, linked or named; click one to open it. The messages
-  are what was sent to the agent, as a table of contents; click one to see it
-  in the conversation. Click a part's name to put the part away or bring it
-  back.
+  is running, and under that five parts. The goal is what the channel works
+  toward; pause it, resume it, change it or clear it there. The plan is the
+  agent's latest, with the step in hand set apart. The children are the
+  channels started from this one, those at work first; click one to go to
+  it. The files are the ones the agent changed, linked or named; click one to
+  open it. The messages are what was sent to the agent, as a table of
+  contents; click one to see it in the conversation. A part with nothing in
+  it is not shown. Click a part's name to put the part away or bring it back.
 
 Drag the edge between the conversation and the console to resize the console.
 The width is remembered. In a narrower window the title is above the

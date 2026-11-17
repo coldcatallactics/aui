@@ -91,9 +91,10 @@ plain fact. A key, a window or a list is never the subject of a verb: "Stop
 Menus, pickers, prompts and panels are overlays drawn on the stage
 (`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
 share the faces. A file chooser is the one exception. A wide window sets the
-console (title, activity, and the plan, files and messages read from the
-conversation by `src/view/digest.lisp`) beside the conversation; a narrow one
-stacks title and activity around it. The composer, what waits above it and the status line stay under
+console (title, activity, the channel's goal and the channels beneath it, and
+the plan, files and messages read from the conversation by
+`src/view/digest.lisp`) beside the conversation; a narrow one stacks title
+and activity around it. The composer, what waits above it and the status line stay under
 the conversation in both, and the channel list takes the whole of a window
 too narrow to hold it beside the conversation. All of it comes from
 `window--layout`, so a pane is added there once and appears in every layout. An overlay opened from another is drawn over

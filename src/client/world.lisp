@@ -54,7 +54,12 @@
    (sidebar
     :initform      nil
     :accessor      world--sidebar
-    :documentation "Autolith's sidebar model of the world's channels, once started."))
+    :documentation "Autolith's sidebar model of the world's channels, once started.")
+   (rows
+    :initform      nil
+    :accessor      world--rows
+    :type          list
+    :documentation "What the sidebar model last gathered and the rows made from it, as (GATHERED . ROWS), or NIL."))
   (:documentation "This client's view of one Autolith world."))
 
 (-> world-working-directory (world) string)
@@ -111,6 +116,98 @@
                                   (getf entry :id))
                           :test #'equal)))
          (and entry (portable-string (getf entry :title))))))
+
+(-> world--gathered-rows (list) list)
+(defun world--gathered-rows (gathered)
+  "Return the rows of the channels in GATHERED, what a sidebar model of an Autolith before 0.67.57 last gathered.
+
+Such a model lists only what its open nodes show and names no parents, so
+the rows are made from what it gathered."
+  (let ((names    (getf gathered :names))
+        (statuses (getf gathered :statuses)))
+    (loop for channel in (getf gathered :channels)
+          for identifier = (autolith::channel-identifier channel)
+          for status = (find identifier statuses
+                             :key  (lambda (status)
+                                     (getf status :session-id))
+                             :test #'equal)
+          collect (list :id                 identifier
+                        :parent             (autolith::channel-parent channel)
+                        :name               (rest (assoc identifier names :test #'equal))
+                        :title              (autolith::channel-title channel)
+                        :state              (if status (getf status :state) ':absent)
+                        :waiting-for-jobs-p (and status
+                                                 (getf status :waiting-for-input-p)
+                                                 (plusp (or (getf status :job-live-count) 0))
+                                                 t)))))
+
+(-> world-channel-rows (world) list)
+(defun world-channel-rows (world)
+  "Return every channel of WORLD but home, whether or not the tree shows it now, in the order of the tree.
+
+Each is a property list with :ID, :PARENT, the channel it was started from,
+:NAME, its agent's, :TITLE, :STATE and :WAITING-FOR-JOBS-P. They are the
+channels of the sidebar model's whole tree, which Autolith gives from 0.67.57
+on. The rows are made once for each gathering of the tree."
+  (let* ((sidebar  (world--sidebar world))
+         (gathered (and sidebar (autolith::world-sidebar-inputs sidebar)))
+         (known    (world--rows world)))
+    (if (and known (eq (first known) gathered))
+        (rest known)
+        (let ((rows (cond
+                      ((null gathered)
+                       nil)
+                      ((fboundp 'autolith::world-sidebar-tree)
+                       (remove-if-not (lambda (entry)
+                                        (eq (getf entry :kind) ':channel))
+                                      (funcall 'autolith::world-sidebar-tree sidebar)))
+                      (t
+                       (world--gathered-rows gathered)))))
+          (setf (world--rows world) (cons gathered rows))
+          rows))))
+
+(-> channel-row-working-p (list) boolean)
+(defun channel-row-working-p (row)
+  "Return T when the channel the row ROW describes is doing work."
+  (and (member (getf row :state) '(:active :working :cancelling)) t))
+
+(-> channel-row--rank (list) integer)
+(defun channel-row--rank (row)
+  "Return how far down among its siblings the channel of ROW is listed: one at work first, then one that waits for jobs, then any other the server holds, and last one it does not hold."
+  (cond
+    ((channel-row-working-p row)
+     0)
+    ((getf row :waiting-for-jobs-p)
+     1)
+    ((eq (getf row :state) ':absent)
+     3)
+    (t
+     2)))
+
+(-> channel-descendants ((or null string) list) list)
+(defun channel-descendants (identifier rows)
+  "Return those of ROWS that stand beneath channel IDENTIFIER, each channel before the ones started from it, each with a :DEPTH that is 0 for a channel started from IDENTIFIER itself.
+
+A row is a property list with an :ID and a :PARENT. Among the channels
+started from one channel, those at work come first and those the server does
+not hold last, and otherwise they keep the order of ROWS. A channel is listed
+once, so rows that name each other as parents end."
+  (let ((seen (list identifier)))
+    (labels ((beneath (parent depth)
+               (let ((children (stable-sort
+                                (loop for row in rows
+                                      for child = (getf row :id)
+                                      when (and (stringp child)
+                                                (equal (getf row :parent) parent)
+                                                (not (member child seen :test #'equal)))
+                                        collect (progn
+                                                  (push child seen)
+                                                  row))
+                                #'<
+                                :key #'channel-row--rank)))
+                 (loop for row in children
+                       append (cons (list* :depth depth row) (beneath (getf row :id) (1+ depth)))))))
+      (and identifier (beneath identifier 0)))))
 
 (-> (setf world-current-channel) ((or null string) world) (or null string))
 (defun (setf world-current-channel) (identifier world)

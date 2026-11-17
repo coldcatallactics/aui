@@ -310,3 +310,75 @@
   (fiveam:is (highlight--lisp-p "lisp" nil))
   (fiveam:is (highlight--lisp-p nil "src/view/window.lisp"))
   (fiveam:is (not (highlight--lisp-p "bash" "src/view/window.lisp"))))
+
+(fiveam:test a-goal-record-states-the-goal-or-its-clearing
+  (let ((goal (record-goal (list :goal :seq 9 :objective "Ship it." :status :paused :continuations 2
+                                       :created-at 4000000000))))
+    (fiveam:is (equal "Ship it." (getf goal :objective)))
+    (fiveam:is (eq ':paused (getf goal :status)))
+    (fiveam:is (eq ':goal (getf goal :kind)))
+    (fiveam:is (eql 4000000000 (getf goal :created-at))))
+  (fiveam:is (eq ':mission
+                 (getf (record-goal (list :goal :seq 3 :kind :mission :objective "Port it." :status :active))
+                       :kind)))
+  ;; What Autolith writes when a goal is cleared states none.
+  (fiveam:is (null (record-goal (list :goal :seq 10 :objective nil :status :cleared :continuations 0
+                                            :created-at nil))))
+  (fiveam:is (null (record-goal (list :goal :seq 11 :objective "" :status :active))))
+  (fiveam:is (null (record-goal (list :goal :seq 12 :objective "Ship it." :status 7)))))
+
+(fiveam:test the-newest-goal-record-is-the-one-with-the-highest-sequence
+  (let ((early (list :goal :seq 4 :objective "First." :status :active))
+        (late  (list :goal :seq 30 :objective "Second." :status :active))
+        (other (list :message :seq 40 :role :user :content "x")))
+    (fiveam:is (eq late (records-newest-goal (list early other late) nil)))
+    ;; A page of older history does not put an old goal back.
+    (fiveam:is (eq late (records-newest-goal (list early other) late)))
+    (fiveam:is (eq late (records-newest-goal (list late) early)))
+    (fiveam:is (null (records-newest-goal (list other nil) nil)))))
+
+(fiveam:test a-state-names-its-goal
+  (let ((goal (portable-goal (portable-object "objective" "Ship it." "status" "active" "kind" "mission"
+                                              "createdAt" 4000000000 "continuations" 1))))
+    (fiveam:is (equal "Ship it." (getf goal :objective)))
+    (fiveam:is (eq ':active (getf goal :status)))
+    (fiveam:is (eq ':mission (getf goal :kind))))
+  (fiveam:is (null (portable-goal ':null)))
+  (fiveam:is (null (portable-goal nil)))
+  ;; A state that names no goal differs from one that does not speak of goals.
+  (fiveam:is (portable-member-p (portable-object "goal" nil) "goal"))
+  (fiveam:is (not (portable-member-p (portable-object "title" "x") "goal")))
+  (fiveam:is (not (portable-member-p nil "goal"))))
+
+(fiveam:test channels-beneath-a-channel-are-listed-under-their-parents
+  (let ((rows (list (list :id "a" :parent "home")
+                    (list :id "c" :parent "b" :title "grandchild")
+                    (list :id "b" :parent "a" :title "child")
+                    (list :id "d" :parent "a")
+                    (list :id "e" :parent "other"))))
+    (fiveam:is (equal '(("b" . 0) ("c" . 1) ("d" . 0))
+                      (mapcar (lambda (row)
+                                (cons (getf row :id) (getf row :depth)))
+                              (channel-descendants "a" rows))))
+    (fiveam:is (equal "grandchild" (getf (second (channel-descendants "a" rows)) :title)))
+    (fiveam:is (null (channel-descendants "c" rows)))
+    (fiveam:is (null (channel-descendants nil rows))))
+  ;; Channels that name each other as parents are each listed once.
+  (fiveam:is (equal '("y")
+                    (mapcar (lambda (row)
+                              (getf row :id))
+                            (channel-descendants "x" (list (list :id "x" :parent "y")
+                                                           (list :id "y" :parent "x"))))))
+  ;; Among siblings, one at work comes first and one the server does not hold last.
+  (fiveam:is (equal '("busy" "under-busy" "waits" "rests" "gone")
+                    (mapcar (lambda (row)
+                              (getf row :id))
+                            (channel-descendants
+                             "top"
+                             (list (list :id "gone" :parent "top" :state ':absent)
+                                   (list :id "rests" :parent "top" :state ':idle)
+                                   (list :id "waits" :parent "top" :state ':idle :waiting-for-jobs-p t)
+                                   (list :id "under-busy" :parent "busy" :state ':absent)
+                                   (list :id "busy" :parent "top" :state ':working))))))
+  (fiveam:is (channel-row-working-p (list :id "a" :state ':working)))
+  (fiveam:is (not (channel-row-working-p (list :id "a" :state ':idle)))))

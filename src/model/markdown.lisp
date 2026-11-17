@@ -225,7 +225,10 @@ stay as text."
                       (if url-end
                           (let ((label (subseq text (1+ open) close))
                                 (url   (subseq text (+ close 2) url-end)))
-                            (emit (if (plusp (length label)) label url) :link url)
+                            ;; A label is text like any other: its own marks are read.
+                            (if (plusp (length label))
+                                (nested label :link url)
+                                (emit url :link url))
                             (setf index (1+ url-end)))
                           (progn (write-char character plain) (incf index)))))
                    ((and (char= character #\h)

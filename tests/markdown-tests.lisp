@@ -100,3 +100,15 @@
     (fiveam:is (eq commented (lisp-format commented))))
   (let ((broken "(this form is never closed (and is long enough to be worth formatting (if it were whole)"))
     (fiveam:is (eq broken (lisp-format broken)))))
+
+(fiveam:test a-link's-label-keeps-its-own-marks
+  (fiveam:is (equal '(("the notes" :bold t :link "notes.md")
+                      (" and ")
+                      ("bold" :link "x.md" :bold t)
+                      (" and ")
+                      ("it" :italic t :link "i.md"))
+                    (markdown-inline "**[the notes](notes.md)** and [**bold**](x.md) and *[it](i.md)*")))
+  (fiveam:is (equal "notes.md"
+                    (getf (rest (first (markdown-inline "[`window.lisp`](notes.md)"))) :link)))
+  (fiveam:is (equal '(("https://www.fltk.org" :link "https://www.fltk.org"))
+                    (markdown-inline "[](https://www.fltk.org)"))))

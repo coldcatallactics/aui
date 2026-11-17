@@ -149,8 +149,9 @@ That is all of it.
 
 A request without tools is one of Autolith's own, a title or a
 classification, and gets the title and the agent's name as Autolith asks for
-them. A tool's result gets a closing
-sentence. A message that mentions a shell gets a call to the shell tool.
+them. A tool's result gets a closing sentence. A request made while a goal
+is in force gets the words that say the goal is met. A message that mentions
+a shell gets a call to the shell tool.
 Anything else gets a thought and the Markdown answer, slowly when the message
 says so."
   (let* ((tools     (let ((value (autolith::json-get request "tools")))
@@ -165,7 +166,15 @@ says so."
                             :test     #'equal
                             :from-end t)
                       "content")))
-         (slow-p    (search "slowly" last-user :test #'char-equal)))
+         (slow-p    (search "slowly" last-user :test #'char-equal))
+         ;; While a goal is in force Autolith tells the model, in each request,
+         ;; which marker says that the goal is met.
+         (goal-p    (some (lambda (message)
+                            (and (not (equal (autolith::json-get message "role") "assistant"))
+                                 (search autolith::*application-goal-complete-marker*
+                                         (mock--text (autolith::json-get message "content")))))
+                          (let ((messages (autolith::json-get request "messages")))
+                            (coerce (if (vectorp messages) messages #()) 'list)))))
     (flet ((say (text &key (member "content") (pause 0.02))
              (dolist (piece (mock--pieces text 14))
                (mock--send-event stream (mock--chunk (autolith::json-object member piece)))
@@ -180,6 +189,10 @@ says so."
          (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
         ((equal (autolith::json-get last "role") "tool")
          (say "The command ran and printed what you see above.")
+         (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
+        ;; A turn toward the goal: the model says the goal is met, as Autolith asks it to.
+        (goal-p
+         (say (format nil "The bridge builds. ~A" autolith::*application-goal-complete-marker*))
          (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
         ((search "shell" last-user :test #'char-equal)
          (let ((name (or (find-if (lambda (name)
@@ -567,6 +580,30 @@ which may happen to a person's own world."
                                                       (lambda ()
                                                         (equal folder (workbench-directory workbench)))
                                                       :seconds 30)))
+             ;; A goal: set in the channel, known to the window, met when the agent says so.
+             (workbench-submit workbench "(goal \"Keep the bridge building.\")")
+             (exercise-expect "a goal set in the channel is known to the window"
+                              (exercise-live--until
+                               workbench
+                               (lambda ()
+                                 (equal "Keep the bridge building." (getf (workbench-goal workbench) :objective)))
+                               :seconds 60))
+             (exercise-expect "the goal is complete once the agent says so"
+                              (exercise-live--until
+                               workbench
+                               (lambda ()
+                                 (and (eq ':complete (getf (workbench-goal workbench) :status))
+                                      (exercise-live--idle-p workbench)))
+                               :seconds 180))
+             (stage-resize (workbench-stage workbench) 1500 900)
+             (exercise--draw workbench)
+             (exercise-expect "the console names the goal and offers to change or clear it"
+                              (and (exercise--region workbench '(:console-section :goal))
+                                   (exercise--region workbench '(:console-goal :update))
+                                   (exercise--region workbench '(:console-goal :clear))))
+             (exercise-live--picture workbench "live-goal")
+             (stage-resize (workbench-stage workbench) 1200 800)
+             (exercise--draw workbench)
              ;; The same channel again, from its history.
              (let ((channel (workbench-channel workbench)))
                (workbench-open workbench :channel channel)
@@ -584,7 +621,17 @@ which may happen to a person's own world."
                                        (and tool
                                             (search "hello from the mock"
                                                     (princ-to-string (tool-entry-output tool)))))))
-               (exercise-live--picture workbench "live-history"))
+               (exercise-live--picture workbench "live-history")
+               (exercise-expect "the goal is read from the channel's history"
+                                (and (equal "Keep the bridge building."
+                                            (getf (workbench-goal workbench) :objective))
+                                     (eq ':complete (getf (workbench-goal workbench) :status))))
+               (workbench-goal-request workbench ':clear)
+               (exercise-expect "a goal cleared from the window is gone"
+                                (exercise-live--until workbench
+                                                      (lambda ()
+                                                        (null (workbench-goal workbench)))
+                                                      :seconds 30)))
              (exercise-expect "nothing reported a failure" (null (workbench-notice workbench)))
              ;; Deleting the channel leaves it and takes it out of the world.
              (let ((channel (workbench-channel workbench)))

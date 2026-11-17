@@ -3,13 +3,15 @@
 ;;;; -- Sidebar --
 
 ;;; The world's channels at the window's left: home, then beneath it each
-;;; workspace with its channels, children under their parents. The tree is
-;;; Autolith's own sidebar model, the one its terminal draws; this file only
-;;; gives it a face. The current channel is inverted, a working agent carries
-;;; the green dot, and unread counts sit at the right as small inverted
-;;; badges. A new channel and the deletion of the one shown are at the list's
-;;; foot, where the terminal has them. On a window too narrow to hold the
-;;; list beside the conversation it takes the whole window.
+;;; group with its channels, children under their parents. A group is a
+;;; repository with all its worktrees, or a folder that belongs to none. The
+;;; tree is Autolith's own sidebar model, the one its terminal draws, and the
+;;; grouping is its own too; this file only gives it a face. The current
+;;; channel is inverted, a working agent carries the green dot, and unread
+;;; counts sit at the right as small inverted badges. A new channel and the
+;;; deletion of the one shown are at the list's foot, where the terminal has
+;;; them. On a window too narrow to hold the list beside the conversation it
+;;; takes the whole window.
 
 (defparameter *sidebar-width* 292
   "The width of the docked channel list.")

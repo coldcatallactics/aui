@@ -137,8 +137,11 @@ narrow for the channel list beside the conversation, the list is shown over
 the whole window: pick a channel, or press Escape, to return to the
 conversation.
 
-In the channel list you see home, then beneath it each workspace with its
-channels, children under their parents. A green dot means the agent is
+In the channel list you see home, then beneath it each project with its
+channels, children under their parents. A project is a repository with every
+worktree of it, so an agent sent to work in a worktree is listed with the
+agent that sent it; a folder that is no repository is listed by itself. A
+green dot means the agent is
 working, a ring means the channel is hosted and idle, a small point means
 nobody serves it. The numbers on the right count unread messages and
 mentions. Click a channel to open it. Right-click it to send it a message,

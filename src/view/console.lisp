@@ -4,14 +4,17 @@
 
 ;;; The column at the right of the conversation in a wide window, under the
 ;;; channel's title. At its top is what runs for the channel, always in view.
-;;; Under that are the parts read from the conversation, each under its name:
-;;; the plan the agent keeps, the files the agent changed, linked or named,
-;;; and the messages sent to the agent, as a table of contents. A click on a
-;;; name puts the part away or brings it back, and which parts are put away
-;;; is remembered. A part with nothing in it is not named at all. When the
-;;; parts are taller than the window, the wheel moves them.
+;;; Under that are the parts, each under its name: the goal the channel
+;;; works toward, the plan the agent keeps, the channels started from this
+;;; one, the files the agent changed, linked or named, and the messages sent
+;;; to the agent, as a table of contents. The goal and the channels are what
+;;; Autolith says of the channel; the rest is read from the conversation. A
+;;; click on a name puts the part away or brings it back, and which parts
+;;; are put away is remembered. A part with nothing in it is not named at
+;;; all. When the parts are taller than the window, the wheel moves them.
 
-(defparameter *console-sections* '((:plan . "Plan") (:files . "Files") (:messages . "Messages"))
+(defparameter *console-sections*
+  '((:goal . "Goal") (:plan . "Plan") (:children . "Children") (:files . "Files") (:messages . "Messages"))
   "The console's parts as (KEY . NAME), in the order they are drawn.")
 
 (defparameter *console-row-height* 24
@@ -22,6 +25,12 @@
 
 (defparameter *console-files-shown* 10
   "How many files the console lists before it counts the rest.")
+
+(defparameter *console-children-shown* 8
+  "How many of the channels beneath the one shown the console lists before it counts the rest.")
+
+(defparameter *console-goal-characters* 600
+  "How much of a goal's objective the console shows before it cuts it short.")
 
 (-> console--closed-p (keyword) boolean)
 (defun console--closed-p (section)
@@ -42,6 +51,35 @@
 
 ;;;; -- What Each Part Holds --
 
+(defstruct console-view
+  "What the parts of the console hold at one drawing, as the DIGEST of the conversation, the GOAL of the channel and the CHILDREN, the channels beneath the one shown."
+  (digest   nil)
+  (goal     nil :type list)
+  (children nil :type list))
+
+(-> workbench-children (workbench) list)
+(defun workbench-children (workbench)
+  "Return the channels beneath the one shown, each before the ones started from it, as rows with a :DEPTH that is 0 for a channel started from the one shown.
+
+Home has none to list here: every channel stands beneath it, and the channel
+list shows them."
+  (let ((channel (workbench-channel workbench)))
+    (and channel
+         (not (sidebar--home-p workbench channel))
+         (channel-descendants channel
+                              (if (workbench-demo-p workbench)
+                                  (remove-if-not (lambda (entry)
+                                                   (eq (getf entry :kind) ':channel))
+                                                 (workbench-demo-entries workbench))
+                                  (world-channel-rows (workbench-world workbench)))))))
+
+(-> console--view (workbench) console-view)
+(defun console--view (workbench)
+  "Return what the console's parts hold now."
+  (make-console-view :digest   (workbench-digest workbench)
+                     :goal     (workbench-goal workbench)
+                     :children (workbench-children workbench)))
+
 (-> console--plan (digest integer) (values integer list))
 (defun console--plan (digest width)
   "Return the height of DIGEST's plan set WIDTH wide and its blocks as (BLOCK . TOP), laid out once for each plan and width."
@@ -52,54 +90,139 @@
               (digest-plan-layout digest) known)))
     (values (second known) (third known))))
 
-(-> console--present-p (digest keyword) boolean)
-(defun console--present-p (digest section)
-  "Return T when DIGEST has something for the console's part SECTION."
-  (and (ecase section
-         (:plan
-          (digest-plan digest))
-         (:files
-          (digest-files digest))
-         (:messages
-          (digest-messages digest)))
-       t))
+(-> console--goal-block (workbench string integer) text-block)
+(defun console--goal-block (workbench objective width)
+  "Return the block of the goal's OBJECTIVE laid out WIDTH wide, made once for each objective and width. A very long objective is shown by its beginning."
+  (let ((known (workbench--goal-layout workbench)))
+    (if (and known (equal (first known) objective) (= (second known) width))
+        (third known)
+        (let ((block (make-text-block
+                      (list (make-span (if (> (length objective) *console-goal-characters*)
+                                           (format nil "~A…" (subseq objective 0 *console-goal-characters*))
+                                           objective)
+                                       nil))
+                      :style (text-style ':list))))
+          (block-layout block width)
+          (setf (workbench--goal-layout workbench) (list objective width block))
+          block))))
 
-(-> console--note (digest keyword) string)
-(defun console--note (digest section)
-  "Return what stands beside the name of the part SECTION: how far the plan is, or how many files or messages there are."
-  (ecase section
-    (:plan
-     (multiple-value-bind (done total) (digest-plan-progress digest)
-       (format nil "~D of ~D" done total)))
-    (:files
-     (princ-to-string (length (digest-files digest))))
-    (:messages
-     (princ-to-string (length (digest-messages digest))))))
+(-> console--goal-actions (list) list)
+(defun console--goal-actions (goal)
+  "Return what a person can do with GOAL as (LABEL . ACTION), the action a keyword WORKBENCH-GOAL-REQUEST takes.
 
-(-> console--body-height (digest keyword integer) integer)
-(defun console--body-height (digest section width)
+A goal that runs can be paused and one that is paused resumed. A mission's
+objective is part of its specification and is not changed from here."
+  (append (case (getf goal :status)
+            (:active
+             (list (cons "Pause" ':pause)))
+            (:paused
+             (list (cons "Resume" ':resume))))
+          (unless (eq (getf goal :kind) ':mission)
+            (list (cons "Change…" ':update)))
+          (list (cons "Clear…" ':clear))))
+
+(-> console--present-p (console-view keyword) boolean)
+(defun console--present-p (view section)
+  "Return T when VIEW has something for the console's part SECTION."
+  (let ((digest (console-view-digest view)))
+    (and (ecase section
+           (:goal
+            (console-view-goal view))
+           (:plan
+            (digest-plan digest))
+           (:children
+            (console-view-children view))
+           (:files
+            (digest-files digest))
+           (:messages
+            (digest-messages digest)))
+         t)))
+
+(-> console--note (console-view keyword) string)
+(defun console--note (view section)
+  "Return what stands beside the name of the part SECTION: what the goal is said to be, how far the plan is, how many channels there are and how many of them work, or how many files or messages there are."
+  (let ((digest (console-view-digest view)))
+    (ecase section
+      (:goal
+       (let ((goal (console-view-goal view)))
+         (format nil "~:[~;mission, ~]~(~A~)" (eq (getf goal :kind) ':mission) (getf goal :status))))
+      (:plan
+       (multiple-value-bind (done total) (digest-plan-progress digest)
+         (format nil "~D of ~D" done total)))
+      (:children
+       (let* ((children (console-view-children view))
+              (working  (count-if #'channel-row-working-p children)))
+         (format nil "~D~:[, ~D working~;~]" (length children) (zerop working) working)))
+      (:files
+       (princ-to-string (length (digest-files digest))))
+      (:messages
+       (princ-to-string (length (digest-messages digest)))))))
+
+(-> console--rows (integer integer) integer)
+(defun console--rows (count shown)
+  "Return how many rows a list of COUNT things takes when SHOWN of them are listed and a last row counts the rest."
+  (+ (min count shown)
+     (if (> count shown) 1 0)))
+
+(-> console--child-words (list) (or null string))
+(defun console--child-words (row)
+  "Return in words what the channel of ROW does when it does anything: that it works, or that it waits for jobs."
+  (cond
+    ((channel-row-working-p row)
+     "working")
+    ((getf row :waiting-for-jobs-p)
+     "waiting for jobs")
+    (t
+     nil)))
+
+(-> children-show (workbench) null)
+(defun children-show (workbench)
+  "Offer every channel beneath the one shown; the one chosen is shown."
+  (let ((children (workbench-children workbench)))
+    (when children
+      (workbench-pick workbench
+                      (loop for row in children
+                            collect (multiple-value-bind (name title) (sidebar--channel-label row)
+                                      (make-choice :label  name
+                                                   :detail (format nil "~@[~A~]~:[~;  ~]~@[~A~]"
+                                                                   (console--child-words row)
+                                                                   (and (console--child-words row) title)
+                                                                   title)
+                                                   :value  (getf row :id))))
+                      (lambda (identifier)
+                        (sidebar--open workbench identifier))
+                      :title "Children")))
+  nil)
+
+(-> console--body-height (workbench console-view keyword &key (:width integer)) integer)
+(defun console--body-height (workbench view section &key (width 0))
   "Return the height of what the part SECTION holds, set WIDTH wide."
-  (ecase section
-    (:plan
-     (+ 4 (values (console--plan digest (- width 4)))))
-    (:files
-     (let ((count (length (digest-files digest))))
-       (* *console-row-height*
-          (+ (min count *console-files-shown*)
-             (if (> count *console-files-shown*) 1 0)))))
-    (:messages
-     (* *console-row-height* (length (digest-messages digest))))))
+  (let ((digest (console-view-digest view)))
+    (ecase section
+      (:goal
+       (+ 4
+          (block-height (console--goal-block workbench (getf (console-view-goal view) :objective) (- width 4)))
+          4
+          *console-row-height*))
+      (:plan
+       (+ 4 (values (console--plan digest (- width 4)))))
+      (:children
+       (* *console-row-height* (console--rows (length (console-view-children view)) *console-children-shown*)))
+      (:files
+       (* *console-row-height* (console--rows (length (digest-files digest)) *console-files-shown*)))
+      (:messages
+       (* *console-row-height* (length (digest-messages digest)))))))
 
-(-> console--sections-height (digest integer) integer)
-(defun console--sections-height (digest width)
-  "Return the height of every part DIGEST has something for, with their names, those put away counting their names only."
+(-> console--sections-height (workbench console-view integer) integer)
+(defun console--sections-height (workbench view width)
+  "Return the height of every part VIEW has something for, with their names, those put away counting their names only."
   (loop for (section) in *console-sections*
-        when (console--present-p digest section)
+        when (console--present-p view section)
           sum (+ *console-section-gap*
                  *activity-heading-height*
                  (if (console--closed-p section)
                      0
-                     (console--body-height digest section width)))))
+                     (console--body-height workbench view section :width width)))))
 
 
 ;;;; -- Drawing --
@@ -153,6 +276,131 @@
                      :height  height
                      :action  (lambda () (console--toggle workbench section))
                      :tooltip (if closed-p "Show this part" "Put this part away")))
+  nil)
+
+(-> console--confirm-clear (workbench) null)
+(defun console--confirm-clear (workbench)
+  "Ask whether the channel's goal is to be cleared, and clear it on a yes."
+  (workbench-pick workbench
+                  (list (make-choice :label  "Clear"
+                                     :detail "The agent stops working toward it"
+                                     :value  ':clear)
+                        (make-choice :label "Keep"
+                                     :value ':keep))
+                  (lambda (answer)
+                    (when (eq answer ':clear)
+                      (workbench-goal-request workbench ':clear)))
+                  :title "Clear the goal?")
+  nil)
+
+(-> console--paint-goal (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun console--paint-goal (workbench stage goal &key x y width)
+  "Draw GOAL: its objective, and under it what a person can do with it, each a chip."
+  (let* ((block   (console--goal-block workbench (getf goal :objective) (- width 4)))
+         (chip-y  (+ y 4 (block-height block) 4))
+         ;; A chip takes clicks where it stands, so one the console's edge cuts takes none.
+         (whole-p (and (>= chip-y *paint-top*) (<= (+ chip-y *console-row-height*) *paint-bottom*))))
+    (when (and (< y *paint-bottom*) (> chip-y *paint-top*))
+      (let ((*paint-stage* nil))
+        (block-paint block (+ x 2) (+ y 4))))
+    (when (and (< chip-y *paint-bottom*) (> (+ chip-y *console-row-height*) *paint-top*))
+      (loop with chip-x = (- x 6)
+            for (label . action) in (console--goal-actions goal)
+            do (let ((request action))
+                 (incf chip-x
+                       (paint-chip stage (list ':console-goal request) label
+                                   :x      chip-x
+                                   :y      chip-y
+                                   :height *console-row-height*
+                                   :action (and whole-p
+                                                (lambda ()
+                                                  (if (eq request ':clear)
+                                                      (console--confirm-clear workbench)
+                                                      (workbench-goal-request workbench request))))))))))
+  nil)
+
+(-> console--paint-child (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun console--paint-child (workbench stage row &key x y width)
+  "Draw one channel beneath the one shown: its state mark, its agent's name, its title, and in words that it works or waits for jobs. A click shows the channel."
+  (let* ((channel    (getf row :id))
+         (identifier (list ':console-child channel))
+         (height     *console-row-height*)
+         (indent     (+ 2 (* 16 (or (getf row :depth) 0))))
+         (bold       (text-style ':meta-bold))
+         (meta       (text-style ':meta))
+         (green      (text-style ':meta :color *green*))
+         (words      (console--child-words row))
+         (words-w    (if words (+ 10 (text-width words green)) 0))
+         (right      (- (+ x width) 6)))
+    (flet ((content ()
+             (paint-channel-state (getf row :state) (+ x indent) (+ y (floor (- height 12) 2))
+                                  :waiting-for-jobs-p (and (getf row :waiting-for-jobs-p) t))
+             (multiple-value-bind (name title) (sidebar--channel-label row)
+               (let* ((text-x (+ x indent 20))
+                      (fitted (text-fit name bold (max 0 (- right words-w text-x))))
+                      (end    (+ text-x (text-width fitted bold)))
+                      (room   (- right words-w end 10)))
+                 (paint-text-in fitted bold :x text-x :y y :width (- end text-x) :height height)
+                 (when (and title (> room 40))
+                   (paint-text-in (text-fit title meta room) meta
+                                  :x      (+ end 10)
+                                  :y      y
+                                  :width  room
+                                  :height height))))
+             (when words
+               (paint-text-in words green
+                              :x      (- right words-w -10)
+                              :y      y
+                              :width  (- words-w 10)
+                              :height height))))
+      (if (stage-hot-p stage identifier)
+          (with-inversion (x y width height)
+            (content))
+          (content)))
+    (console--region stage identifier
+                     :x       x
+                     :y       y
+                     :width   width
+                     :height  height
+                     :action  (lambda () (sidebar--open workbench channel))
+                     :tooltip (channel-display-name channel)))
+  nil)
+
+(-> console--paint-children (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
+(defun console--paint-children (workbench stage children &key x y width)
+  "Draw CHILDREN, the channels beneath the one shown, each set in under the channel it was started from, and count those beyond what is listed in a last row that leads to all of them."
+  (loop for row in (subseq children 0 (min *console-children-shown* (length children)))
+        for row-y from y by *console-row-height*
+        do (when (and (< row-y *paint-bottom*) (> (+ row-y *console-row-height*) *paint-top*))
+             (console--paint-child workbench stage row :x x :y row-y :width width)))
+  (console--paint-more stage ':console-more-children (- (length children) *console-children-shown*)
+                       :x      x
+                       :y      (+ y (* *console-row-height* *console-children-shown*))
+                       :width  width
+                       :action (lambda () (children-show workbench)))
+  nil)
+
+(-> console--paint-more
+    (stage t integer &key (:x integer) (:y integer) (:width integer) (:action function)) null)
+(defun console--paint-more (stage identifier hidden &key x y width action)
+  "Draw the row that counts the HIDDEN things a list leaves out, when it leaves any out. A click on it calls ACTION, which shows all of them."
+  (when (plusp hidden)
+    (flet ((content ()
+             (paint-text-in (format nil "and ~D more" hidden) (text-style ':meta :face ':mono-italic)
+                            :x      (+ x 22)
+                            :y      y
+                            :width  (- width 28)
+                            :height *console-row-height*)))
+      (if (stage-hot-p stage identifier)
+          (with-inversion (x y width *console-row-height*)
+            (content))
+          (content)))
+    (console--region stage identifier
+                     :x      x
+                     :y      y
+                     :width  width
+                     :height *console-row-height*
+                     :action action))
   nil)
 
 (-> console--paint-plan (digest &key (:x integer) (:y integer) (:width integer)) null)
@@ -226,25 +474,11 @@
                                     :width     width
                                     :place     (file-place file (digest-root digest))
                                     :changed-p changed-p)))
-    (when (plusp hidden)
-      (let ((row-y      (+ y (* *console-row-height* *console-files-shown*)))
-            (identifier ':console-more-files))
-        (flet ((content ()
-                 (paint-text-in (format nil "and ~D more" hidden) (text-style ':meta :face ':mono-italic)
-                                :x      (+ x 22)
-                                :y      row-y
-                                :width  (- width 28)
-                                :height *console-row-height*)))
-          (if (stage-hot-p stage identifier)
-              (with-inversion (x row-y width *console-row-height*)
-                (content))
-              (content)))
-        (console--region stage identifier
+    (console--paint-more stage ':console-more-files hidden
                          :x      x
-                         :y      row-y
+                         :y      (+ y (* *console-row-height* *console-files-shown*))
                          :width  width
-                         :height *console-row-height*
-                         :action (lambda () (files-show workbench))))))
+                         :action (lambda () (files-show workbench))))
   nil)
 
 (-> console--message-line (user-entry) string)
@@ -308,8 +542,9 @@
 (-> console-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun console-paint (workbench stage &key x y width height)
   "Draw the console's parts in the box: each part the conversation has something for, under its name, scrolled as the wheel left them."
-  (let* ((digest  (workbench-digest workbench))
-         (total   (console--sections-height digest width))
+  (let* ((view    (console--view workbench))
+         (digest  (console-view-digest view))
+         (total   (console--sections-height workbench view width))
          (maximum (max 0 (- total height)))
          (scroll  (max 0 (min (workbench-console-scroll workbench) maximum))))
     (setf (workbench-console-scroll workbench) scroll)
@@ -330,7 +565,7 @@
               (*paint-bottom* (+ y height))
               (top            (- y scroll)))
           (loop for (section . title) in *console-sections*
-                do (when (console--present-p digest section)
+                do (when (console--present-p view section)
                      (incf top *console-section-gap*)
                      (when (and (< top *paint-bottom*) (> (+ top *activity-heading-height*) *paint-top*))
                        (console--paint-heading workbench stage section
@@ -338,17 +573,27 @@
                                                :y     top
                                                :width width
                                                :title title
-                                               :note  (console--note digest section)))
+                                               :note  (console--note view section)))
                      (incf top *activity-heading-height*)
                      (unless (console--closed-p section)
                        (ecase section
+                         (:goal
+                          (console--paint-goal workbench stage (console-view-goal view)
+                                               :x     x
+                                               :y     top
+                                               :width width))
                          (:plan
                           (console--paint-plan digest :x x :y (+ top 4) :width width))
+                         (:children
+                          (console--paint-children workbench stage (console-view-children view)
+                                                   :x     x
+                                                   :y     top
+                                                   :width width))
                          (:files
                           (console--paint-files workbench stage digest :x x :y top :width width))
                          (:messages
                           (console--paint-messages workbench stage digest :x x :y top :width width)))
-                       (incf top (console--body-height digest section width)))))))
+                       (incf top (console--body-height workbench view section :width width)))))))
       (sheet-paint-scrollbar stage
                              :x       (+ x width 4)
                              :y       y

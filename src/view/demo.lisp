@@ -94,7 +94,12 @@
         (list :kind ':channel :id "B2Qweni" :name "bridge-port" :title "Port the bridge to macOS" :depth 0
               :indent 2 :state ':active :current-p t :unread 0 :mentions 0 :pending 0)
         (list :kind ':channel :id "C4puSYz" :name "review" :title "Read the Makefile" :depth 1
-              :indent 2 :state ':working :unread 3 :mentions 0 :pending 0)
+              :parent "B2Qweni" :indent 2 :state ':working :unread 3 :mentions 0 :pending 0)
+        (list :kind ':channel :id "D7mWx2a" :name "fonts" :title "Find the fonts on a Mac" :depth 2
+              :parent "C4puSYz" :indent 2 :state ':idle :waiting-for-jobs-p t :unread 0 :mentions 0
+              :pending 0)
+        (list :kind ':channel :id "E3nQr8b" :name "smoke" :title "Write the smoke tests" :depth 1
+              :parent "B2Qweni" :indent 2 :state ':absent :unread 0 :mentions 0 :pending 0)
         (list :kind ':channel :id "A55TkQx" :name "pointer-events" :title "Canvas pointer events" :depth 0
               :indent 2 :state ':idle :waiting-for-jobs-p t :unread 0 :mentions 1 :pending 0)
         (list :kind ':workspace :key "/home/you/aui/" :name "aui" :path "~/aui" :indent 2 :children-p t
@@ -181,7 +186,11 @@
                                                   :autolith-version   (world-autolith-version))
         (workbench-state workbench)         (portable-object
                                              "usage" (portable-object "contextUsed" 40100
-                                                                      "contextLimit" 272000))
+                                                                      "contextLimit" 272000)
+                                             "goal"  (portable-object
+                                                      "objective" "Lightfast builds, passes its checks and draws a window on macOS."
+                                                      "status"    "active"
+                                                      "kind"      "goal"))
         (workbench-working-p workbench)     t
         (workbench-working-since workbench) (- (get-universal-time) 42)
         (workbench-jobs workbench)          (list (portable-object "id" "job-1" "role" "review"

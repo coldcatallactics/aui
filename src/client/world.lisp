@@ -55,11 +55,16 @@
     :initform      nil
     :accessor      world--sidebar
     :documentation "Autolith's sidebar model of the world's channels, once started.")
+   (entries
+    :initform      nil
+    :accessor      world--entries
+    :type          list
+    :documentation "The sidebar model's entries and the rows made from them, as (ENTRIES . ROWS), or NIL.")
    (rows
     :initform      nil
     :accessor      world--rows
     :type          list
-    :documentation "What the sidebar model last gathered and the rows made from it, as (GATHERED . ROWS), or NIL."))
+    :documentation "What the sidebar model last gathered and the channel rows made from it, as (GATHERED . ROWS), or NIL."))
   (:documentation "This client's view of one Autolith world."))
 
 (-> world-working-directory (world) string)
@@ -101,11 +106,71 @@
          (autolith::screen-panel-refresh sidebar)
          t)))
 
+(defgeneric world--entry-row (entry)
+  (:documentation "Return ENTRY of Autolith's sidebar model as the property list the window reads.
+
+Its :KIND is :INBOX, :WORKSPACE or :CHANNEL."))
+
+(-> world--fold-row (t) list)
+(defun world--fold-row (node)
+  "Return what the row of tree node NODE says of the channels beneath it."
+  (let ((open-p (autolith::sidebar-fold-open-p node)))
+    (list :children-p      (autolith::sidebar-fold-children-p node)
+          :open-p          open-p
+          :hidden          (and (autolith::sidebar-fold-children-p node)
+                                (not open-p)
+                                (autolith::sidebar-fold-nested node))
+          :hidden-unread   (autolith::sidebar-fold-hidden-unread node)
+          :hidden-mentions (autolith::sidebar-fold-hidden-mentions node))))
+
+(defmethod world--entry-row ((entry autolith::sidebar-home))
+  "Home is the person's inbox."
+  (list :kind      ':inbox
+        :id        (autolith::sidebar-entry-identifier entry)
+        :current-p (autolith::sidebar-entry-current-p entry)
+        :unread    (autolith::sidebar-entry-unread entry)))
+
+(defmethod world--entry-row ((entry autolith::sidebar-workspace))
+  "A workspace stands beneath home with the channels it groups."
+  (list* :kind   ':workspace
+         :key    (autolith::sidebar-workspace-key entry)
+         :name   (autolith::sidebar-entry-name entry)
+         :path   (autolith::sidebar-workspace-path entry)
+         :indent 2
+         (world--fold-row entry)))
+
+(defmethod world--entry-row ((entry autolith::sidebar-channel))
+  "A channel carries its agent's name and state and what arrived unread."
+  (list* :kind               ':channel
+         :id                 (autolith::sidebar-entry-identifier entry)
+         :parent             (autolith::sidebar-channel-parent entry)
+         :name               (autolith::sidebar-entry-name entry)
+         :title              (autolith::sidebar-channel-title entry)
+         :path               (autolith::sidebar-channel-path entry)
+         :depth              (autolith::sidebar-channel-depth entry)
+         :indent             2
+         :state              (autolith::sidebar-channel-state entry)
+         :waiting-for-jobs-p (autolith::sidebar-channel-waiting-for-jobs-p entry)
+         :attached-p         (autolith::sidebar-channel-attached-p entry)
+         :current-p          (autolith::sidebar-entry-current-p entry)
+         :unread             (autolith::sidebar-entry-unread entry)
+         :mentions           (autolith::sidebar-channel-mentions entry)
+         :pending            (autolith::sidebar-channel-pending entry)
+         (world--fold-row entry)))
+
 (-> world-entries (world) list)
 (defun world-entries (world)
-  "Return WORLD's channel tree as Autolith's sidebar entries: property lists whose :KIND is :INBOX, :WORKSPACE or :CHANNEL."
-  (let ((sidebar (world--sidebar world)))
-    (and sidebar (autolith::world-sidebar-entries sidebar))))
+  "Return WORLD's channel tree as rows, property lists whose :KIND is :INBOX, :WORKSPACE or :CHANNEL.
+
+The rows are made once for each tree the sidebar model builds."
+  (let* ((sidebar (world--sidebar world))
+         (entries (and sidebar (autolith::world-sidebar-entries sidebar)))
+         (known   (world--entries world)))
+    (if (and known (eq (first known) entries))
+        (rest known)
+        (let ((rows (mapcar #'world--entry-row entries)))
+          (setf (world--entries world) (cons entries rows))
+          rows))))
 
 (-> world-channel-title (world (or null string)) (or null string))
 (defun world-channel-title (world identifier)
@@ -117,52 +182,22 @@
                           :test #'equal)))
          (and entry (portable-string (getf entry :title))))))
 
-(-> world--gathered-rows (list) list)
-(defun world--gathered-rows (gathered)
-  "Return the rows of the channels in GATHERED, what a sidebar model of an Autolith before 0.67.57 last gathered.
-
-Such a model lists only what its open nodes show and names no parents, so
-the rows are made from what it gathered."
-  (let ((names    (getf gathered :names))
-        (statuses (getf gathered :statuses)))
-    (loop for channel in (getf gathered :channels)
-          for identifier = (autolith::channel-identifier channel)
-          for status = (find identifier statuses
-                             :key  (lambda (status)
-                                     (getf status :session-id))
-                             :test #'equal)
-          collect (list :id                 identifier
-                        :parent             (autolith::channel-parent channel)
-                        :name               (rest (assoc identifier names :test #'equal))
-                        :title              (autolith::channel-title channel)
-                        :state              (if status (getf status :state) ':absent)
-                        :waiting-for-jobs-p (and status
-                                                 (getf status :waiting-for-input-p)
-                                                 (plusp (or (getf status :job-live-count) 0))
-                                                 t)))))
-
 (-> world-channel-rows (world) list)
 (defun world-channel-rows (world)
   "Return every channel of WORLD but home, whether or not the tree shows it now, in the order of the tree.
 
-Each is a property list with :ID, :PARENT, the channel it was started from,
-:NAME, its agent's, :TITLE, :STATE and :WAITING-FOR-JOBS-P. They are the
-channels of the sidebar model's whole tree, which Autolith gives from 0.67.57
-on. The rows are made once for each gathering of the tree."
+Each is a channel row as `world-entries' gives it, with :PARENT naming the
+channel it was started from. The rows are made once for each gathering of
+the tree."
   (let* ((sidebar  (world--sidebar world))
          (gathered (and sidebar (autolith::world-sidebar-inputs sidebar)))
          (known    (world--rows world)))
     (if (and known (eq (first known) gathered))
         (rest known)
-        (let ((rows (cond
-                      ((null gathered)
-                       nil)
-                      ((fboundp 'autolith::world-sidebar-tree)
-                       (remove-if-not (lambda (entry)
-                                        (eq (getf entry :kind) ':channel))
-                                      (funcall 'autolith::world-sidebar-tree sidebar)))
-                      (t
-                       (world--gathered-rows gathered)))))
+        (let ((rows (and gathered
+                         (loop for entry in (autolith::world-sidebar-tree sidebar)
+                               when (typep entry 'autolith::sidebar-channel)
+                                 collect (world--entry-row entry)))))
           (setf (world--rows world) (cons gathered rows))
           rows))))
 
@@ -223,9 +258,14 @@ once, so rows that name each other as parents end."
 (-> world-toggle-node (world string) null)
 (defun world-toggle-node (world key)
   "Open the workspace or channel node KEY of WORLD's tree when it shows closed, or close it."
-  (let ((sidebar (world--sidebar world)))
-    (when sidebar
-      (autolith::world-sidebar--toggle sidebar key)))
+  (let* ((sidebar (world--sidebar world))
+         (node    (and sidebar
+                       (find key (autolith::world-sidebar-entries sidebar)
+                             :key  (lambda (entry)
+                                     (second (autolith::sidebar-entry-key entry)))
+                             :test #'equal))))
+    (when node
+      (autolith::world-sidebar--toggle sidebar node)))
   nil)
 
 

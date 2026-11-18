@@ -7,6 +7,7 @@
   :depends-on  (#:autolith
                 #:lightfast
                 #:serapeum
+                #:sito
                 #:bordeaux-threads)
   :serial      t
   :components

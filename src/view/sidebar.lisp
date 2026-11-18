@@ -45,26 +45,24 @@
       (workbench-demo-entries workbench)
       (world-entries (workbench-world workbench))))
 
-(-> sidebar--matches-p (list string) boolean)
-(defun sidebar--matches-p (entry filter)
-  "Return T when the channel ENTRY's name, title or identifier contains FILTER, ignoring case."
-  (and (some (lambda (text)
-               (and (stringp text) (search filter text :test #'char-equal)))
-             (list (getf entry :name) (getf entry :title) (getf entry :id)
-                   (and (getf entry :id) (channel-display-name (getf entry :id)))))
-       t))
-
 (-> sidebar--visible-entries (workbench) list)
 (defun sidebar--visible-entries (workbench)
-  "Return the entries to list: the whole tree, or with a filter typed only the channels that match it."
-  (let ((entries (sidebar-entries workbench))
-        (filter  (string-trim " " (workbench-filter workbench))))
+  "Return the entries to list: the whole tree, or with a filter typed the channels that match it, best first.
+
+A filter matches a channel's agent name, identifier, title or folder loosely,
+its letters in order, in open and closed groups alike."
+  (let ((filter (string-trim " " (workbench-filter workbench))))
     (if (zerop (length filter))
-        entries
-        (remove-if-not (lambda (entry)
-                         (and (eq (getf entry :kind) ':channel)
-                              (sidebar--matches-p entry filter)))
-                       entries))))
+        (sidebar-entries workbench)
+        (sito:rank filter
+                   (mapcar (lambda (row) (list* :depth 0 row))
+                           (if (workbench-demo-p workbench)
+                               (remove ':channel (sidebar-entries workbench)
+                                       :key (lambda (entry) (getf entry :kind)) :test-not #'eq)
+                               (world-channel-rows (workbench-world workbench))))
+                   :key (lambda (row)
+                          (list (getf row :name) (channel-display-name (getf row :id))
+                                (getf row :title) (getf row :path)))))))
 
 (-> sidebar--channel-label (list) (values string (or null string)))
 (defun sidebar--channel-label (entry)
@@ -248,7 +246,7 @@
                                        (+ y (floor (- height (text-style-line-height bold)) 2) (text-baseline bold))
                                        :style bold)))
                (when (and (not (getf entry :open-p)) (getf entry :hidden))
-                 (decf right (+ 6 (paint-badge (format nil "+~D" (getf entry :hidden))
+                 (decf right (+ 6 (paint-badge (format nil "~D" (getf entry :hidden))
                                                :right  right
                                                :y      y
                                                :height height))))

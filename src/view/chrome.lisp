@@ -451,7 +451,7 @@ A choice is taken with its number or a click."
                        :y      (+ y 3)
                        :width  (- width 20)
                        :height (- bar 3)))
-      (lightfast:with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
+      (with-clip ((+ x 14) (+ y bar 12) (- width 28) (max 0 (- rows-y y bar 20)))
         (paragraph-paint entry (+ x 22) (+ y bar 12)))
       (approval--paint-choices workbench stage options
                                :x        x

@@ -560,7 +560,7 @@ objective is part of its specification and is not changed from here."
                                     (max 0 (min maximum
                                                 (+ (workbench-console-scroll workbench) (* vertical 48))))))
                     :cursor ':default)
-      (lightfast:with-clip (x y width height)
+      (with-clip (x y width height)
         (let ((*paint-top*    y)
               (*paint-bottom* (+ y height))
               (top            (- y scroll)))

@@ -184,7 +184,7 @@ stands beside the conversation."
                                                        (text-style ':body :face ':serif-italic))))
                                   :style (text-style ':body))))
       (paragraph-layout draft (- width 8))
-      (lightfast:with-clip (x y width height)
+      (with-clip (x y width height)
         (paragraph-paint draft (+ x 4) y))))
   nil)
 

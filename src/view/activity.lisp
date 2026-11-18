@@ -126,7 +126,7 @@
   (let ((bottom  (+ y height))
         (row-y   y)
         (dropped 0))
-    (lightfast:with-clip (x y width height)
+    (with-clip (x y width height)
       (loop for (name . jobs) in (activity-sections workbench)
             do (if (> (+ row-y *activity-heading-height* *activity-row-height*) bottom)
                    (incf dropped (length jobs))

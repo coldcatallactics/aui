@@ -137,6 +137,35 @@ told so that it can say so."
          nil))))
 
 
+;;;; -- Clipping --
+
+(defvar *clip* nil
+  "The box (X Y WIDTH HEIGHT) that what is drawn now is cut to, or NIL when nothing cuts it.")
+
+(-> clip--within (list (or null list)) list)
+(defun clip--within (box clip)
+  "Return the part of BOX, an (X Y WIDTH HEIGHT) list, that lies within CLIP, a box or NIL for everywhere."
+  (if (null clip)
+      box
+      (destructuring-bind (x y width height) box
+        (destructuring-bind (clip-x clip-y clip-width clip-height) clip
+          (let ((left (max x clip-x))
+                (top  (max y clip-y)))
+            (list left
+                  top
+                  (max 0 (- (min (+ x width) (+ clip-x clip-width)) left))
+                  (max 0 (- (min (+ y height) (+ clip-y clip-height)) top))))))))
+
+(defmacro with-clip ((x y width height) &body body)
+  "Run BODY with what it draws cut to the box X, Y, WIDTH, HEIGHT.
+
+The regions BODY declares are cut to the box as well, so nothing that is
+hidden answers the pointer. The four forms are evaluated once, in order."
+  `(let ((*clip* (clip--within (list ,x ,y ,width ,height) *clip*)))
+     (lightfast:with-clip ((first *clip*) (second *clip*) (third *clip*) (fourth *clip*))
+       ,@body)))
+
+
 ;;;; -- Regions --
 
 (-> stage-region
@@ -154,11 +183,14 @@ WHEEL with the vertical and horizontal steps; DRAG with a keyword, :START,
 :MOVE or :END, and the pointer's position. Regions declared later lie above
 earlier ones. A region with an ACTION shows the hand unless CURSOR says
 otherwise."
-  (push (make-region :identifier identifier :x x :y y :width width :height height
-                     :action action :menu menu :wheel wheel :drag drag
-                     :cursor  (if (and action (eq cursor ':default)) ':hand cursor)
-                     :tooltip tooltip)
-        (stage--drawing stage))
+  (destructuring-bind (x y width height) (clip--within (list x y width height) *clip*)
+    ;; A region wholly outside what is drawn is not there to be pointed at.
+    (when (or (null *clip*) (and (plusp width) (plusp height)))
+      (push (make-region :identifier identifier :x x :y y :width width :height height
+                         :action action :menu menu :wheel wheel :drag drag
+                         :cursor  (if (and action (eq cursor ':default)) ':hand cursor)
+                         :tooltip tooltip)
+            (stage--drawing stage))))
   (and (equal identifier (stage-hot stage)) t))
 
 (-> stage-hot-p (stage t) boolean)

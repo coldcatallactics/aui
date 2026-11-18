@@ -416,7 +416,7 @@ showed."
                   :drag   (lambda (phase drag-x drag-y)
                             (document--drag document phase :x drag-x :y drag-y))
                   :cursor ':insert)
-    (lightfast:with-clip (x y width height)
+    (with-clip (x y width height)
       (let* ((scroll            (document-scroll document))
              (items             (document--items document))
              (first             (or (document--item-at document scroll) 0))

@@ -102,7 +102,7 @@
                      :y      y
                      :width  (- width 32)
                      :height 44))
-    (lightfast:with-clip (x y width height)
+    (with-clip (x y width height)
       (loop for row in (nthcdr (overlay-scroll overlay) rows)
             for index from (overlay-scroll overlay)
             for row-y from y by *overlay-row-height*
@@ -240,7 +240,7 @@
                      :y      y
                      :width  (- width 32)
                      :height 44))
-    (lightfast:with-clip (x y width height)
+    (with-clip (x y width height)
       (loop for (kind value) in (nthcdr (overlay-scroll overlay) rows)
             for row-y from y by *overlay-row-height*
             while (< row-y (+ y height))

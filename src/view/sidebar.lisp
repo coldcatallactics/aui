@@ -376,7 +376,7 @@
                             (setf (workbench-sidebar-scroll workbench)
                                   (max 0 (+ (workbench-sidebar-scroll workbench)
                                             (* vertical *sidebar-row-height*))))))
-    (lightfast:with-clip (x top width list-height)
+    (with-clip (x top width list-height)
       (loop for entry in entries
             for row-y from (- top scroll) by *sidebar-row-height*
             do (when (and (< row-y bottom) (> (+ row-y *sidebar-row-height*) top))

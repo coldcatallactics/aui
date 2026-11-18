@@ -31,6 +31,11 @@ ask for what is missing.
   channel list, the composer, completion, the activity list, the console's
   parts, the overlays with their catalogs, sheets and panels, and the
   workbench that holds the window's state.
+- `src/unslop/`: a second program on the toolkit, the `unslop` command. It
+  shows the comments, strings and docstrings of a Common Lisp checkout for
+  rewriting and writes them back in place. It names nothing of Autolith and
+  nothing in `src/client/` or `src/view/`, and those name nothing of it. Its
+  one rule is in `proof.lisp`: an edit may change words and never code.
 - `tests/`: FiveAM, same package, no display, server or credentials.
 - `script/setup.lisp`: finds Autolith's source and its dependency set; every
   script and the source checks load it first. `script/autolith.sh` finds the
@@ -44,6 +49,7 @@ script/check --suite records    # one suite, no source checks
 script/check --fix              # repair layout findings
 script/exercise                 # drive the demonstration offscreen; needs a display
 script/exercise-live            # drive real turns against a scripted model in a world of its own
+script/exercise-unslop          # drive unslop offscreen against a throwaway checkout
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 
@@ -55,6 +61,11 @@ build machine. Develop against a pinned Autolith checkout named by
 `AUI_AUTOLITH_ROOT` when the installed one is being edited, and against a
 world of your own (`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` pointed
 elsewhere) rather than the person's.
+
+The systems in `aui.asd`: `aui/toolkit` is `src/ui/` with the preferences and
+loads without Autolith; `aui` is the client on it; `aui/unslop` is unslop on
+it. A change to the toolkit is a change to both programs, so it gets
+`script/exercise` and `script/exercise-unslop`.
 
 ## Boundaries
 

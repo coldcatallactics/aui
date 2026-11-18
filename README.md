@@ -40,6 +40,12 @@ aui -C ~/work/project   # as if started in that directory
 
 `aui` takes the options and sub-commands of `autolith`.
 
+## Unslop
+
+`unslop DIRECTORY` shows the comments, strings and docstrings of a Common Lisp
+checkout, file by file, for rewriting. What you type is saved when you stop
+typing. Nothing is committed.
+
 ## Keys
 
 | key | action |

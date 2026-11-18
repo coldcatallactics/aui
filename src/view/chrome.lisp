@@ -192,11 +192,11 @@
 (defun chrome--confirm-stop-server (workbench)
   "Ask whether the world server is to be stopped, and stop it on a yes."
   (workbench-pick workbench
-                  (list (make-choice :label  "Stop the server"
+                  (list (make-choice :label "Keep it running"
+                                     :value ':keep)
+                        (make-choice :label  "Stop the server"
                                      :detail "Work in every channel is stopped; channels and histories are kept"
-                                     :value  ':stop)
-                        (make-choice :label "Keep it running"
-                                     :value ':keep))
+                                     :value  ':stop))
                   (lambda (answer)
                     (when (eq answer ':stop)
                       (workbench-stop-server workbench)))

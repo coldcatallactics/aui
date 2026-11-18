@@ -89,11 +89,12 @@
 (defun sidebar-confirm-delete (workbench identifier)
   "Ask whether the channel IDENTIFIER is to be deleted, and delete it on a yes."
   (workbench-pick workbench
-                  (list (make-choice :label  "Delete"
+                  ;; Enter takes the first choice, so the one that loses nothing comes first.
+                  (list (make-choice :label "Keep"
+                                     :value ':keep)
+                        (make-choice :label  "Delete"
                                      :detail "The channel, the channels nested in it and their histories"
-                                     :value  ':delete)
-                        (make-choice :label "Keep"
-                                     :value ':keep))
+                                     :value  ':delete))
                   (lambda (answer)
                     (when (eq answer ':delete)
                       (workbench-delete-channel workbench identifier)))

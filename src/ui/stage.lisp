@@ -371,22 +371,22 @@ otherwise."
 (-> key-event-shift-p (key-event) boolean)
 (defun key-event-shift-p (event)
   "Return T when Shift was held."
-  (logtest #x10000 (key-event-state event)))
+  (logtest lightfast:+modifier-shift+ (key-event-state event)))
 
 (-> key-event-control-p (key-event) boolean)
 (defun key-event-control-p (event)
   "Return T when Control was held."
-  (logtest #x40000 (key-event-state event)))
+  (logtest lightfast:+modifier-control+ (key-event-state event)))
 
 (-> key-event-alt-p (key-event) boolean)
 (defun key-event-alt-p (event)
   "Return T when Alt, or Option on a Mac, was held."
-  (logtest #x80000 (key-event-state event)))
+  (logtest lightfast:+modifier-alt+ (key-event-state event)))
 
 (-> key-event-command-p (key-event) boolean)
 (defun key-event-command-p (event)
   "Return T when the platform's command modifier was held: Command on a Mac, Control elsewhere."
-  (logtest (if (uiop:os-macosx-p) #x400000 #x40000) (key-event-state event)))
+  (logtest lightfast:+modifier-command+ (key-event-state event)))
 
 (-> make-stage
     (t &key (:painter function) (:key-handler (or null function)) (:drop-handler (or null function))) stage)

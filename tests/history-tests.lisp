@@ -101,3 +101,14 @@ above one, that many records share each form, as a transaction writes them."
       (fiveam:is (zerop (mod (1- (first (first pages))) 7)))
       (fiveam:is (equal (loop for sequence from 1 to 1000 collect sequence)
                         (loop for page in (reverse pages) append page))))))
+
+(fiveam:test windows-too-narrow-for-a-page-still-read-every-part-of-a-log
+  (uiop:with-temporary-file (:pathname older :type "sexp")
+    (uiop:with-temporary-file (:pathname newer :type "sexp")
+      (test-write-log older 100)
+      (test-write-log newer 100 :first 101)
+      (let ((*history-tail-octets*    2000)
+            (*history-maximum-octets* 4000)
+            (*history-scan-octets*    2000))
+        (fiveam:is (equal (loop for sequence from 1 to 200 collect sequence)
+                          (loop for page in (reverse (test-read-pages (list newer older))) append page)))))))

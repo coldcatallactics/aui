@@ -118,51 +118,57 @@ one ends where this one starts."
                     (= (first (first rest)) (first (first tail))))
           finally (return rest))))
 
+(-> history--wide-window (pathname integer &key (:wanted-p function) (:need integer)) (values list integer))
+(defun history--wide-window (segment offset &key wanted-p need)
+  "Return the records WANTED-P keeps of a window of SEGMENT that ends at OFFSET, each as (START . RECORD), and where the window starts.
+
+The window is widened until it holds NEED of them, reaches the segment's
+beginning, or is as wide as a window gets."
+  (loop for octets = *history-tail-octets* then (* octets 2)
+        do (multiple-value-bind (records start starts) (history--window segment offset octets)
+             (let ((kept (loop for record in records
+                               for record-start in starts
+                               when (funcall wanted-p record)
+                                 collect (cons record-start record))))
+               (when (or (zerop start)
+                         (>= (length kept) need)
+                         (>= octets *history-maximum-octets*))
+                 (return (values kept start)))))))
+
 (-> history--page
     (list &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer)))
     (values list boolean (or null history-cursor)))
 (defun history--page (segments &key cursor before through)
   "Return a page of the records in the log SEGMENTS, newest segment first, as `history-read-page' does."
   (let ((page nil)
-        (next nil))
+        (next (or cursor
+                  (and segments
+                       (make-history-cursor :segment (first segments)
+                                            :offset  (history--file-length (first segments)))))))
     (flet ((wanted-p (record)
              (let ((sequence (record-sequence record)))
                (and (or (null before) (null sequence) (< sequence before))
-                    (or (null through) (null sequence) (<= sequence through))))))
-      (loop for (segment . older) on (if cursor
-                                         (member (history-cursor-segment cursor) segments :test #'equal)
-                                         segments)
-            for first-p = t then nil
-            do (let ((offset (if (and first-p cursor)
-                                 (history-cursor-offset cursor)
-                                 (history--file-length segment)))
-                     (octets *history-tail-octets*))
-                 (loop
-                   (multiple-value-bind (records start starts) (history--window segment offset octets)
-                     (let ((kept (loop for record in records
-                                       for record-start in starts
-                                       when (wanted-p record)
-                                         collect (cons record-start record))))
-                       (when (or (zerop start)
-                                 (>= (+ (length kept) (length page)) *history-minimum-records*)
-                                 (>= octets *history-maximum-octets*))
-                         (let ((cut (history--cut (append kept page))))
-                           (setf page cut
-                                 next (cond
-                                        ((and kept (not (eq (first cut) (first kept))))
-                                         (make-history-cursor :segment segment :offset (first (first cut))))
-                                        ((plusp start)
-                                         (make-history-cursor :segment segment :offset start))
-                                        (older
-                                         (make-history-cursor
-                                          :segment (first older)
-                                          :offset  (history--file-length (first older))))
-                                        (t
-                                         nil))))
-                         (return))
-                       (setf octets (* octets 2))))))
-               (when (or (>= (length page) *history-minimum-records*) (null next))
-                 (return))))
+                    (or (null through) (null sequence) (<= sequence through)))))
+
+           (end-of-older (segment)
+             (let ((older (second (member segment segments :test #'equal))))
+               (and older
+                    (make-history-cursor :segment older :offset (history--file-length older))))))
+      (loop while (and next (< (length page) *history-minimum-records*))
+            do (let ((segment (history-cursor-segment next)))
+                 (multiple-value-bind (kept start)
+                     (history--wide-window segment (history-cursor-offset next)
+                                           :wanted-p #'wanted-p
+                                           :need     (- *history-minimum-records* (length page)))
+                   (let ((cut (history--cut (append kept page))))
+                     (setf page cut
+                           next (cond
+                                  ((and kept (not (eq (first cut) (first kept))))
+                                   (make-history-cursor :segment segment :offset (first (first cut))))
+                                  ((plusp start)
+                                   (make-history-cursor :segment segment :offset start))
+                                  (t
+                                   (end-of-older segment)))))))))
     (values (mapcar #'rest page) (and next t) next)))
 
 (-> history-read-page

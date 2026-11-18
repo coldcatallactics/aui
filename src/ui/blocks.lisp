@@ -57,13 +57,6 @@
     "A block without text has no leaves."
     nil))
 
-(defgeneric block-text (block)
-  (:documentation "Return BLOCK's content as plain text, for copying.")
-  (:method ((block flow-block))
-    "The text of a block is the text of its leaves, one to a line."
-    (format nil "~{~A~^~%~}"
-            (mapcar (lambda (leaf) (paragraph-text (first leaf))) (block-leaves block)))))
-
 (defmethod block-layout :around ((block flow-block) width)
   "Remember the width and the height every layout arrives at."
   (setf (block-width block)  width
@@ -486,10 +479,6 @@
     (when (and stage action)
       (stage-region stage (row-block-identifier block) :x x :y y :width width :height height :action action))))
 
-(defmethod block-text ((block row-block))
-  "The title's words."
-  (apply #'concatenate 'string (mapcar #'span-text (row-block-title block))))
-
 
 ;;;; -- Box --
 
@@ -639,10 +628,6 @@
   (loop for (child child-x child-y) in (box-block--child-positions block)
         append (loop for (paragraph leaf-x leaf-y) in (block-leaves child)
                      collect (list paragraph (+ child-x leaf-x) (+ child-y leaf-y)))))
-
-(defmethod block-text ((block box-block))
-  "The text of the children, one after another."
-  (format nil "~{~A~^~%~}" (mapcar #'block-text (box-block-children block))))
 
 
 ;;;; -- Image --

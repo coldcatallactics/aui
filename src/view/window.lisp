@@ -13,9 +13,6 @@
 (defparameter *window-minimum-size* '(520 . 420)
   "The smallest (WIDTH . HEIGHT) the window is allowed.")
 
-(defvar *window-natives* nil
-  "The native fields of the window being built: a property list of :EDITOR, :FILTER and :QUERY.")
-
 (defparameter *console-minimum-reading* 520
   "The narrowest the conversation may become for the console to stand beside it.")
 

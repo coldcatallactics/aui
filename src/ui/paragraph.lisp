@@ -385,20 +385,6 @@ When the paragraph wraps anywhere, every character is its own word."
                                   finally (return length))))
                (+ (fragment-start fragment) count))))))))
 
-(-> paragraph-span-at (paragraph integer integer) (or null span))
-(defun paragraph-span-at (paragraph x y)
-  "Return the span of PARAGRAPH drawn at the point X, Y, or NIL when the point is on no text."
-  (let ((line (find-if (lambda (line)
-                         (and (>= y (text-line-y line))
-                              (< y (+ (text-line-y line) (text-line-height line)))))
-                       (paragraph-lines paragraph))))
-    (when line
-      (let ((fragment (find-if (lambda (fragment)
-                                 (and (>= x (fragment-x fragment))
-                                      (< x (+ (fragment-x fragment) (fragment-width fragment)))))
-                               (text-line-fragments line))))
-        (and fragment (fragment-span fragment))))))
-
 
 ;;;; -- Drawing --
 

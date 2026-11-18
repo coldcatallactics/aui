@@ -236,16 +236,6 @@ once, so rows that name each other as parents end."
   "Return the reachable world server endpoint of WORLD, or NIL when none answers."
   (autolith::world-client-entry (world-configuration world)))
 
-(-> world-server-status (world) (or null list))
-(defun world-server-status (world)
-  "Return the running world server's status as a property list, or NIL when no server runs. Blocks briefly."
-  (handler-case
-      (let ((entry (world--entry world)))
-        (when entry
-          (rest (getf (rest (autolith::localgroup-query-record entry ':status)) :status))))
-    (error ()
-      nil)))
-
 (-> world--last-line (string) string)
 (defun world--last-line (text)
   "Return the last line of TEXT that says anything, or the empty string."
@@ -336,16 +326,6 @@ Signals CLIENT-ERROR when no server runs or the server refuses."
 (defun world-close-channel (world channel)
   "Ask the server to stop serving CHANNEL; its history stays."
   (world-request world ':close :channel channel))
-
-(-> world-move-agent (world string (or null string)) list)
-(defun world-move-agent (world participant channel)
-  "Move the agent PARTICIPANT names into CHANNEL."
-  (world-request world ':move :participant participant :channel channel))
-
-(-> world-dismiss-agent (world string) list)
-(defun world-dismiss-agent (world participant)
-  "Park the agent PARTICIPANT names, so it resides in no channel."
-  (world-request world ':dismiss :participant participant))
 
 (-> world-participants (world) list)
 (defun world-participants (world)

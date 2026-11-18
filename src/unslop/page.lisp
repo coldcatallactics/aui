@@ -129,18 +129,32 @@ as tall as what the editor holds."
   (values (+ y *page-header-height*)
           (max 0 (- height *page-header-height* *page-status-height*))))
 
+(-> page--editor-span (integer integer &key (:top integer) (:bottom integer)) (values (or null integer) integer))
+(defun page--editor-span (y height &key top bottom)
+  "Return the top and the height of the part of a passage's row at Y of HEIGHT that the editor covers in a view from TOP to BOTTOM, or NIL and 0 when too little of the row is in view to write in.
+
+A passage taller than the view is written in through the part of it that
+shows, and the editor moves its own text as the caret moves."
+  (let ((from (max (+ y *page-padding* -1) top))
+        (to   (min (+ y height (- *page-padding*) 3) bottom)))
+    (if (>= (- to from) 40)
+        (values from (- to from))
+        (values nil 0))))
+
 (-> page-editor-box (desk &key (:x integer) (:y integer) (:width integer) (:height integer)) (or null list))
 (defun page-editor-box (desk &key x y width height)
-  "Return the (X Y WIDTH HEIGHT) the editor takes on a page in the given box, or NIL when no passage is being written in or its row is not wholly in view."
+  "Return the (X Y WIDTH HEIGHT) the editor takes on a page in the given box, or NIL when no passage is being written in or too little of its row is in view."
   (multiple-value-bind (text-x text-width) (page-text-box x width)
     (multiple-value-bind (body-y body-height) (page-body-box y height)
       (let ((row (page--focus-row desk (page-rows desk text-width))))
         (when row
-          (let ((top (+ body-y (- (page-row-top row) (desk-page-scroll desk)))))
-            (when (and (>= top body-y)
-                       (<= (+ top (page-row-height row)) (+ body-y body-height)))
-              (list (- text-x 4) (+ top *page-padding* -1) (+ text-width 8)
-                    (+ (- (page-row-height row) (* 2 *page-padding*)) 4)))))))))
+          (multiple-value-bind (top span)
+              (page--editor-span (+ body-y (- (page-row-top row) (desk-page-scroll desk)))
+                                 (page-row-height row)
+                                 :top    body-y
+                                 :bottom (+ body-y body-height))
+            (when top
+              (list (- text-x 4) top (+ text-width 8) span))))))))
 
 (-> page-reveal (desk &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun page-reveal (desk &key x y width height)
@@ -255,8 +269,19 @@ as tall as what the editor holds."
                    :width  (- *page-gutter* 10)
                    :height (text-style-line-height (text-style ':code)))
     (cond
+      ;; The editor lies over the words. Where too little of the row shows for it,
+      ;; the words are drawn, and a click brings the passage back into view.
       (focused-p
-       (paint-frame (- text-x 7) (- y 1) :width (+ text-width 14) :height (+ height 2)))
+       (paint-frame (- text-x 7) (- y 1) :width (+ text-width 14) :height (+ height 2))
+       (unless (page--editor-span y height :top *paint-top* :bottom *paint-bottom*)
+         (paragraph-paint paragraph text-x text-y :top *paint-top* :bottom *paint-bottom*)
+         (stage-region stage identifier
+                       :x      (- text-x 7)
+                       :y      y
+                       :width  (+ text-width 14)
+                       :height height
+                       :cursor ':insert
+                       :action (lambda () (desk-refocus desk)))))
       (t
        (let ((unseen (page--unseen-words (passage-text passage))))
          (if unseen

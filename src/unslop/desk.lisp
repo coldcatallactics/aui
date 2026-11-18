@@ -507,6 +507,16 @@ What was being written elsewhere is written first."
       (desk-redraw desk)))
   nil)
 
+(-> desk-refocus (desk) null)
+(defun desk-refocus (desk)
+  "Bring the passage being written in back into view and give the editor the keyboard."
+  (when (and (desk-focus desk) (desk-editor desk))
+    (when (desk-arranger desk)
+      (funcall (desk-arranger desk)))
+    (lightfast:take-focus (desk-editor desk))
+    (desk-redraw desk))
+  nil)
+
 (-> desk-leave (desk) null)
 (defun desk-leave (desk)
   "Stop writing in the passage being written in: what was typed is written, and a comment left empty is removed."

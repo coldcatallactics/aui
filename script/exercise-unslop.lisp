@@ -258,6 +258,19 @@
                (unslop-expect "when its code changed too, nothing is written and the window says so"
                               (and (string= (format nil "(defun another ()~%  2)~%") (unslop-exercise--read other))
                                    (desk-notice desk))))
+             ;; A passage taller than the window is written in through the part that shows.
+             (unslop-exercise--write other (format nil "~{;; Line ~D of a long comment.~%~}(defun other ()~%  1)~%"
+                                                   (loop for line from 1 to 80 collect line)))
+             (desk-open-file desk "src/other.lisp")
+             (unslop-exercise--click desk '(:passage 0 0))
+             (unslop-expect "a passage taller than the page gets the editor over the part in view"
+                            (let* ((layout (unslop--layout 1320 880))
+                                   (box    (destructuring-bind (x y width height) (getf layout :page)
+                                             (page-editor-box desk :x x :y y :width width :height height))))
+                              (and box
+                                   (> (fourth box) 400)
+                                   (<= (+ (second box) (fourth box)) (- 880 *page-status-height*)))))
+             (unslop-exercise--key desk #xff1b)
              ;; The filter.
              (setf (desk-filter desk) "gre")
              (unslop-expect "the filter narrows the list by name"

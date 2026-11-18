@@ -333,14 +333,34 @@ is listed with it as one row, so a chain of such folders takes one row."
              (top   (+ list-y (floor (* (- list-h thumb) scroll) (max 1 maximum)))))
         (paint-dither (- (+ x width) 5) top :width 4 :height thumb :step 2)))
     (let* ((foot-y (- (+ y height) *shelf-footer-height*))
-           (label  (if (desk-hide-completed-p) "Show completed" "Hide completed")))
+           (label  "Hide completed")
+           (hide-p (desk-hide-completed-p))
+           (switch (+ 22 (text-width label meta) 16))
+           (right  (- (+ x width) 8))
+           (left   (- right switch))
+           (hot-p  (stage-hot-p stage ':hide-completed)))
       (paint-line x foot-y :x2 (+ x width) :y2 foot-y)
       (paint-text-in (format nil "~D of ~D completed" (desk-completed-count desk) files) meta
-                     :x (+ x 16) :y foot-y :width (- width 32 (chip-width label)) :height *shelf-footer-height*)
-      (paint-chip stage ':hide-completed label
-                  :x      (- (+ x width) (chip-width label) 8)
-                  :y      (+ foot-y (floor (- *shelf-footer-height* 24) 2))
-                  :action (lambda ()
-                            (setf (preference ':hide-completed) (not (desk-hide-completed-p)))
-                            (desk-redraw desk)))))
+                     :x (+ x 16) :y foot-y :width (max 0 (- left x 24)) :height *shelf-footer-height*)
+      ;; A box that is checked while completed files are left out, as each file's box is while it is completed.
+      (flet ((content ()
+               (let ((box-y (+ foot-y (floor (- *shelf-footer-height* 13) 2))))
+                 (paint-frame (+ left 8) box-y :width 13 :height 13)
+                 (when hide-p
+                   (paint-mark ':check (+ left 7) (- box-y 2) :size 16)))
+               (paint-text-in label meta
+                              :x (+ left 30) :y foot-y :width (- switch 30) :height *shelf-footer-height*)))
+        (if hot-p
+            (with-inversion (left (+ foot-y 8) switch (- *shelf-footer-height* 16))
+              (content))
+            (content)))
+      (stage-region stage ':hide-completed
+                    :x       left
+                    :y       (+ foot-y 8)
+                    :width   switch
+                    :height  (- *shelf-footer-height* 16)
+                    :action  (lambda ()
+                               (setf (preference ':hide-completed) (not hide-p))
+                               (desk-redraw desk))
+                    :tooltip (if hide-p "Show completed files again" "Leave completed files out of the list"))))
   nil)

@@ -194,6 +194,48 @@
                             (and (null (desk-focus desk))
                                  (null (search "Inside" (unslop-exercise--read greet)))
                                  (search (format nil "over\\\".\"~%  (format t") (unslop-exercise--read greet))))
+             ;; Deleting a comment outright, and bringing it back.
+             (let ((place (unslop-exercise--passage desk "behind")))
+               (unslop-exercise--click desk (list ':passage-delete (first place) (rest place)))
+               (unslop-expect "the cross beside a comment deletes it, with the blanks before it"
+                              (and (search (format nil "name))~%") (unslop-exercise--read greet))
+                                   (null (search "behind" (unslop-exercise--read greet)))
+                                   (null (desk-focus desk))
+                                   (desk-removal desk)
+                                   (unslop-exercise--region desk ':restore-comment))))
+             (when shots
+               (unslop--picture desk (format nil "~A/unslop-deleted.png" shots)))
+             (unslop-exercise--click desk ':restore-comment)
+             (unslop-expect "Undo brings the comment back"
+                            (and (search "name)) ; behind" (unslop-exercise--read greet))
+                                 (null (desk-removal desk))
+                                 (null (unslop-exercise--region desk ':restore-comment))))
+             (let ((docstring (format nil "Greet NAME.~%Twice \"over\"."))
+                   (control-d (list (char-code #\d) lightfast:+modifier-command+)))
+               (let ((place (unslop-exercise--passage desk "Above the function.")))
+                 (unslop-exercise--click desk (list ':passage (first place) (rest place)))
+                 (unslop-exercise--type desk "Above, half typed")
+                 (when shots
+                   (unslop-exercise--draw desk)
+                   (unslop--picture desk (format nil "~A/unslop-comment.png" shots)))
+                 (unslop-exercise--key desk (first control-d) :state (second control-d))
+                 (unslop-expect "Ctrl+D deletes the comment being written in and goes on with the next text"
+                                (and (null (search "Above" (unslop-exercise--read greet)))
+                                     (search (format nil "~%~%(defun greet") (unslop-exercise--read greet))
+                                     (equal (unslop-exercise--passage desk docstring) (desk-focus desk))
+                                     (string= docstring (desk-typed-text desk))))
+                 (unslop-exercise--click desk ':restore-comment)
+                 (unslop-expect "and Undo brings that one back as the file had it"
+                                (and (search (format nil ";; Above the function.~%(defun greet")
+                                             (unslop-exercise--read greet))
+                                     (null (desk-focus desk)))))
+               (let ((place (unslop-exercise--passage desk docstring)))
+                 (unslop-exercise--click desk (list ':passage (first place) (rest place)))
+                 (unslop-exercise--key desk (first control-d) :state (second control-d))
+                 (unslop-expect "a docstring is not deleted, and the window says so"
+                                (and (search "Greet NAME." (unslop-exercise--read greet))
+                                     (desk-notice desk)))
+                 (unslop-exercise--key desk #xff1b)))
              ;; Completed files.
              (unslop-exercise--click desk ':complete)
              (unslop-expect "the button marks the open file completed, outside the checkout"

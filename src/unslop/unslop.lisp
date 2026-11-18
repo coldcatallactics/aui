@@ -188,11 +188,16 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--editor-key (desk key-event) boolean)
 (defun unslop--editor-key (desk event)
-  "Handle a key pressed in the editor before the editor sees it, and return whether it was used: Escape ends the writing, Tab goes to the next passage and Shift with Tab to the one before."
-  (let ((key (key-event-key event)))
+  "Handle a key pressed in the editor before the editor sees it, and return whether it was used: Escape ends the writing, Tab goes to the next passage and Shift with Tab to the one before, and Control with D deletes the comment being written in and goes on with what follows it."
+  (let ((key   (key-event-key event))
+        (focus (desk-focus desk)))
     (cond
       ((eq key ':escape)
        (desk-leave desk)
+       t)
+      ((and focus (key-event-command-p event) (eql key #\d))
+       (when (desk-delete-comment desk (first focus) (rest focus) :go-on-p t)
+         (unslop--reveal desk))
        t)
       ((eq key ':tab)
        (unless (page-step desk (if (key-event-shift-p event) -1 1))

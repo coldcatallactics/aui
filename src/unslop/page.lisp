@@ -6,7 +6,8 @@
 ;;; is a heading, its operator and name as they stand in the source, and
 ;;; under it come its passages in the order of the file: comments, docstrings
 ;;; and other strings, each named in the margin. A click on a passage puts
-;;; the editor over it. Everything is set in the typewriter face, because
+;;; the editor over it, and the cross beside a comment deletes it. Everything
+;;; is set in the typewriter face, because
 ;;; line breaks are kept as they are typed and the face shows how long a line
 ;;; has become.
 
@@ -249,10 +250,33 @@ shows, and the editor moves its own text as the caret moves."
     (paint-line left (+ y height -3) :x2 right :y2 (+ y height -3)))
   nil)
 
+(-> page--paint-delete (desk stage page-row &key (:x integer) (:y integer) (:shown-p boolean)) null)
+(defun page--paint-delete (desk stage row &key x y shown-p)
+  "Declare the cross that deletes the comment of ROW in a box whose top-left corner is X, Y, and draw it when SHOWN-P or the pointer is over it."
+  (let* ((definition (page-row-definition row))
+         (index      (page-row-passage row))
+         (identifier (list ':passage-delete definition index))
+         (hot-p      (stage-hot-p stage identifier))
+         (size       20))
+    (cond
+      (hot-p
+       (with-inversion (x y size size)
+         (paint-mark ':cross (+ x 4) (+ y 4) :size 12)))
+      (shown-p
+       (paint-mark ':cross (+ x 4) (+ y 4) :size 12)))
+    (stage-region stage identifier
+                  :x       x
+                  :y       y
+                  :width   size
+                  :height  size
+                  :action  (lambda () (desk-delete-comment desk definition index))
+                  :tooltip "Delete this comment (Ctrl+D while writing in it)"))
+  nil)
+
 (-> page--paint-passage (desk stage page-row &key (:x integer) (:y integer) (:text-x integer) (:text-width integer))
     null)
 (defun page--paint-passage (desk stage row &key x y text-x text-width)
-  "Draw ROW's passage with its top at Y: its kind in the margin at X and its words from TEXT-X, TEXT-WIDTH wide. A click puts the editor over it with the caret where the pointer is."
+  "Draw ROW's passage with its top at Y: its kind in the margin at X and its words from TEXT-X, TEXT-WIDTH wide. A click puts the editor over it with the caret where the pointer is. A comment has a cross between the margin and its words, drawn while the pointer is on the passage or the passage is being written in."
   (let* ((definition (page-row-definition row))
          (index      (page-row-passage row))
          (passage    (proof-passage (desk-proof desk) definition index))
@@ -293,10 +317,11 @@ shows, and the editor moves its own text as the caret moves."
              (paragraph-paint paragraph text-x text-y :top *paint-top* :bottom *paint-bottom*)))
        (when (stage-hot-p stage identifier)
          (paint-frame (- text-x 7) (- y 1) :width (+ text-width 14) :height (+ height 2) :dashed-p t))
+       ;; The margin belongs to the passage, so the pointer stays on it on its way to the cross.
        (stage-region stage identifier
-                     :x      (- text-x 7)
+                     :x      (+ x *page-margin*)
                      :y      y
-                     :width  (+ text-width 14)
+                     :width  (+ (- text-x x *page-margin*) text-width 7)
                      :height height
                      :cursor ':insert
                      :action (lambda ()
@@ -304,7 +329,13 @@ shows, and the editor moves its own text as the caret moves."
                                           :caret (paragraph-index-at
                                                   paragraph
                                                   (- (stage-pointer-x stage) text-x)
-                                                  (- (stage-pointer-y stage) text-y))))))))
+                                                  (- (stage-pointer-y stage) text-y)))))))
+    ;; The cross lies over the passage's margin, so a click on it deletes and does not begin writing.
+    (when (eq (passage-kind passage) ':comment)
+      (page--paint-delete desk stage row
+                          :x       (- text-x 32)
+                          :y       (+ text-y (floor (- (text-style-line-height (text-style ':code)) 20) 2))
+                          :shown-p (or focused-p (stage-hot-p stage identifier)))))
   nil)
 
 (-> page--paint-header (desk stage &key (:x integer) (:y integer) (:width integer)) null)
@@ -358,14 +389,15 @@ shows, and the editor moves its own text as the caret moves."
   (multiple-value-bind (second minute hour) (decode-universal-time time)
     (format nil "~2,'0D:~2,'0D:~2,'0D" hour minute second)))
 
-(-> page--paint-status (desk &key (:x integer) (:y integer) (:width integer)) null)
-(defun page--paint-status (desk &key x y width)
-  "Draw the line under the page: what was not written, or when the file was last written, and the keys that move through the texts."
-  (let* ((meta   (text-style ':meta))
-         (left   (+ x *page-margin*))
-         (keys   "Tab next text   Esc done   Ctrl+Enter completed, next file")
-         (keys-w (text-width keys meta))
-         (room   (max 0 (- width (* 2 *page-margin*) keys-w 20))))
+(-> page--paint-status (desk stage &key (:x integer) (:y integer) (:width integer)) null)
+(defun page--paint-status (desk stage &key x y width)
+  "Draw the line under the page: what was not written, or when the file was last written, and the keys that move through the texts. After a comment was deleted the line says so and has the chip that brings it back."
+  (let* ((meta    (text-style ':meta))
+         (left    (+ x *page-margin*))
+         (keys    "Tab next text   Esc done   Ctrl+D delete comment   Ctrl+Enter completed, next file")
+         (keys-w  (text-width keys meta))
+         (room    (max 0 (- width (* 2 *page-margin*) keys-w 20)))
+         (removal (desk-removal desk)))
     (paint-line x y :x2 (+ x width) :y2 y)
     (cond
       ((desk-notice desk)
@@ -373,6 +405,16 @@ shows, and the editor moves its own text as the caret moves."
                       :x left :y y :width room :height *page-status-height*))
       ((desk-dirty-p desk)
        (paint-text-in "typing" meta :x left :y y :width room :height *page-status-height*))
+      (removal
+       (let* ((green  (text-style ':meta :color *green*))
+              (said   (format nil "comment at line ~D deleted" (removal-line removal)))
+              (said-w (min (text-width said green) (max 0 (- room (chip-width "Undo") 8)))))
+         (paint-text-in said green :x left :y y :width said-w :height *page-status-height*)
+         (paint-chip stage ':restore-comment "Undo"
+                     :x       (+ left said-w 8)
+                     :y       (+ y (floor (- *page-status-height* 24) 2))
+                     :action  (lambda () (desk-restore-comment desk))
+                     :tooltip "Bring the comment back")))
       ((desk-saved-at desk)
        (paint-text-in (format nil "saved ~A" (page--clock (desk-saved-at desk))) (text-style ':meta :color *green*)
                       :x left :y y :width room :height *page-status-height*)))
@@ -450,5 +492,5 @@ shows, and the editor moves its own text as the caret moves."
                  (let* ((thumb (max 24 (floor (* body-height body-height) total)))
                         (top   (+ body-y (floor (* (- body-height thumb) scroll) (max 1 maximum)))))
                    (paint-dither (- (+ x width) 6) top :width 4 :height thumb :step 2)))))
-           (page--paint-status desk :x x :y (+ body-y body-height) :width width))))))
+           (page--paint-status desk stage :x x :y (+ body-y body-height) :width width))))))
   nil)

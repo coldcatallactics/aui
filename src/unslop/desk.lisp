@@ -18,6 +18,12 @@
 (defparameter *passage-kinds* '(:comment :docstring :string)
   "The kinds of passage, in the order their switches are shown.")
 
+(defstruct removal
+  "A comment deleted from the open file, as the proofs of the file BEFORE and AFTER and the LINE the comment began on."
+  (before nil :type (or null proof))
+  (after  nil :type (or null proof))
+  (line   0   :type integer))
+
 (defclass desk ()
   ((checkout
     :initarg       :checkout
@@ -129,6 +135,11 @@
     :accessor      desk-notice
     :type          (or null string)
     :documentation "A line saying that something was not written, shown until the next thing works.")
+   (removal
+    :initform      nil
+    :accessor      desk--removal
+    :type          (or null removal)
+    :documentation "The comment deleted last, or NIL. It can be brought back for as long as the open file holds what was written then.")
    (marks
     :initform      0
     :accessor      desk--marks
@@ -371,7 +382,8 @@ the look began, since the look would not know of it."
         (desk-shelf-reveal-p desk) t
         (desk-page-scroll desk)    0
         (desk-saved-at desk)    nil
-        (desk-notice desk)      nil)
+        (desk-notice desk)      nil
+        (desk--removal desk)    nil)
   (desk--fold desk (checkout-folders-above name) nil)
   (desk-redraw desk)
   nil)
@@ -420,10 +432,11 @@ the look began, since the look would not know of it."
 (defun desk--written (desk proof)
   "Take PROOF, just written to the open file, as what the file holds."
   (let ((name (desk-name desk)))
-    (setf (desk-proof desk)    proof
-          (desk-dirty-p desk)  nil
-          (desk-saved-at desk) (get-universal-time)
-          (desk-notice desk)   nil)
+    (setf (desk-proof desk)     proof
+          (desk-dirty-p desk)   nil
+          (desk-saved-at desk)  (get-universal-time)
+          (desk-notice desk)    nil
+          (desk--removal desk)  nil)
     (incf (desk--marks desk))
     ;; The file holds something else now, so a mark on it stands only if it was for exactly this.
     (if (ledger-completed-p (desk-ledger desk) name (proof-digest proof))
@@ -550,6 +563,141 @@ What was being written elsewhere is written first."
       (lightfast:take-focus (stage-canvas (desk-stage desk))))
     (desk-redraw desk))
   nil)
+
+
+;;;; -- Deleting a Comment --
+
+(-> desk--find-again (desk passage) (or null cons))
+(defun desk--find-again (desk passage)
+  "Return the numbers (DEFINITION . PASSAGE) the open file now has for PASSAGE, which was read from it before it was last written: the passage of its kind and with its words that stands nearest to where it stood. NIL when there is none."
+  (let ((nearest  nil)
+        (distance nil))
+    (loop for definition in (proof-definitions (desk-proof desk))
+          for definition-index from 0
+          do (loop for candidate in (definition-passages definition)
+                   for passage-index from 0
+                   do (when (and (eq (passage-kind candidate) (passage-kind passage))
+                                 (string= (passage-text candidate) (passage-text passage)))
+                        (let ((away (abs (- (passage-start candidate) (passage-start passage)))))
+                          (when (or (null distance) (< away distance))
+                            (setf nearest  (cons definition-index passage-index)
+                                  distance away))))))
+    nearest))
+
+(-> desk--passage-from (desk integer) (or null cons))
+(defun desk--passage-from (desk position)
+  "Return the numbers (DEFINITION . PASSAGE) of the first passage of the open file, among the kinds the person wants, that begins at POSITION in the text or after it. NIL when there is none."
+  (let ((kinds (desk-kinds)))
+    (loop for definition in (proof-definitions (desk-proof desk))
+          for definition-index from 0
+          do (loop for passage in (definition-passages definition)
+                   for passage-index from 0
+                   do (when (and (member (passage-kind passage) kinds)
+                                 (>= (passage-start passage) position))
+                        (return-from desk--passage-from (cons definition-index passage-index)))))))
+
+(-> desk--delete (desk passage &key (:go-on-p boolean)) boolean)
+(defun desk--delete (desk comment &key go-on-p)
+  "Write the open file without COMMENT, a comment of its proof, and return whether that worked. With GO-ON-P the passage that followed it is written in next."
+  (let ((before   (desk-proof desk))
+        (after    nil)
+        (position 0))
+    (handler-case
+        (multiple-value-bind (without start) (proof-remove before comment)
+          (setf after    (proof-write without before)
+                position start))
+      (proof-error (condition)
+        (setf (desk-notice desk)
+              (if (eq (proof-error-reason condition) ':changed)
+                  "not deleted: the file was changed by another program"
+                  (proof-error-message condition))))
+      (error (condition)
+        (setf (desk-notice desk) (format nil "not deleted: ~A" condition))))
+    (cond
+      (after
+       (desk--written desk after)
+       (setf (desk--removal desk)
+             (make-removal :before before :after after :line (passage-line comment)))
+       (let ((next (and go-on-p (desk--passage-from desk position))))
+         (when next
+           (desk-edit desk (first next) (rest next))))
+       (desk-redraw desk)
+       t)
+      (t
+       ;; What another program wrote is shown, so the person sees what is there now.
+       (desk-check-disk desk)
+       (desk-redraw desk)
+       nil))))
+
+(-> desk-delete-comment (desk fixnum fixnum &key (:go-on-p boolean)) boolean)
+(defun desk-delete-comment (desk definition passage &key go-on-p)
+  "Delete the comment numbered PASSAGE of the definition numbered DEFINITION from the open file, with its lines when it stands alone on them, and return whether the file was written.
+
+What was typed in the comment goes with it, and what is being written in
+another passage is written first. With GO-ON-P the passage that followed the
+comment is written in next. The comment can be brought back for as long as
+nothing else is written to the file."
+  (let* ((focus   (desk-focus desk))
+         (here-p  (and focus (= definition (first focus)) (= passage (rest focus))))
+         (comment (and (desk-proof desk) (proof-passage (desk-proof desk) definition passage))))
+    (cond
+      ((null comment)
+       nil)
+      ((not (eq (passage-kind comment) ':comment))
+       (setf (desk-notice desk) "only a comment can be deleted; a string can be emptied")
+       (desk-redraw desk)
+       nil)
+      (t
+       (cond
+         (here-p
+          (desk--cancel-timer desk)
+          (setf (desk-focus desk)   nil
+                (desk-dirty-p desk) nil)
+          (when (desk-stage desk)
+            (lightfast:take-focus (stage-canvas (desk-stage desk)))))
+         (focus
+          ;; Writing the other passage may renumber the passages, so the comment is found again.
+          (let ((read (desk-proof desk)))
+            (desk-leave desk)
+            (unless (eq read (desk-proof desk))
+              (let ((again (desk--find-again desk comment)))
+                (setf comment (and again (proof-passage (desk-proof desk) (first again) (rest again)))))))))
+       (and comment
+            (desk--delete desk comment :go-on-p go-on-p))))))
+
+(-> desk-removal (desk) (or null removal))
+(defun desk-removal (desk)
+  "Return the comment deleted last when it can be brought back: nothing was written to the open file since, and nothing typed waits to be written. NIL otherwise."
+  (let ((removal (desk--removal desk)))
+    (and removal
+         (eq (removal-after removal) (desk-proof desk))
+         (not (desk-dirty-p desk))
+         removal)))
+
+(-> desk-restore-comment (desk) boolean)
+(defun desk-restore-comment (desk)
+  "Bring back the comment deleted last, and return whether the open file holds it again."
+  (desk-leave desk)
+  (let ((removal (desk-removal desk))
+        (again   nil))
+    (when removal
+      (handler-case
+          (setf again (proof-write (removal-before removal) (removal-after removal)))
+        (proof-error (condition)
+          (setf (desk-notice desk)
+                (if (eq (proof-error-reason condition) ':changed)
+                    "not brought back: the file was changed by another program"
+                    (proof-error-message condition))))
+        (error (condition)
+          (setf (desk-notice desk) (format nil "not brought back: ~A" condition))))
+      (if again
+          (desk--written desk again)
+          (desk-check-disk desk))
+      (desk-redraw desk))
+    (and again t)))
+
+
+;;;; -- The File on Disk --
 
 (-> desk-check-disk (desk) null)
 (defun desk-check-disk (desk)

@@ -199,6 +199,35 @@
         (desk-toggle-folder desk "lib/deep/only/")
         (fiveam:is (equal '("lib/deep/only/") (ledger-folded (ledger-open directory))))))))
 
+(fiveam:test a-comment-is-found-again-and-so-is-what-follows-a-place
+  (with-unslop-folder (directory)
+    (with-test-preferences ()
+      (let* ((*ledger-directory* (merge-pathnames "state/" directory))
+             (desk               (test-desk directory '("a.lisp"))))
+        (test-write-file (merge-pathnames "a.lisp" directory)
+                         (format nil ";; One.~%(defun a ()~%  \"Doc.\"~%  ;; Two.~%  1)~%~%;; One.~%"))
+        (desk-open-file desk "a.lisp")
+        (let* ((proof (desk-proof desk))
+               (above (proof-passage proof 0 0))
+               (below (proof-passage proof 1 0)))
+          (fiveam:is (string= "One." (passage-text above)))
+          (fiveam:is (string= "One." (passage-text below)))
+          ;; Of two passages with the same words, it is the one where the passage stood.
+          (fiveam:is (equal '(0 . 0) (desk--find-again desk above)))
+          (fiveam:is (equal '(1 . 0) (desk--find-again desk below)))
+          ;; What follows a place in the text, among the kinds that are shown.
+          (fiveam:is (equal '(0 . 0) (desk--passage-from desk 0)))
+          (fiveam:is (equal '(0 . 1) (desk--passage-from desk 1)))
+          (setf (preference ':hidden-kinds) '(:docstring :string))
+          (fiveam:is (equal '(0 . 2) (desk--passage-from desk 1)))
+          (fiveam:is (null (desk--passage-from desk (length (proof-text proof)))))
+          ;; Only a comment is deleted, and nothing can be brought back before one was.
+          (fiveam:is (not (desk-delete-comment desk 0 1)))
+          (fiveam:is (search "only a comment" (desk-notice desk)))
+          (fiveam:is (null (desk-removal desk)))
+          (fiveam:is (string= (proof-text proof)
+                              (uiop:read-file-string (merge-pathnames "a.lisp" directory)))))))))
+
 (fiveam:test the-list-is-as-wide-as-its-share-of-the-window
   (fiveam:is (= 420 (shelf-width 1400)))
   (fiveam:is (= 768 (shelf-width 2560)))

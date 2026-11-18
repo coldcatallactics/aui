@@ -554,9 +554,9 @@ passage."
       (error 'proof-error :message "not written: the change would reach beyond this text"))
     new))
 
-(-> proof-remove (proof passage) proof)
+(-> proof-remove (proof passage) (values proof integer))
 (defun proof-remove (proof passage)
-  "Return the proof of PROOF's file without the comment PASSAGE. PROOF itself stays as it was, and nothing is written.
+  "Return the proof of PROOF's file without the comment PASSAGE, and where in the text the comment was taken out. PROOF itself stays as it was, and nothing is written.
 
 A comment that stands alone on its lines goes with those lines. One behind
 code goes with the blanks before it. A string is never removed, since its
@@ -573,13 +573,13 @@ form needs it. Signal a PROOF-ERROR for one."
               (line-end   (let ((newline (position #\Newline text :start end)))
                             (if newline (1+ newline) (length text)))))
           (if (every #'lex--whitespace-p (subseq text end line-end))
-              (proof--replace proof line-start line-end)
-              (proof--replace proof start end)))
+              (values (proof--replace proof line-start line-end) line-start)
+              (values (proof--replace proof start end) start)))
         (let ((blank-start (or (position-if-not (lambda (character)
                                                   (member character '(#\Space #\Tab)))
                                                 text :end start :from-end t)
                                -1)))
-          (proof--replace proof (1+ blank-start) end)))))
+          (values (proof--replace proof (1+ blank-start) end) (1+ blank-start))))))
 
 (-> proof-write (proof proof) proof)
 (defun proof-write (new old)

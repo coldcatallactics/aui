@@ -157,6 +157,13 @@ comment."))
       (fiveam:is (search (format nil "name))~%~%(defparameter") (removed "behind"))))
     (fiveam:is (string= (proof-skeleton proof)
                         (proof-skeleton (proof-remove proof (test-find-passage proof "Inside.")))))
+    ;; The second value is where the comment stood, and the text before it is as it was.
+    (let ((text (proof-text proof)))
+      (multiple-value-bind (without start) (proof-remove proof (test-find-passage proof "Inside."))
+        (fiveam:is (= start (1+ (position #\Newline text :end (search ";; Inside." text) :from-end t))))
+        (fiveam:is (string= (subseq text 0 start) (subseq (proof-text without) 0 start)))
+        (fiveam:is (string= (subseq text (1+ (position #\Newline text :start start)))
+                            (subseq (proof-text without) start)))))
     (fiveam:signals proof-error (proof-remove proof (test-find-passage proof "Hello, ~A!")))))
 
 (fiveam:test a-proof-is-written-over-the-file-it-was-read-from

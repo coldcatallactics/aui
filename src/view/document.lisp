@@ -2,13 +2,12 @@
 
 ;;;; -- Document View --
 
-;;; The transcript as a scrolling column of blocks. Each entry is typeset
-;;; when it arrives and again when its revision moves; drawing touches only
-;;; what is in view, so a long history costs what its visible part costs.
-;;; Entries far from the view give their blocks up and keep only their height,
-;;; and are typeset again when the view comes near, so a long conversation
-;;; holds the layouts of what is around the view and no more. A new width is
-;;; met the same way, by what is near first. A drag selects text across
+;;; The transcript as a scrolling column of blocks. An entry is typeset when
+;;; the view comes near it, and again there when its revision or the width
+;;; moved, so a page of history that arrives, a long conversation and a new
+;;; width all cost what is around the view and no more. Until then an entry
+;;; has the height it last had, or an estimate; an entry far from the view
+;;; gives its blocks up and keeps its height. A drag selects text across
 ;;; entries, and the selection is copied when released.
 
 (defparameter *document-measure* 760
@@ -22,6 +21,9 @@
 
 (defparameter *document-kept-items* 200
   "How many entries on each side of those in view keep their blocks.")
+
+(defparameter *document-item-estimate* 90
+  "The height an entry is taken to have before it was ever laid out.")
 
 (defstruct item
   "One entry as it is laid out, with its blocks, where it starts in the column, and its selectable leaves. WIDTH is the column width the blocks are laid out to, or zero for an item that holds none and keeps the height it last had."
@@ -196,30 +198,34 @@ as usual."
              for entry across entries
              always (eq (item-entry item) entry))))
 
+(-> document--new-item (entry) item)
+(defun document--new-item (entry)
+  "Return the item of ENTRY before it was laid out, as tall as an entry is taken to be."
+  (make-item :entry entry :height *document-item-estimate*))
+
 (-> document--items-for (document vector) vector)
 (defun document--items-for (document entries)
   "Return the items of ENTRIES in order, each entry keeping the item it has in DOCUMENT."
   (let ((items (document--items document)))
     (if (document--aligned-p items entries)
         (loop for index from (length items) below (length entries)
-              do (vector-push-extend (make-item :entry (aref entries index)) items)
+              do (vector-push-extend (document--new-item (aref entries index)) items)
               finally (return items))
         (let ((known (make-hash-table :test #'eq))
               (next  (make-array (length entries) :adjustable t :fill-pointer 0)))
           (loop for item across items
                 do (setf (gethash (item-entry item) known) item))
           (loop for entry across entries
-                do (vector-push (or (gethash entry known) (make-item :entry entry)) next))
+                do (vector-push (or (gethash entry known) (document--new-item entry)) next))
           next))))
 
 (-> document-sync (document integer) null)
 (defun document-sync (document width)
   "Bring the items up to the transcript's entries, for a column WIDTH wide.
 
-An entry that is new or whose revision moved is laid out now, so its height
-is true. One that only meets a new width keeps its height until the view
-comes near it. When entries arrive in front, as an earlier page of history
-does, the view stays on what it showed."
+Nothing is laid out here: `document--bring-near' does that for what the view
+is near. When entries arrive in front, as an earlier page of history does,
+the view stays on what it showed."
   (let* ((transcript (document-transcript document))
          (entries    (transcript-entries transcript)))
     (setf (document--column-width document) width)
@@ -229,9 +235,6 @@ does, the view stays on what it showed."
              (old-top  (and first (item-top (aref old 0))))
              (selected (document--anchor document))
              (items    (document--items-for document entries)))
-        (loop for item across items
-              do (unless (= (item-revision item) (entry-revision (item-entry item)))
-                   (document--lay-item document item)))
         (setf (document--items document) items)
         (document--place-items document)
         ;; Keep the first entry that was shown where it was when a page went in front.
@@ -245,9 +248,9 @@ does, the view stays on what it showed."
       (setf (document--laid-revision document) (transcript-revision transcript))))
   nil)
 
-(-> document--bring-near (document) null)
+(-> document--bring-near (document) boolean)
 (defun document--bring-near (document)
-  "Lay out the items in the view and a view's height around it that are not laid out to the column, and release those far from it.
+  "Lay out the items in the view and a view's height around it that are not laid out to the column, release those far from it, and return whether any was laid out.
 
 An item above the view that changes height moves the scroll with it, so what
 is shown stays where it is."
@@ -255,7 +258,8 @@ is shown stays where it is."
          (height (fourth (document--viewport document)))
          (first  (or (document--item-at document (max 0 (- (document-scroll document) height))) 0))
          (last   first)
-         (shift  0))
+         (shift  0)
+         (laid-p nil))
     (loop for index from first below (length items)
           for item = (aref items index)
           for top = (+ (item-top item) shift)
@@ -264,6 +268,7 @@ is shown stays where it is."
              (unless (document--current-p document item)
                (let ((before (item-height item)))
                  (document--lay-item document item)
+                 (setf laid-p t)
                  (let ((grown (- (item-height item) before)))
                    (incf shift grown)
                    (when (< top (document-scroll document))
@@ -274,8 +279,8 @@ is shown stays where it is."
           for index from 0
           do (unless (or (zerop (item-width item))
                          (<= (- first *document-kept-items*) index (+ last *document-kept-items*)))
-               (document--release-item item))))
-  nil)
+               (document--release-item item)))
+    laid-p))
 
 (-> document--maximum-scroll (document) integer)
 (defun document--maximum-scroll (document)
@@ -486,8 +491,10 @@ is shown stays where it is."
                        (document--maximum-scroll document)
                        (max 0 (min (document-scroll document) (document--maximum-scroll document)))))))
       (settle)
-      (document--bring-near document)
-      (settle))
+      ;; Laying out what is near can move the view, which then is near other entries.
+      (loop repeat 8
+            while (document--bring-near document)
+            do (settle)))
     (stage-region stage ':document
                   :x      x
                   :y      y

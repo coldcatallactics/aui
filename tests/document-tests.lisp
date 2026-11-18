@@ -32,9 +32,10 @@
 
 (-> test-document (integer) document)
 (defun test-document (count)
-  "Return a document of COUNT test entries with a view four hundred units tall, laid out to a width of four hundred."
-  (let* ((transcript (make-transcript))
-         (document   (make-document transcript)))
+  "Return a document of COUNT test entries with a view four hundred units tall and a column four hundred wide, where an entry is as tall as it was taken to be."
+  (let* ((transcript               (make-transcript))
+         (document                 (make-document transcript))
+         (*document-item-estimate* 100))
     (dotimes (index count)
       (transcript-append transcript (make-instance 'test-entry)))
     (setf (document--viewport document) (list 0 0 400 400))
@@ -48,6 +49,12 @@
         for index from 0
         when (item-blocks item)
           collect index))
+
+(fiveam:test only-what-is-near-the-view-is-laid-out
+  (let ((document (test-document 1000)))
+    (fiveam:is (null (test-laid-out document)))
+    (document--bring-near document)
+    (fiveam:is (equal '(0 1 2 3 4 5 6 7) (test-laid-out document)))))
 
 (fiveam:test items-far-from-the-view-keep-their-height-and-nothing-else
   (let ((document (test-document 1000)))

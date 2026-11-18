@@ -83,13 +83,32 @@
       (t
        nil))))
 
+(defvar *completion-offer* nil
+  "What was last offered and for what, as (TEXT OPERATIONS PARTICIPANTS . CANDIDATES), so one drawing works it out once.")
+
+(-> completion--offer (workbench string) list)
+(defun completion--offer (workbench text)
+  "Return what to offer for the draft TEXT, worked out again only when the draft or what it is completed from changed."
+  (let ((operations   (workbench-operations workbench))
+        (participants (workbench--participants workbench)))
+    (destructuring-bind (&optional known-text known-operations known-participants &rest candidates)
+        *completion-offer*
+      (if (and *completion-offer*
+               (string= text known-text)
+               (eq operations known-operations)
+               (eq participants known-participants))
+          candidates
+          (let ((candidates (completion-candidates workbench text)))
+            (setf *completion-offer* (list* text operations participants candidates))
+            candidates)))))
+
 (-> completion-current (workbench) list)
 (defun completion-current (workbench)
   "Return the completions on offer now, or NIL when the list was put away for this draft."
   (let ((text (composer-text workbench)))
     (if (equal text (workbench-completion-dismissed workbench))
         nil
-        (let ((candidates (completion-candidates workbench text)))
+        (let ((candidates (completion--offer workbench text)))
           ;; One offer that the draft already spells out is nothing to offer.
           (if (and candidates
                    (null (rest candidates))

@@ -394,6 +394,8 @@ is shown stays where it is."
               do (loop for (paragraph) in (item-leaves (aref items index))
                        for leaf-index from 0
                        do (let* ((position (list index leaf-index))
+                                 ;; An entry typeset again since the selection was made may hold less text.
+                                 (limit    (length (paragraph-text paragraph)))
                                  (from     (cond
                                              ((equal position (butlast start))
                                               (third start))
@@ -408,8 +410,8 @@ is shown stays where it is."
                                               (length (paragraph-text paragraph)))
                                              (t
                                               nil))))
-                            (when (and from to (< from to))
-                              (setf (gethash paragraph table) (cons from to))))))
+                            (when (and from to (< from (min to limit)))
+                              (setf (gethash paragraph table) (cons from (min to limit)))))))
         table))))
 
 (-> document--lay-selection (document) null)

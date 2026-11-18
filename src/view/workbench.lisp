@@ -113,6 +113,11 @@
     :accessor      workbench-models
     :type          list
     :documentation "The models on offer as portable rows, once fetched.")
+   (refreshes
+    :initform      nil
+    :accessor      workbench--refreshes
+    :type          list
+    :documentation "The snapshots being fetched, each as (METHOD . AGAIN-P), AGAIN-P once it was asked for again meanwhile.")
    (jobs
     :initform      nil
     :accessor      workbench-jobs
@@ -362,6 +367,7 @@ pages of history read so far, and those that arrive while the window looks."
           (workbench-working-since workbench) nil
           (workbench-approval workbench)      nil
           (workbench-pending workbench)       nil
+          (workbench--refreshes workbench)        nil
           (workbench--waiting workbench)          nil
           (workbench--waiting-pathname workbench) nil
           (workbench--waiting-read-at workbench)  0
@@ -544,11 +550,29 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-refresh (workbench &rest string) null)
 (defun workbench-refresh (workbench &rest methods)
-  "Fetch the channel's snapshots named by METHODS again, such as _autolith/state."
+  "Fetch the channel's snapshots named by METHODS again, such as _autolith/state.
+
+A snapshot asked for while it is being fetched is fetched once more when that
+answer arrives, however often it was asked for: a turn asks after every tool
+call, and only the last answer matters."
   (let ((session (workbench-session workbench)))
     (when (and session (workbench-attached-p workbench))
       (dolist (method methods)
-        (session-operation session method))))
+        (let ((under-way (assoc method (workbench--refreshes workbench) :test #'string=)))
+          (if under-way
+              (setf (rest under-way) t)
+              (progn
+                (push (cons method nil) (workbench--refreshes workbench))
+                (session-operation session method)))))))
+  nil)
+
+(-> workbench--refreshed (workbench string) null)
+(defun workbench--refreshed (workbench method)
+  "Note that the snapshot METHOD arrived, and fetch it again when it was asked for meanwhile."
+  (let ((under-way (assoc method (workbench--refreshes workbench) :test #'string=)))
+    (setf (workbench--refreshes workbench) (remove under-way (workbench--refreshes workbench)))
+    (when (rest under-way)
+      (workbench-refresh workbench method)))
   nil)
 
 (-> workbench--command-p (string) boolean)
@@ -923,6 +947,8 @@ A reading of a channel the window has left is dropped."
         (value     (result-event-value event))
         (ok-p      (eq (result-event-outcome event) ':ok))
         (changed-p t))
+    (when (stringp request)
+      (workbench--refreshed workbench request))
     (cond
       ((equal request "_autolith/state")
        (when ok-p

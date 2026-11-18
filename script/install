@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Install AUI for this user: build it, put the aui command on the path, and on
-# macOS make an application that the Dock and Spotlight can start.
+# Install AUI for this user: build it and unslop, put the aui and unslop
+# commands on the path, and on macOS make an application that the Dock and
+# Spotlight can start.
 #
 # Needs Autolith installed first, from a release or from source (its autolith
 # command on the path, or AUI_AUTOLITH_ROOT naming its release directory or
@@ -11,11 +12,14 @@ set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 "$root/script/build"
+"$root/script/build-unslop"
 
 bin_home=${AUI_BIN_HOME:-$HOME/.local/bin}
 mkdir -p "$bin_home"
 ln -sfn "$root/bin/aui" "$bin_home/aui"
 echo "Linked $bin_home/aui"
+ln -sfn "$root/bin/unslop" "$bin_home/unslop"
+echo "Linked $bin_home/unslop"
 case ":$PATH:" in
   *":$bin_home:"*) ;;
   *) echo "Add $bin_home to your PATH to run aui from a terminal." ;;

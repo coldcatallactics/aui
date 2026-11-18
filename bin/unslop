@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Start unslop. The saved image is built on first use and again whenever its
+# sources or Lightfast's bridge are newer.
+
+set -euo pipefail
+path=${BASH_SOURCE[0]}
+while [[ -L "$path" ]]; do
+  directory=$(CDPATH= cd -P "$(dirname "$path")" && pwd)
+  path=$(readlink "$path")
+  [[ $path == /* ]] || path=$directory/$path
+done
+root=$(CDPATH= cd -P "$(dirname "$path")/.." && pwd)
+image=$root/build/unslop
+lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
+
+stale=false
+if [[ ! -x "$image" ]]; then
+  stale=true
+elif [[ -n $(find "$root/src/unslop" "$root/src/ui" "$root/src/model/preferences.lisp" "$root/src/package.lisp" \
+                  "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$image" -print 2>/dev/null | head -n 1) ]]; then
+  stale=true
+fi
+if [[ $stale == true ]]; then
+  echo "Building unslop; this takes a moment." >&2
+  if ! "$root/script/build-unslop" >&2; then
+    if [[ -x "$image" ]]; then
+      echo "The build failed; starting the last image that built." >&2
+    else
+      exit 1
+    fi
+  fi
+fi
+exec "$image" "$@"

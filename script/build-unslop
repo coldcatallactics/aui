@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Build unslop: Lightfast's native bridge, then the saved image build/unslop
+# that bin/unslop starts. It holds the toolkit and unslop, and nothing of
+# Autolith.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=lightfast.sh
+source "$root/script/lightfast.sh"
+
+aui_require_lightfast
+mkdir -p "$root/build"
+aui_build_bridge
+# The image is saved beside the one in use and moved over it only once it
+# exists, so a build that fails leaves the last good image in place.
+rm -f "$root/build/unslop.new"
+AUI_HEAP=1GB "$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui/unslop))' \
+  --eval '(aui::unslop-save-image (uiop:native-namestring (merge-pathnames "build/unslop.new" (asdf:system-source-directory :aui/unslop))))' \
+  >"$root/build/unslop.log" 2>&1 || { tail -40 "$root/build/unslop.log" >&2; exit 1; }
+if [[ ! -x "$root/build/unslop.new" ]]; then
+  tail -40 "$root/build/unslop.log" >&2
+  echo "The image was not saved." >&2
+  exit 1
+fi
+mv -f "$root/build/unslop.new" "$root/build/unslop"
+echo "Built $root/build/unslop"

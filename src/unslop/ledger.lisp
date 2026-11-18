@@ -21,13 +21,14 @@
   "The name of the ledger's file in its folder. Every other file there is a ledger of one folder from before, which is taken in once.")
 
 (defstruct ledger
-  "What is remembered, as the FILE it is kept in, the ROOT of the folder open in this window with its closing slash, and, each by whole paths, the files marked COMPLETED with the digest each had then, as BASELINE the digest each file had when first seen, which is kept only where Git does not say what changed, and the FOLDS, the folders folded in the list of files. IMPORTED names the ledgers of one folder from before that were taken in."
+  "What is remembered, as the FILE it is kept in, the ROOT of the folder open in this window with its closing slash, and, each by whole paths, the files marked COMPLETED with the digest each had then, as BASELINE the digest each file had when first seen, which is kept only where Git does not say what changed, and the FOLDS, the folders folded in the list of files. IMPORTED names the ledgers of one folder from before that were taken in, and SECTIONS holds, by the whole path of a file, the digests of the definitions in it that are completed."
   (file      nil)
   (root      ""  :type string)
   (completed (make-hash-table :test #'equal) :type hash-table)
   (baseline  (make-hash-table :test #'equal) :type hash-table)
   (folds     nil :type list)
-  (imported  nil :type list))
+  (imported  nil :type list)
+  (sections  (make-hash-table :test #'equal) :type hash-table))
 
 (-> ledger-directory () pathname)
 (defun ledger-directory ()
@@ -86,7 +87,13 @@
   (setf (ledger-completed ledger) (ledger--table (getf plist :completed))
         (ledger-baseline ledger)  (ledger--table (getf plist :baseline))
         (ledger-folds ledger)     (ledger--strings (getf plist :folds))
-        (ledger-imported ledger)  (ledger--strings (getf plist :imported)))
+        (ledger-imported ledger)  (ledger--strings (getf plist :imported))
+        (ledger-sections ledger)  (let ((table (make-hash-table :test #'equal)))
+                                    (dolist (entry (getf plist :sections) table)
+                                      (when (and (consp entry) (stringp (first entry)))
+                                        (let ((digests (ledger--strings (rest entry))))
+                                          (when digests
+                                            (setf (gethash (ledger--string (first entry)) table) digests)))))))
   nil)
 
 (-> ledger--import (ledger) boolean)
@@ -138,10 +145,14 @@
             (with-standard-io-syntax
               (let ((*print-readably* nil)
                     (*print-pretty*   nil))
-                (format stream "(:completed (~{~S~^~%             ~})~% :baseline (~{~S~^~%            ~})~% :folds (~{~S~^~%         ~})~% :imported (~{~S~^ ~}))~%"
+                (format stream "(:completed (~{~S~^~%             ~})~% :baseline (~{~S~^~%            ~})~% :folds (~{~S~^~%         ~})~% :sections (~{~S~^~%            ~})~% :imported (~{~S~^ ~}))~%"
                         (ledger--pairs (ledger-completed ledger))
                         (ledger--pairs (ledger-baseline ledger))
                         (sort (copy-list (ledger-folds ledger)) #'string<)
+                        (sort (loop for path being the hash-keys of (ledger-sections ledger) using (hash-value digests)
+                                    collect (cons path (sort (copy-list digests) #'string<)))
+                              #'string<
+                              :key #'first)
                         (sort (copy-list (ledger-imported ledger)) #'string<)))))
           (uiop:rename-file-overwriting-target beside pathname)
           t)
@@ -248,3 +259,23 @@ change is kept in this window alone."
                                 (if folded-p
                                     (union (ledger-folds ledger) paths :test #'string=)
                                     (set-difference (ledger-folds ledger) paths :test #'string=))))))))
+
+(-> ledger-sections-completed (ledger string) list)
+(defun ledger-sections-completed (ledger name)
+  "Return the digests of the definitions of the file NAME that are marked completed."
+  (gethash (ledger-path ledger name) (ledger-sections ledger)))
+
+(-> ledger-mark-section (ledger string string &key (:completed-p boolean) (:present list)) boolean)
+(defun ledger-mark-section (ledger name digest &key completed-p present)
+  "Remember the definition of the file NAME whose words have DIGEST as completed, or forget that it was unless COMPLETED-P. Marks for definitions no longer among PRESENT, the digests of the file's definitions now, are dropped. Return whether the ledger could be written."
+  (let ((path (ledger-path ledger name)))
+    (ledger--change ledger
+                    (lambda ()
+                      (let* ((kept    (remove-if-not (lambda (known) (member known present :test #'string=))
+                                                     (gethash path (ledger-sections ledger))))
+                             (digests (if completed-p
+                                          (adjoin digest kept :test #'string=)
+                                          (remove digest kept :test #'string=))))
+                        (if digests
+                            (setf (gethash path (ledger-sections ledger)) digests)
+                            (remhash path (ledger-sections ledger))))))))

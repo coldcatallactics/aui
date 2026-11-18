@@ -67,7 +67,8 @@
   "Return the rows of the open file's page for words set WIDTH wide, and the height of all of them.
 
 Only the kinds of passage the person wants are rows, and a definition none
-of whose passages is wanted has no heading. The passage being written in is
+of whose passages is wanted has no heading. A folded definition is its
+heading alone, and a hidden one has no rows. The passage being written in is
 as tall as what the editor holds."
   (let ((proof (desk-proof desk))
         (kinds (desk-kinds))
@@ -77,9 +78,11 @@ as tall as what the editor holds."
     (when proof
       (loop for definition in (proof-definitions proof)
             for definition-index from 0
-            do (let ((heading-p nil))
+            do (let ((heading-p nil)
+                     (folded-p  (desk-section-folded-p desk definition-index)))
                  (loop for passage in (definition-passages definition)
                        for passage-index from 0
+                       until (desk-section-hidden-p desk definition-index)
                        do (when (member (passage-kind passage) kinds)
                             (unless heading-p
                               (setf heading-p t)
@@ -90,27 +93,28 @@ as tall as what the editor holds."
                                                    :height     *page-heading-height*)
                                     rows)
                               (incf top *page-heading-height*))
-                            (let* ((focused-p (and focus
-                                                   (= definition-index (first focus))
-                                                   (= passage-index (rest focus))))
-                                   (paragraph (page--paragraph desk
-                                                               (if focused-p
-                                                                   (desk-typed-text desk)
-                                                                   (passage-text passage))
-                                                               width))
-                                   ;; The editor breaks lines a little sooner than a paragraph does,
-                                   ;; so the passage being written in has a line to spare.
-                                   (height    (+ (* 2 *page-padding*)
-                                                 (paragraph-height paragraph)
-                                                 (if focused-p (text-style-line-height (text-style ':code)) 0))))
-                              (push (make-page-row :kind       ':passage
-                                                   :definition definition-index
-                                                   :passage    passage-index
-                                                   :top        top
-                                                   :height     height
-                                                   :paragraph  paragraph)
-                                    rows)
-                              (incf top height)))))))
+                            (unless folded-p
+                              (let* ((focused-p (and focus
+                                                     (= definition-index (first focus))
+                                                     (= passage-index (rest focus))))
+                                     (paragraph (page--paragraph desk
+                                                                 (if focused-p
+                                                                     (desk-typed-text desk)
+                                                                     (passage-text passage))
+                                                                 width))
+                                     ;; The editor breaks lines a little sooner than a paragraph does,
+                                     ;; so the passage being written in has a line to spare.
+                                     (height    (+ (* 2 *page-padding*)
+                                                   (paragraph-height paragraph)
+                                                   (if focused-p (text-style-line-height (text-style ':code)) 0))))
+                                (push (make-page-row :kind       ':passage
+                                                     :definition definition-index
+                                                     :passage    passage-index
+                                                     :top        top
+                                                     :height     height
+                                                     :paragraph  paragraph)
+                                      rows)
+                                (incf top height))))))))
     (values (nreverse rows) (+ top 24))))
 
 (-> page--focus-row (desk list) (or null page-row))
@@ -224,30 +228,84 @@ shows, and the editor moves its own text as the caret moves."
     (t
      "blanks and line ends")))
 
-(-> page--paint-heading (desk page-row &key (:x integer) (:y integer) (:width integer)) null)
-(defun page--paint-heading (desk row &key x y width)
-  "Draw the heading of ROW's definition: its operator, its name, and at the right the line it starts on."
-  (let* ((definition (nth (page-row-definition row) (proof-definitions (desk-proof desk))))
-         (operator   (definition-operator definition))
-         (plum       (text-style ':label-bold :color *plum*))
-         (bold       (text-style ':label-bold))
-         (meta       (text-style ':meta))
-         (line       (format nil "line ~D" (definition-line definition)))
-         (line-w     (text-width line meta))
-         (height     *page-heading-height*)
-         (left       (+ x *page-margin*))
-         (right      (- (+ x width) *page-margin*)))
-    (if (zerop (length operator))
-        (paint-text-in "comments" plum :x left :y y :width 200 :height height)
-        (let ((operator-w (text-width operator plum)))
-          (paint-text-in operator plum :x left :y y :width operator-w :height height)
-          (paint-text-in (definition-name definition) bold
-                         :x      (+ left operator-w 10)
-                         :y      y
-                         :width  (max 0 (- right line-w 20 left operator-w 10))
-                         :height height)))
-    (paint-text-in line meta :x (- right line-w) :y y :width line-w :height height)
-    (paint-line left (+ y height -3) :x2 right :y2 (+ y height -3)))
+(-> page--paint-heading (desk stage page-row &key (:x integer) (:y integer) (:width integer)) null)
+(defun page--paint-heading (desk stage row &key x y width)
+  "Draw the heading of ROW's definition: the box that marks it completed, its operator, its name, how many texts a folded one holds, that it is edited, and at the right the line it starts on. A click on the heading folds the definition or unfolds it."
+  (let* ((index       (page-row-definition row))
+         (definition  (nth index (proof-definitions (desk-proof desk))))
+         (operator    (definition-operator definition))
+         (completed-p (desk-section-completed-p desk index))
+         (folded-p    (desk-section-folded-p desk index))
+         (edited-p    (desk-section-edited-p desk index))
+         (plum        (text-style ':label-bold :color *plum*))
+         (bold        (text-style ':label-bold))
+         (meta        (text-style ':meta))
+         (amber       (text-style ':meta :color *amber*))
+         (line        (format nil "line ~D" (definition-line definition)))
+         (line-w      (text-width line meta))
+         (edited-w    (if edited-p (+ (text-width "edited" amber) 16) 0))
+         (count       (if folded-p
+                          (let ((texts (count-if (lambda (passage) (member (passage-kind passage) (desk-kinds)))
+                                                 (definition-passages definition))))
+                            (format nil "~D ~:*~[texts~;text~:;texts~]" texts))
+                          ""))
+         (height      *page-heading-height*)
+         (box         (list ':section-check index))
+         (region      (list ':section index))
+         (box-x       (+ x *page-margin*))
+         (box-y       (+ y (floor (- height 13) 2) -1))
+         (left        (+ box-x 22))
+         (right       (- (+ x width) *page-margin*))
+         (name-room   (max 0 (- right line-w edited-w 20 left))))
+    (flet ((content ()
+             (paint-frame box-x box-y :width 13 :height 13)
+             (when completed-p
+               (paint-mark ':check (- box-x 1) (- box-y 2) :size 16))
+             ;; Operator, name and, when folded, how many texts, one after the other in the room there is.
+             (let ((at left))
+               (flet ((say (text style)
+                        (let ((width (min (text-width text style) (max 0 (- (+ left name-room) at)))))
+                          (when (plusp width)
+                            (paint-text-in text style :x at :y y :width width :height height))
+                          (incf at (+ width 10)))))
+                 (cond
+                   ((zerop (length operator))
+                    (say "comments" plum))
+                   (t
+                    (say operator plum)
+                    (say (definition-name definition) bold)))
+                 (when folded-p
+                   (incf at 4)
+                   (say count meta))))
+             (when edited-p
+               (paint-text-in "edited" amber
+                              :x      (- right line-w edited-w)
+                              :y      y
+                              :width  (- edited-w 16)
+                              :height height))
+             (paint-text-in line meta :x (- right line-w) :y y :width line-w :height height)
+             (paint-line box-x (+ y height -3) :x2 right :y2 (+ y height -3))))
+      (if (or (stage-hot-p stage region) (stage-hot-p stage box))
+          (with-inversion (box-x (- y 1) (- right box-x) (- height 3))
+            (content))
+          (content)))
+    (stage-region stage region
+                  :x       box-x
+                  :y       y
+                  :width   (- right box-x)
+                  :height  height
+                  :action  (lambda () (desk-toggle-section-fold desk index))
+                  :tooltip (if folded-p "Show the texts" "Fold to the heading"))
+    ;; The box lies over the heading, so a click on it marks and does not fold.
+    (stage-region stage box
+                  :x       (- box-x 6)
+                  :y       y
+                  :width   26
+                  :height  height
+                  :action  (lambda () (desk-toggle-section desk index))
+                  :tooltip (if completed-p
+                               "Take the mark away"
+                               "Mark this section completed (Ctrl+Shift+Enter while writing in it)")))
   nil)
 
 (-> page--paint-delete (desk stage page-row &key (:x integer) (:y integer) (:shown-p boolean)) null)
@@ -351,10 +409,12 @@ shows, and the editor moves its own text as the caret moves."
          (kinds       (desk-kinds)))
     (paint-text-in (subseq name (length (checkout-folder name))) (text-style ':heading-2)
                    :x left :y (+ y 10) :width (max 0 (- right left button-w 20)) :height 30)
-    (paint-text-in (format nil "~A~D ~:*~[texts~;text~:;texts~]~:[~; · edited~]"
+    (paint-text-in (format nil "~A~D ~:*~[texts~;text~:;texts~] · ~D of ~D sections completed~:[~; · edited~]"
                            (let ((folder (checkout-folder name)))
                              (if (zerop (length folder)) "" (format nil "~A · " folder)))
                            (proof-passage-count proof)
+                           (desk-sections-completed-count desk)
+                           (length (proof-definitions proof))
                            (desk-edited-p desk name))
                    meta
                    :x left :y (+ y 42) :width (max 0 (- right left 330)) :height 20)
@@ -471,9 +531,13 @@ shows, and the editor moves its own text as the caret moves."
                                      :width  (- width (* 2 *page-margin*))
                                      :height 30))
                      ((null rows)
-                      (paint-text-in (if (plusp (proof-passage-count proof))
-                                         "Every kind of text in this file is switched off."
-                                         "This file has no comments and no strings.")
+                      (paint-text-in (cond
+                                       ((zerop (proof-passage-count proof))
+                                        "This file has no comments and no strings.")
+                                       ((and (desk-hide-completed-p) (plusp (desk-sections-completed-count desk)))
+                                        "Every section here is completed. Mark the file completed with Ctrl+Enter.")
+                                       (t
+                                        "Every kind of text in this file is switched off."))
                                      italic
                                      :x      (+ x *page-margin*)
                                      :y      (+ body-y 16)
@@ -484,7 +548,7 @@ shows, and the editor moves its own text as the caret moves."
                         (let ((top (+ body-y (- (page-row-top row) scroll))))
                           (when (and (< top *paint-bottom*) (> (+ top (page-row-height row)) *paint-top*))
                             (if (eq (page-row-kind row) ':heading)
-                                (page--paint-heading desk row :x x :y top :width width)
+                                (page--paint-heading desk stage row :x x :y top :width width)
                                 (page--paint-passage desk stage row
                                                      :x          x
                                                      :y          top

@@ -456,6 +456,17 @@ strings say, and in nothing a compiler reads otherwise."
          (write-string text stream :start (lexeme-start lexeme) :end (lexeme-end lexeme))
          (write-char #\Space stream))))))
 
+(-> definition-digest (definition) string)
+(defun definition-digest (definition)
+  "Return the digest of DEFINITION's words: its operator, its name and the kind and words of each of its passages. It stays the same while those do, wherever the definition moves and whatever happens to its code."
+  (octets-digest
+   (sb-ext:string-to-octets
+    (with-output-to-string (stream)
+      (format stream "~A~C~A~C" (definition-operator definition) (code-char 0) (definition-name definition) (code-char 0))
+      (dolist (passage (definition-passages definition))
+        (format stream "~(~A~)~C~A~C" (passage-kind passage) (code-char 1) (passage-text passage) (code-char 0))))
+    :external-format ':utf-8)))
+
 (-> proof-from-text (string &key (:pathname t) (:digest string)) proof)
 (defun proof-from-text (text &key pathname (digest ""))
   "Return the proof of the source TEXT, which the file at PATHNAME holds with DIGEST. A text that cannot be read for its words gives a proof with a problem."

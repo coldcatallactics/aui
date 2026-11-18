@@ -236,6 +236,43 @@
                                 (and (search "Greet NAME." (unslop-exercise--read greet))
                                      (desk-notice desk)))
                  (unslop-exercise--key desk #xff1b)))
+             ;; Sections of a file.
+             (unslop-exercise--draw desk)
+             (unslop-expect "a section whose words differ from Git's last commit is marked edited, and only it"
+                            (and (desk-section-edited-p desk 1)
+                                 (not (desk-section-edited-p desk 0))
+                                 (not (desk-section-edited-p desk 2))))
+             (unslop-exercise--click desk '(:section-check 1))
+             (unslop-expect "the box on a heading marks the section completed and folds it"
+                            (and (desk-section-completed-p desk 1)
+                                 (unslop-exercise--region desk '(:section 1))
+                                 (null (unslop-exercise--region desk '(:passage 1 0)))
+                                 (unslop-exercise--region desk '(:passage 2 0))))
+             (when shots
+               (unslop--picture desk (format nil "~A/unslop-sections.png" shots)))
+             (unslop-exercise--click desk '(:section 1))
+             (unslop-expect "a click on the heading unfolds it"
+                            (unslop-exercise--region desk '(:passage 1 0)))
+             (unslop-exercise--click desk '(:section 1))
+             (unslop-exercise--click desk ':hide-completed)
+             (unslop-expect "while completed things are hidden, a completed section is left out"
+                            (and (null (unslop-exercise--region desk '(:section 1)))
+                                 (unslop-exercise--region desk '(:section 0))))
+             (unslop-exercise--click desk ':hide-completed)
+             (unslop-exercise--click desk '(:passage 0 0))
+             (unslop-exercise--key desk #xff0d :state (logior lightfast:+modifier-command+ lightfast:+modifier-shift+))
+             (unslop-expect "Ctrl+Shift+Enter marks the section completed and goes on to the next open one"
+                            (and (desk-section-completed-p desk 0)
+                                 (equal '(2 . 0) (desk-focus desk))))
+             (unslop-exercise--key desk #xff1b)
+             (unslop-expect "and the marks are remembered by the next window"
+                            (let ((again (unslop-make-desk launch)))
+                              (desk-open-file again "greet.lisp")
+                              (and (desk-section-completed-p again 0)
+                                   (desk-section-completed-p again 1)
+                                   (not (desk-section-completed-p again 2)))))
+             (unslop-exercise--click desk '(:section-check 0))
+             (unslop-exercise--click desk '(:section-check 1))
              ;; Completed files.
              (unslop-exercise--click desk ':complete)
              (unslop-expect "the button marks the open file completed, outside the checkout"

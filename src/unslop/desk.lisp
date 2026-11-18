@@ -135,6 +135,19 @@
     :accessor      desk-notice
     :type          (or null string)
     :documentation "A line saying that something was not written, shown until the next thing works.")
+   (sections
+    :initform      nil
+    :accessor      desk--sections
+    :documentation "The digests of the open file's definitions, as (PROOF . VECTOR) for the proof they were made from, or NIL.")
+   (head
+    :initform      ':unknown
+    :accessor      desk--head
+    :documentation "The digests of the definitions the open file has in Git's last commit, or :UNKNOWN when Git does not say.")
+   (toggled
+    :initform      (make-hash-table :test #'equal)
+    :reader        desk--toggled
+    :type          hash-table
+    :documentation "The definitions of the open file, by digest, that the person folded or unfolded against what their mark says: a completed one opened, an open one folded.")
    (removal
     :initform      nil
     :accessor      desk--removal
@@ -350,8 +363,12 @@ The completed files are taken only when nothing was marked or saved since
 the look began, since the look would not know of it."
   (let ((found (shiftf (desk--found desk) nil)))
     (when found
-      (setf (desk-files desk)  (getf found :files)
-            (desk-edited desk) (getf found :edited))
+      (let ((before (and (desk-name desk) (desk-edited-p desk (desk-name desk)))))
+        (setf (desk-files desk)  (getf found :files)
+              (desk-edited desk) (getf found :edited))
+        ;; A commit makes the open file the same as Git's last commit, and its sections with it.
+        (when (and (desk-name desk) (not (eq before (desk-edited-p desk (desk-name desk)))))
+          (desk-read-head desk)))
       (if (= (getf found :marks) (desk--marks desk))
           (setf (desk-completed desk) (getf found :completed))
           (desk-look desk))
@@ -382,6 +399,8 @@ the look began, since the look would not know of it."
         (desk-saved-at desk)    nil
         (desk-notice desk)      nil
         (desk--removal desk)    nil)
+  (clrhash (desk--toggled desk))
+  (desk-read-head desk)
   (desk--fold desk (checkout-folders-above name) nil)
   (desk-redraw desk)
   nil)
@@ -695,6 +714,109 @@ nothing else is written to the file."
     (and again t)))
 
 
+;;;; -- Sections --
+
+;;; Each definition of the open file is a section of the page, which can be
+;;; marked completed on its own. A mark is kept by the digest of the
+;;; section's words, so it holds for as long as they stay as they were,
+;;; wherever the definition moves and whatever happens to its code. A
+;;; completed section is folded to its heading, and left out of the page
+;;; while the person hides completed things.
+
+(-> desk-section-digest (desk integer) string)
+(defun desk-section-digest (desk index)
+  "Return the digest of the words of the open file's definition numbered INDEX."
+  (let ((proof (desk-proof desk)))
+    (unless (eq (first (desk--sections desk)) proof)
+      (setf (desk--sections desk)
+            (cons proof (map 'vector #'definition-digest (proof-definitions proof)))))
+    (aref (rest (desk--sections desk)) index)))
+
+(-> desk--section-digests (desk) list)
+(defun desk--section-digests (desk)
+  "Return the digests of every definition of the open file."
+  (loop for index below (length (proof-definitions (desk-proof desk)))
+        collect (desk-section-digest desk index)))
+
+(-> desk-section-completed-p (desk integer) boolean)
+(defun desk-section-completed-p (desk index)
+  "Return T when the open file's definition numbered INDEX is marked completed with the words it has now."
+  (and (member (desk-section-digest desk index)
+               (ledger-sections-completed (desk-ledger desk) (desk-name desk))
+               :test #'string=)
+       t))
+
+(-> desk-section-edited-p (desk integer) boolean)
+(defun desk-section-edited-p (desk index)
+  "Return T when the words of the open file's definition numbered INDEX differ from those of every definition in Git's last commit of the file."
+  (let ((head (desk--head desk)))
+    (and (listp head)
+         (not (member (desk-section-digest desk index) head :test #'string=))
+         t)))
+
+(-> desk-section-folded-p (desk integer) boolean)
+(defun desk-section-folded-p (desk index)
+  "Return T when only the heading of the open file's definition numbered INDEX is shown: it is completed, or the person folded it, but not both."
+  (let ((toggled-p (gethash (desk-section-digest desk index) (desk--toggled desk))))
+    (if (desk-section-completed-p desk index) (not toggled-p) (and toggled-p t))))
+
+(-> desk-section-hidden-p (desk integer) boolean)
+(defun desk-section-hidden-p (desk index)
+  "Return T when the open file's definition numbered INDEX is left out of the page: it is completed, and the person hides completed things."
+  (and (desk-hide-completed-p) (desk-section-completed-p desk index)))
+
+(-> desk-sections-completed-count (desk) integer)
+(defun desk-sections-completed-count (desk)
+  "Return how many of the open file's definitions are completed."
+  (loop for index below (length (proof-definitions (desk-proof desk)))
+        count (desk-section-completed-p desk index)))
+
+(-> desk-toggle-section-fold (desk integer) null)
+(defun desk-toggle-section-fold (desk index)
+  "Fold the open file's definition numbered INDEX to its heading, or unfold it."
+  (let ((digest (desk-section-digest desk index)))
+    (if (gethash digest (desk--toggled desk))
+        (remhash digest (desk--toggled desk))
+        (setf (gethash digest (desk--toggled desk)) t)))
+  (desk-redraw desk)
+  nil)
+
+(-> desk-toggle-section (desk integer) boolean)
+(defun desk-toggle-section (desk index)
+  "Mark the open file's definition numbered INDEX completed, or take the mark from it, and return whether that could be remembered. What is being written in it is written first."
+  (let ((focus (desk-focus desk)))
+    (when (and focus (= (first focus) index))
+      (desk-leave desk)))
+  (let* ((digest      (desk-section-digest desk index))
+         (completed-p (not (desk-section-completed-p desk index)))
+         (written-p   (ledger-mark-section (desk-ledger desk) (desk-name desk) digest
+                                           :completed-p completed-p
+                                           :present     (desk--section-digests desk))))
+    (remhash digest (desk--toggled desk))
+    (unless written-p
+      (setf (desk-notice desk)
+            (format nil "the mark could not be written to ~A"
+                    (uiop:native-namestring (ledger-file (desk-ledger desk))))))
+    (desk-redraw desk)
+    written-p))
+
+(-> desk-read-head (desk) null)
+(defun desk-read-head (desk)
+  "Read the open file as Git's last commit has it, for which of its definitions are edited."
+  (setf (desk--head desk) ':unknown)
+  (let ((name (desk-name desk)))
+    (when (and name (desk-proof desk) (null (proof-problem (desk-proof desk))))
+      (let ((pathname (desk-pathname desk name)))
+        (multiple-value-bind (output ok-p)
+            (checkout--git (uiop:pathname-directory-pathname pathname)
+                           (list "show" (format nil "HEAD:./~A" (file-namestring pathname))))
+          (when ok-p
+            (let ((head (proof-from-text output)))
+              (unless (proof-problem head)
+                (setf (desk--head desk) (mapcar #'definition-digest (proof-definitions head)))))))))
+    nil))
+
+
 ;;;; -- The File on Disk --
 
 (-> desk-check-disk (desk) null)
@@ -709,6 +831,7 @@ nothing else is written to the file."
                 (focus (desk-focus desk)))
             (setf (desk-proof desk) fresh)
             (desk--forget-layouts desk)
+            (desk-read-head desk)
             ;; The passage being written in may say something else now, or be gone.
             (when focus
               (let ((passage (proof-passage fresh (first focus) (rest focus))))

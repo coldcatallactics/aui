@@ -147,6 +147,31 @@ written to its file when you stop typing. Nothing is committed.
       (shelf-open-next-open desk)))
   nil)
 
+(-> unslop--complete-section-and-go-on (desk) null)
+(defun unslop--complete-section-and-go-on (desk)
+  "Mark the section being written in completed, or the first open one when none is, and begin writing in the first text of the next open section."
+  (when (desk-proof desk)
+    (let* ((focus (desk-focus desk))
+           (count (length (proof-definitions (desk-proof desk))))
+           (index (if focus
+                      (first focus)
+                      (loop for index below count
+                            unless (desk-section-completed-p desk index)
+                              return index))))
+      (when index
+        (unless (desk-section-completed-p desk index)
+          (desk-toggle-section desk index))
+        (desk-leave desk)
+        (let ((next (find-if (lambda (row)
+                               (and (eq ':passage (page-row-kind row))
+                                    (> (page-row-definition row) index)
+                                    (not (desk-section-completed-p desk (page-row-definition row)))))
+                             (page-rows desk (max 120 (desk-layout-width desk))))))
+          (when next
+            (desk-edit desk (page-row-definition next) (page-row-passage next))
+            (unslop--reveal desk))))))
+  nil)
+
 (-> unslop--scroll (desk integer) null)
 (defun unslop--scroll (desk amount)
   "Move the page by AMOUNT units, down when positive."
@@ -161,6 +186,9 @@ written to its file when you stop typing. Nothing is committed.
         (command-p (key-event-command-p event))
         (page      (floor (* 3 (stage-height (desk-stage desk))) 4)))
     (cond
+      ((and command-p (key-event-shift-p event) (member key '(:enter :keypad-enter)))
+       (unslop--complete-section-and-go-on desk)
+       t)
       ((and command-p (member key '(:enter :keypad-enter)))
        (unslop--complete-and-go-on desk)
        t)

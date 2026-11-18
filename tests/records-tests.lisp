@@ -382,3 +382,33 @@
                                    (list :id "busy" :parent "top" :state ':working))))))
   (fiveam:is (channel-row-working-p (list :id "a" :state ':working)))
   (fiveam:is (not (channel-row-working-p (list :id "a" :state ':idle)))))
+
+(fiveam:test a-result-read-before-its-call-settles-it-on-the-page-before
+  (let* ((projector (make-projector (make-transcript)))
+         (newer     (records->entries projector (nthcdr 3 *test-history*)))
+         (older     (records->entries projector (subseq *test-history* 0 3))))
+    (fiveam:is (equal '(assistant-entry notice-entry marker-entry) (mapcar #'type-of newer)))
+    (fiveam:is (eq ':completed (tool-entry-status (third older))))
+    (fiveam:is (string= "built" (tool-entry-output (third older))))
+    (fiveam:is (null (projector--unsettled projector)))))
+
+(fiveam:test an-answer-a-notice-parted-is-not-repeated-when-it-persists
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector '(:status :status :provider-request-started :details nil))
+    (projector-apply projector '(:text :delta "First part. "))
+    (projector-apply projector '(:present :text "∙ a memory was saved"))
+    (projector-apply projector '(:text :delta "Second part."))
+    (projector-apply projector '(:status :status :assistant-response-persisted
+                                 :details (:text "First part. Second part.")))
+    (fiveam:is (equal '(assistant-entry notice-entry assistant-entry)
+                      (map 'list #'type-of (transcript-entries transcript))))
+    (fiveam:is (string= "Second part." (assistant-entry-text (transcript-last transcript))))))
+
+(fiveam:test a-compaction-told-twice-is-marked-once
+  (let* ((transcript (make-transcript))
+         (projector  (make-projector transcript)))
+    (projector-apply projector '(:status :status :compaction-completed :details nil))
+    (projector-apply projector (list :record :record (list :summary :seq 9 :time 4000000003 :through-seq 6
+                                                                    :content "summary")))
+    (fiveam:is (equal '(marker-entry) (map 'list #'type-of (transcript-entries transcript))))))

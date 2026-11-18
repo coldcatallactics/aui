@@ -46,6 +46,16 @@
     :accessor      projector--output
     :type          (or null output-entry)
     :documentation "The command output entry still open for more text, or NIL.")
+   (streamed
+    :initform      0
+    :accessor      projector--streamed
+    :type          integer
+    :documentation "How many characters of the answer to the provider request under way have streamed, whatever entries they went to.")
+   (unsettled
+    :initform      nil
+    :accessor      projector--unsettled
+    :type          list
+    :documentation "The tool results on the page of history read last whose calls stand on the page before it.")
    (invocation
     :initform      nil
     :accessor      projector-invocation
@@ -117,6 +127,9 @@ holding the text, so a malformed call still shows what was asked."
   "Return RECORD's universal time, or NIL when it carries none in that form."
   (let ((time (getf (rest record) :time)))
     (and (integerp time) time)))
+
+(defparameter *compaction-label* "context compacted"
+  "What marks the place where the conversation's context was compacted.")
 
 (defparameter *goal-statuses* '(:active :paused :complete :verified :blocked :exhausted :cancelled :failed)
   "What a channel's goal can be said to be while the channel has one.")
@@ -293,14 +306,16 @@ the one the request arrived in."
       (error ()
         nil))))
 
-(-> record--schemas-p (list) boolean)
-(defun record--schemas-p (record)
-  "Return T when RECORD is the provider item that reports a lookup of tool schemas, which no live event carries."
+(-> record--schemas-entry (list) (or null entry))
+(defun record--schemas-entry (record)
+  "Return the entry of RECORD when it is the provider item that reports a lookup of tool schemas, which no live event carries, else NIL."
   (let ((wire-json (getf (rest record) :wire-json)))
     (and (eq (first record) ':provider-item)
          (stringp wire-json)
+         ;; Most items are something else; only one that names the type is decoded.
          (search "tool_search_output" wire-json)
-         t)))
+         (let ((entry (record--item-entry record)))
+           (and (typep entry 'schemas-entry) entry)))))
 
 (-> record--join-schemas (entry (or null entry)) boolean)
 (defun record--join-schemas (entry previous)
@@ -349,16 +364,30 @@ value is its exit line. Any other tool's result is one section and no status."
                           (and notes (list (cons "note" (format nil "~{~A~^~%~}" notes)))))
                   (getf parts :exit))))))
 
+(-> tool-entry-settle (tool-entry &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
+(defun tool-entry-settle (entry &key success-p output seconds)
+  "Record in the tool call ENTRY how the call ended."
+  (setf (tool-entry-status entry)  (if success-p ':completed ':failed)
+        (tool-entry-output entry)  (and output (princ-to-string output))
+        (tool-entry-seconds entry) seconds)
+  nil)
+
+(-> record--result (list) list)
+(defun record--result (properties)
+  "Return what the tool result PROPERTIES say of their call, as the arguments of `tool-entry-settle'."
+  (list :success-p (and (member (getf properties :status) '(:ok :success)) t)
+        :output    (getf properties :output)
+        :seconds   (record--seconds properties)))
+
 (-> projector--settle-tool
-    (projector (or null string) &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
-(defun projector--settle-tool (projector call-identifier &key success-p output seconds)
+    (projector (or null string) &rest t &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
+(defun projector--settle-tool (projector call-identifier &rest result &key success-p output seconds)
   "Record the result of the tool call CALL-IDENTIFIER in PROJECTOR's transcript."
+  (declare (ignore success-p output seconds))
   (let* ((transcript (projector-transcript projector))
          (entry      (and call-identifier (transcript-find-tool transcript call-identifier))))
     (when entry
-      (setf (tool-entry-status entry)  (if success-p ':completed ':failed)
-            (tool-entry-output entry)  (and output (princ-to-string output))
-            (tool-entry-seconds entry) seconds)
+      (apply #'tool-entry-settle entry result)
       (transcript-touch transcript entry)))
   nil)
 
@@ -383,11 +412,7 @@ transcript instead."
     (:provider-item
      (record--item-entry record))
     (:tool-result
-     (let ((properties (rest record)))
-       (projector--settle-tool projector (getf properties :call-id)
-                               :success-p (and (member (getf properties :status) '(:ok :success)) t)
-                               :output    (getf properties :output)
-                               :seconds   (record--seconds properties)))
+     (apply #'projector--settle-tool projector (getf (rest record) :call-id) (record--result (rest record)))
      nil)
     (:side-status
      (make-instance 'output-entry
@@ -400,7 +425,7 @@ transcript instead."
                         :time (record--time record)
                         :text (format nil "Yielded: ~D job~:P will wake the agent" count)))))
     ((:summary :native-compaction)
-     (make-instance 'marker-entry :time (record--time record) :label "Context compacted"))
+     (make-instance 'marker-entry :time (record--time record) :label *compaction-label*))
     (:turn-aborted
      ;; A turn someone stopped is not a failure, and its condition says nothing
      ;; a person can read.
@@ -422,25 +447,26 @@ transcript instead."
   "Return the entries of RECORDS, oldest first, for a page of history.
 
 Tool results settle calls among the returned entries, which are not in the
-transcript yet, so the page is self-contained."
-  (let ((entries nil)
-        (calls   (make-hash-table :test #'equal)))
-    (dolist (record records)
-      (if (eq (first record) ':tool-result)
-          (let* ((properties (rest record))
-                 (entry      (gethash (getf properties :call-id) calls)))
-            (when entry
-              (setf (tool-entry-status entry)  (if (member (getf properties :status) '(:ok :success))
-                                                   ':completed
-                                                   ':failed)
-                    (tool-entry-output entry)  (let ((output (getf properties :output)))
-                                                 (and output (princ-to-string output)))
-                    (tool-entry-seconds entry) (record--seconds properties))))
-          (let ((entry (record->entry projector record)))
-            (when (and entry (not (record--join-schemas entry (first entries))))
-              (when (and (typep entry 'tool-entry) (tool-entry-call-identifier entry))
-                (setf (gethash (tool-entry-call-identifier entry) calls) entry))
-              (push entry entries)))))
+transcript yet. A result whose call stands on the page before this one waits
+in PROJECTOR for that page, which is read next."
+  (let ((entries   nil)
+        (calls     (make-hash-table :test #'equal))
+        (unsettled nil))
+    (flet ((settle (properties)
+             (let ((entry (gethash (getf properties :call-id) calls)))
+               (when entry
+                 (apply #'tool-entry-settle entry (record--result properties))
+                 t))))
+      (dolist (record records)
+        (if (eq (first record) ':tool-result)
+            (unless (settle (rest record))
+              (push (rest record) unsettled))
+            (let ((entry (record->entry projector record)))
+              (when (and entry (not (record--join-schemas entry (first entries))))
+                (when (and (typep entry 'tool-entry) (tool-entry-call-identifier entry))
+                  (setf (gethash (tool-entry-call-identifier entry) calls) entry))
+                (push entry entries)))))
+      (mapc #'settle (shiftf (projector--unsettled projector) unsettled)))
     (nreverse entries)))
 
 
@@ -485,6 +511,7 @@ transcript yet, so the page is self-contained."
               (projector--answer projector) answer))
       (setf (assistant-entry-text answer)
             (concatenate 'string (assistant-entry-text answer) delta))
+      (incf (projector--streamed projector) (length delta))
       (transcript-touch (projector-transcript projector) answer)))
   nil)
 
@@ -504,16 +531,29 @@ transcript yet, so the page is self-contained."
 
 (-> projector--persisted-answer (projector t) null)
 (defun projector--persisted-answer (projector text)
-  "Complete the streamed answer with its persisted TEXT, which a provider that does not stream sends whole."
-  (when (and (stringp text) (plusp (length text)))
-    (let ((answer (projector--answer projector)))
-      (cond
-        ((null answer)
-         (projector--append projector (make-instance 'assistant-entry :text text)))
-        ((string/= (assistant-entry-text answer) text)
-         (setf (assistant-entry-text answer) text)
-         (transcript-touch (projector-transcript projector) answer)))))
+  "Complete the streamed answer with the part of its persisted TEXT that did not stream.
+
+A provider that does not stream sends the whole of it here. One that streams
+sent all of it already, in one entry or in several when a notice came between."
+  (when (stringp text)
+    (let ((streamed (projector--streamed projector)))
+      (when (< streamed (length text))
+        (projector--text projector (subseq text streamed)))))
+  (setf (projector--streamed projector) 0)
   (projector--close-stream projector)
+  nil)
+
+(-> projector--append-marker (projector string) null)
+(defun projector--append-marker (projector label)
+  "Mark PROJECTOR's transcript with LABEL unless its last entry is that mark already.
+
+A compaction is told twice while the window looks: by its status and by its record."
+  (let* ((transcript (projector-transcript projector))
+         (count      (transcript-length transcript))
+         (last       (and (plusp count) (transcript-entry transcript (1- count)))))
+    (unless (and (typep last 'marker-entry) (equal (marker-entry-label last) label))
+      (projector--close-stream projector)
+      (projector--append projector (make-instance 'marker-entry :label label))))
   nil)
 
 (-> projector--status (projector t list) null)
@@ -521,7 +561,8 @@ transcript yet, so the page is self-contained."
   "Apply the provider and tool lifecycle STATUS with its DETAILS."
   (case status
     (:provider-request-started
-     (setf (projector-catch-up-p projector) nil)
+     (setf (projector-catch-up-p projector) nil
+           (projector--streamed projector)  0)
      (projector--close-stream projector))
     (:assistant-response-persisted
      (projector--persisted-answer projector (getf details :text)))
@@ -541,7 +582,7 @@ transcript yet, so the page is self-contained."
     (:provider-request-completed
      (projector--close-stream projector))
     (:compaction-completed
-     (projector--append projector (make-instance 'marker-entry :label "Context compacted")))
+     (projector--append-marker projector *compaction-label*))
     (otherwise
      nil))
   nil)
@@ -681,21 +722,23 @@ its output; that line becomes the entry's invocation."
   "Take the live RECORD when history did not show it and the turn's events do not carry it."
   (let ((sequence (record-sequence record)))
     (when (or (null sequence) (> sequence (projector-boundary projector)))
-      (when (or (projector-catch-up-p projector)
-                (not (member (first record) '(:provider-item :tool-result)))
-                (record--schemas-p record))
-        (let* ((entry      (record->entry projector record))
-               (transcript (projector-transcript projector))
-               (count      (transcript-length transcript))
-               (last       (and (plusp count) (transcript-entry transcript (1- count)))))
-          (cond
-            ((null entry)
-             nil)
-            ((record--join-schemas entry last)
-             (transcript-touch transcript last))
-            (t
-             (projector--close-stream projector)
-             (projector--append projector entry)))))))
+      (let* ((entry      (if (or (projector-catch-up-p projector)
+                                 (not (member (first record) '(:provider-item :tool-result))))
+                             (record->entry projector record)
+                             (record--schemas-entry record)))
+             (transcript (projector-transcript projector))
+             (count      (transcript-length transcript))
+             (last       (and (plusp count) (transcript-entry transcript (1- count)))))
+        (cond
+          ((null entry)
+           nil)
+          ((record--join-schemas entry last)
+           (transcript-touch transcript last))
+          ((typep entry 'marker-entry)
+           (projector--append-marker projector (marker-entry-label entry)))
+          (t
+           (projector--close-stream projector)
+           (projector--append projector entry))))))
   nil)
 
 (-> projector-apply (projector list) null)

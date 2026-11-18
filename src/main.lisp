@@ -47,9 +47,9 @@ reports them, not the moment before it answered."
     (cond
       ((launch-demo-p launch)
        (demo-install workbench)
-       (when (equal (launch-view launch) "approval")
+       (when (eq (launch-view launch) ':approval)
          (setf (workbench-approval workbench) (demo-approval)))
-       (when (equal (launch-view launch) "welcome")
+       (when (eq (launch-view launch) ':welcome)
          (transcript-clear (workbench-transcript workbench))
          (setf (workbench-working-p workbench) nil
                (workbench-jobs workbench)      nil)))
@@ -63,44 +63,43 @@ reports them, not the moment before it answered."
                            :images  (launch-images launch)))))
     (when (launch-draft launch)
       (setf (composer-text workbench) (launch-draft launch)))
-    (let ((view (launch-view launch)))
-      (cond
-        ((equal view "commands")
-         (workbench-show-overlay workbench ':commands))
-        ((equal view "settings")
-         (workbench-show-overlay workbench ':settings))
-        ((equal view "agenda")
-         (panel-show-agenda workbench))
-        ((equal view "memories")
-         (panel-show-memories workbench))
-        ((equal view "plan")
-         (panel-show-plan workbench))
-        ((equal view "model")
-         (composer--choose-model workbench))
-        ((equal view "permissions")
-         (composer--choose-mode workbench))
-        ((equal view "menu")
-         (chrome--channel-menu workbench
-                               :x (- (stage-width (workbench-stage workbench)) 50)
-                               :y 47))
-        ((equal view "choice")
-         (workbench-show-overlay workbench ':settings)
-         (let ((row (find "reasoning-effort" (workbench-settings workbench)
-                          :key  (lambda (row)
-                                  (portable-get row "name"))
-                          :test #'equal)))
-           (when row
-             (catalog--change-setting workbench row))))
-        ((equal view "prompt")
-         (workbench-ask workbench "Rename the agent" (constantly nil)
-                        :note    "The name of the agent in @mentions."
-                        :initial "lightfast"))
-        ((equal view "channels")
-         (setf (workbench-sidebar-shown-p workbench) t
-               (workbench-drawer-open-p workbench)   t))
-        ((equal view "top")
-         (setf (document-following-p (workbench-document workbench)) nil
-               (document-scroll (workbench-document workbench))      0)))))
+    (case (launch-view launch)
+      (:commands
+       (workbench-show-overlay workbench ':commands))
+      (:settings
+       (workbench-show-overlay workbench ':settings))
+      (:agenda
+       (panel-show-agenda workbench))
+      (:memories
+       (panel-show-memories workbench))
+      (:plan
+       (panel-show-plan workbench))
+      (:model
+       (composer--choose-model workbench))
+      (:permissions
+       (composer--choose-mode workbench))
+      (:menu
+       (chrome--channel-menu workbench
+                             :x (- (stage-width (workbench-stage workbench)) 50)
+                             :y 47))
+      (:choice
+       (workbench-show-overlay workbench ':settings)
+       (let ((row (find "reasoning-effort" (workbench-settings workbench)
+                        :key  (lambda (row)
+                                (portable-get row "name"))
+                        :test #'equal)))
+         (when row
+           (catalog--change-setting workbench row))))
+      (:prompt
+       (workbench-ask workbench "Rename the agent" (constantly nil)
+                      :note    "The name of the agent in @mentions."
+                      :initial "lightfast"))
+      (:channels
+       (setf (workbench-sidebar-shown-p workbench) t
+             (workbench-drawer-open-p workbench)   t))
+      (:top
+       (setf (document-following-p (workbench-document workbench)) nil
+             (document-scroll (workbench-document workbench))      0))))
   nil)
 
 (-> run-interface (launch) null)

@@ -13,7 +13,7 @@
                                 "--permissions" "auto"))))
     (fiveam:is (launch-demo-p launch))
     (fiveam:is (equal '(1400 . 900) (launch-size launch)))
-    (fiveam:is (equal "settings" (launch-view launch)))
+    (fiveam:is (eq ':settings (launch-view launch)))
     (fiveam:is (equal "hello" (launch-draft launch)))
     (fiveam:is (not (launch-pick-p launch)))
     (fiveam:is (null (launch-channel launch)))))

@@ -66,8 +66,8 @@
     :initarg       :view
     :initform      nil
     :reader        launch-view
-    :type          (or null string)
-    :documentation "A view to show at start, such as settings or commands, or NIL.")
+    :type          (or null keyword)
+    :documentation "A view to show at start, one of `*launch-views*', or NIL.")
    (draft
     :initarg       :draft
     :initform      nil
@@ -269,9 +269,22 @@ window understands, which autolith would not know."
      :shot       (clingon:getopt* command ':shot)
      :shot-after shot-after
      :size       (launch--parse-size (clingon:getopt* command ':size))
-     :view       (clingon:getopt* command ':view)
+     :view       (launch--parse-view (clingon:getopt* command ':view))
      :draft      (clingon:getopt* command ':draft)
      :prompt     (clingon:getopt* command ':prompt))))
+
+(defparameter *launch-views*
+  '(:commands :settings :channels :agenda :memories :plan :model :permissions :menu :choice :prompt :top
+    :approval :welcome)
+  "The views a window can be asked to start in.")
+
+(-> launch--parse-view ((or null string)) (or null keyword))
+(defun launch--parse-view (name)
+  "Return the view the option value NAME asks for, or NIL for none; signal `client-error' for a name that is no view."
+  (and name
+       (or (find name *launch-views* :test #'string-equal)
+           (error 'client-error
+                  :message (format nil "No view ~A; choose one of ~{~(~A~)~^, ~}." name *launch-views*)))))
 
 (-> launch--read (list) clingon:command)
 (defun launch--read (arguments)

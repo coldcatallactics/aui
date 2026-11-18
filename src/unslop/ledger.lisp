@@ -6,18 +6,20 @@
 ;;; that the checkout holds nothing but its source. A file marked completed
 ;;; is remembered with the digest of what it held at that moment. It counts
 ;;; as completed for as long as it holds exactly that, so a file that anyone
-;;; changes afterwards is open again by itself. There is one ledger for each
-;;; checkout, in a file named after the checkout's folder.
+;;; changes afterwards is open again by itself. The folders a person folded
+;;; in the list of files are remembered here too. There is one ledger for
+;;; each checkout, in a file named after the checkout's folder.
 
 (defvar *ledger-directory* nil
   "The folder ledgers are kept in, or NIL for the person's state folder.")
 
 (defstruct ledger
-  "What is remembered about one checkout, as the FILE it is kept in, the checkout's ROOT, the files marked COMPLETED with the digest each had then, and as BASELINE the digest each file had when first seen, which is kept only where Git does not say what changed."
+  "What is remembered about one checkout, as the FILE it is kept in, the checkout's ROOT, the files marked COMPLETED with the digest each had then, as BASELINE the digest each file had when first seen, which is kept only where Git does not say what changed, and the folders that are FOLDED in the list of files, as names from the root with their closing slash."
   (file      nil)
   (root      ""  :type string)
   (completed (make-hash-table :test #'equal) :type hash-table)
-  (baseline  (make-hash-table :test #'equal) :type hash-table))
+  (baseline  (make-hash-table :test #'equal) :type hash-table)
+  (folded    nil :type list))
 
 (-> ledger-directory () pathname)
 (defun ledger-directory ()
@@ -65,7 +67,9 @@
     (make-ledger :file      pathname
                  :root      (uiop:native-namestring root)
                  :completed (ledger--table (getf plist :completed))
-                 :baseline  (ledger--table (getf plist :baseline)))))
+                 :baseline  (ledger--table (getf plist :baseline))
+                 :folded    (let ((folded (getf plist :folded)))
+                              (and (listp folded) (remove-if-not #'stringp folded))))))
 
 (-> ledger--pairs (hash-table) list)
 (defun ledger--pairs (table)
@@ -86,10 +90,11 @@
           (with-open-file (stream beside :direction ':output :if-exists ':supersede :external-format ':utf-8)
             (with-standard-io-syntax
               (let ((*print-pretty* nil))
-                (format stream "(:root ~S~% :completed (~{~S~^~%             ~})~% :baseline (~{~S~^~%            ~}))~%"
+                (format stream "(:root ~S~% :completed (~{~S~^~%             ~})~% :baseline (~{~S~^~%            ~})~% :folded (~{~S~^~%          ~}))~%"
                         (ledger-root ledger)
                         (ledger--pairs (ledger-completed ledger))
-                        (ledger--pairs (ledger-baseline ledger))))))
+                        (ledger--pairs (ledger-baseline ledger))
+                        (sort (copy-list (ledger-folded ledger)) #'string<)))))
           (uiop:rename-file-overwriting-target beside pathname)
           t)
       (error ()
@@ -108,3 +113,20 @@
       (setf (gethash name (ledger-completed ledger)) digest)
       (remhash name (ledger-completed ledger)))
   (ledger-save ledger))
+
+(-> ledger-folded-p (ledger string) boolean)
+(defun ledger-folded-p (ledger folder)
+  "Return T when FOLDER, a name from the checkout's root with its closing slash, is folded in the list of files."
+  (and (member folder (ledger-folded ledger) :test #'string=) t))
+
+(-> ledger-fold (ledger list boolean) boolean)
+(defun ledger-fold (ledger folders folded-p)
+  "Remember each of FOLDERS as folded in the list of files, or as unfolded when FOLDED-P is NIL. Return whether the ledger could be written. Nothing is written when nothing changes."
+  (let* ((before (ledger-folded ledger))
+         (after  (if folded-p
+                     (union before folders :test #'string=)
+                     (set-difference before folders :test #'string=))))
+    (or (= (length after) (length before))
+        (progn
+          (setf (ledger-folded ledger) after)
+          (ledger-save ledger)))))

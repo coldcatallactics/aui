@@ -75,6 +75,13 @@
   (let ((slash (position #\/ name :from-end t)))
     (if slash (subseq name 0 (1+ slash)) "")))
 
+(-> checkout-folders-above (string) list)
+(defun checkout-folders-above (name)
+  "Return every folder the file NAME lies in, the outermost first, each as a name from the root with its closing slash."
+  (loop for slash = (position #\/ name) then (position #\/ name :start (1+ slash))
+        while slash
+        collect (subseq name 0 (1+ slash))))
+
 (-> checkout--before-p (string string) boolean)
 (defun checkout--before-p (first second)
   "Return T when the file FIRST is listed before SECOND. Files are in the order of their folders and then of their names, so those of one folder stand together, ahead of the folders inside it."

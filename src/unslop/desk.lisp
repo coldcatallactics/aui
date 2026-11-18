@@ -234,6 +234,27 @@ for what the person sees."
   (desk-redraw desk)
   nil)
 
+(-> desk-folded-p (desk string) boolean)
+(defun desk-folded-p (desk folder)
+  "Return T when FOLDER is folded in the list of files."
+  (ledger-folded-p (desk-ledger desk) folder))
+
+(-> desk--fold (desk list boolean) null)
+(defun desk--fold (desk folders folded-p)
+  "Fold FOLDERS in the list of files, or unfold them when FOLDED-P is NIL, and say so when that could not be remembered outside the checkout."
+  (unless (ledger-fold (desk-ledger desk) folders folded-p)
+    (setf (desk-notice desk)
+          (format nil "the folded folders could not be written to ~A"
+                  (uiop:native-namestring (ledger-file (desk-ledger desk))))))
+  nil)
+
+(-> desk-toggle-folder (desk string) null)
+(defun desk-toggle-folder (desk folder)
+  "Fold FOLDER in the list of files, or unfold it, and remember that outside the checkout."
+  (desk--fold desk (list folder) (not (desk-folded-p desk folder)))
+  (desk-redraw desk)
+  nil)
+
 (-> desk-completed-count (desk) integer)
 (defun desk-completed-count (desk)
   "Return how many of DESK's files are completed."
@@ -342,7 +363,7 @@ the look began, since the look would not know of it."
 
 (-> desk-open-file (desk string) null)
 (defun desk-open-file (desk name)
-  "Show the file NAME, read for its words. What was being written in the file shown before is written first."
+  "Show the file NAME, read for its words. What was being written in the file shown before is written first, and the folders NAME lies in are unfolded in the list, so that it is in view there."
   (desk-leave desk)
   (desk--forget-layouts desk)
   (setf (desk-name desk)           name
@@ -351,6 +372,7 @@ the look began, since the look would not know of it."
         (desk-page-scroll desk)    0
         (desk-saved-at desk)    nil
         (desk-notice desk)      nil)
+  (desk--fold desk (checkout-folders-above name) nil)
   (desk-redraw desk)
   nil)
 

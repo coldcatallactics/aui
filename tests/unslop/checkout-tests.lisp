@@ -113,14 +113,21 @@
                  :ledger   (ledger-open directory)
                  :files    files))
 
+(-> test-shelf-rows (desk) list)
+(defun test-shelf-rows (desk)
+  "Return the rows of DESK's list of files, each as a list of its kind, its label and its depth."
+  (mapcar (lambda (row)
+            (list (shelf-row-kind row) (shelf-row-label row) (shelf-row-depth row)))
+          (shelf-rows desk)))
+
 (fiveam:test the-list-of-files-is-narrowed-and-grouped
   (with-unslop-folder (directory)
     (with-test-preferences ()
       (let* ((*ledger-directory* (merge-pathnames "state/" directory))
              (desk               (test-desk directory '("a.lisp" "src/b.lisp" "src/c.lisp" "tests/d.lisp"))))
-        (fiveam:is (equal '((:folder . "") (:file . "a.lisp") (:folder . "src/") (:file . "src/b.lisp")
-                            (:file . "src/c.lisp") (:folder . "tests/") (:file . "tests/d.lisp"))
-                          (shelf-rows desk)))
+        (fiveam:is (equal '((:file "a.lisp" 0) (:folder "src/" 0) (:file "b.lisp" 1) (:file "c.lisp" 1)
+                            (:folder "tests/" 0) (:file "d.lisp" 1))
+                          (test-shelf-rows desk)))
         (fiveam:is (string= "src/" (checkout-folder "src/b.lisp")))
         (fiveam:is (string= "" (checkout-folder "a.lisp")))
         ;; A folder's own files stand together, ahead of the folders inside it.
@@ -138,7 +145,59 @@
         (setf (preference ':hide-completed) t)
         (fiveam:is (equal '("src/b.lisp" "tests/d.lisp") (shelf-names desk)))
         (setf (desk-name desk) "src/c.lisp")
-        (fiveam:is (equal '("src/b.lisp" "src/c.lisp" "tests/d.lisp") (shelf-names desk)))))))
+        (fiveam:is (equal '("src/b.lisp" "src/c.lisp" "tests/d.lisp") (shelf-names desk)))
+        ;; A folder with nothing left to list is not listed.
+        (setf (gethash "tests/d.lisp" (desk-completed desk)) t)
+        (fiveam:is (equal '((:folder "src/" 0) (:file "b.lisp" 1) (:file "c.lisp" 1))
+                          (test-shelf-rows desk)))))))
+
+(fiveam:test the-list-of-files-is-a-tree-that-folds
+  (with-unslop-folder (directory)
+    (with-test-preferences ()
+      (let* ((*ledger-directory* (merge-pathnames "state/" directory))
+             (files              '("a.lisp" "lib/deep/only/x.lisp" "lib/deep/only/y.lisp" "src/main.lisp"
+                                   "src/model/m.lisp" "src/view/sub/v.lisp"))
+             (desk               (test-desk directory files)))
+        (dolist (name files)
+          (test-write-file (merge-pathnames name directory) "(form)"))
+        ;; A folder stands ahead of what lies in it, and folders that hold one folder and nothing else share a row.
+        (fiveam:is (equal '((:file "a.lisp" 0)
+                            (:folder "lib/deep/only/" 0) (:file "x.lisp" 1) (:file "y.lisp" 1)
+                            (:folder "src/" 0) (:file "main.lisp" 1)
+                            (:folder "model/" 1) (:file "m.lisp" 2)
+                            (:folder "view/sub/" 1) (:file "v.lisp" 2))
+                          (test-shelf-rows desk)))
+        (fiveam:is (equal '("lib/" "lib/deep/" "lib/deep/only/") (checkout-folders-above "lib/deep/only/x.lisp")))
+        (fiveam:is (null (checkout-folders-above "a.lisp")))
+        ;; A folder counts the files in it and below, and those that are completed.
+        (setf (gethash "src/model/m.lisp" (desk-completed desk)) t)
+        (let ((row (find "src/" (shelf-rows desk) :key #'shelf-row-name :test #'string=)))
+          (fiveam:is (= 3 (shelf-row-files row)))
+          (fiveam:is (= 1 (shelf-row-completed row)))
+          (fiveam:is (not (shelf-row-folded-p row))))
+        ;; What lies in a folded folder is left out, and the next window knows the folder is folded.
+        (desk-toggle-folder desk "src/")
+        (fiveam:is (equal '((:file "a.lisp" 0)
+                            (:folder "lib/deep/only/" 0) (:file "x.lisp" 1) (:file "y.lisp" 1)
+                            (:folder "src/" 0))
+                          (test-shelf-rows desk)))
+        (fiveam:is (shelf-row-folded-p (first (last (shelf-rows desk)))))
+        (fiveam:is (ledger-folded-p (ledger-open directory) "src/"))
+        ;; While the list is narrowed by name nothing is folded.
+        (setf (desk-filter desk) "model")
+        (fiveam:is (equal '((:folder "src/" 0) (:folder "model/" 1) (:file "m.lisp" 2))
+                          (test-shelf-rows desk)))
+        (fiveam:is (notany #'shelf-row-folded-p (shelf-rows desk)))
+        (setf (desk-filter desk) "")
+        ;; A file that is opened is in view, so its folders are unfolded.
+        (desk-toggle-folder desk "src/view/sub/")
+        (fiveam:is (desk-folded-p desk "src/view/sub/"))
+        (desk-open-file desk "src/view/sub/v.lisp")
+        (fiveam:is (not (desk-folded-p desk "src/")))
+        (fiveam:is (not (desk-folded-p desk "src/view/sub/")))
+        (fiveam:is (null (ledger-folded (ledger-open directory))))
+        (desk-toggle-folder desk "lib/deep/only/")
+        (fiveam:is (equal '("lib/deep/only/") (ledger-folded (ledger-open directory))))))))
 
 (fiveam:test the-list-is-as-wide-as-its-share-of-the-window
   (fiveam:is (= 420 (shelf-width 1400)))

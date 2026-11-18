@@ -276,11 +276,42 @@
              (unslop-expect "the filter narrows the list by name"
                             (equal '("greet.lisp" "src/other.lisp") (shelf-names desk)))
              (setf (desk-filter desk) "")
-             ;; Marks are remembered.
+             ;; The tree of folders.
+             (unslop-exercise--draw desk)
+             (unslop-expect "the list is a tree, a folder ahead of its files and those further in"
+                            (and (equal '((:file "greet.lisp" 0) (:folder "src/" 0) (:file "other.lisp" 1))
+                                        (mapcar (lambda (row)
+                                                  (list (shelf-row-kind row) (shelf-row-label row) (shelf-row-depth row)))
+                                                (shelf-rows desk)))
+                                 (unslop-exercise--region desk '(:shelf-folder "src/"))))
+             (unslop-exercise--click desk '(:shelf-folder "src/"))
+             (unslop-expect "a click on a folder folds it, and its files leave the list"
+                            (and (desk-folded-p desk "src/")
+                                 (unslop-exercise--region desk '(:shelf-folder "src/"))
+                                 (null (unslop-exercise--region desk '(:shelf-file "src/other.lisp")))))
+             (when shots
+               (unslop--picture desk (format nil "~A/unslop-folded.png" shots)))
+             (setf (desk-filter desk) "oth")
+             (unslop-exercise--draw desk)
+             (unslop-expect "while the list is narrowed by name, a folded folder shows what matches"
+                            (unslop-exercise--region desk '(:shelf-file "src/other.lisp")))
+             (setf (desk-filter desk) "")
+             (shelf-step desk -1)
+             (shelf-step desk 1)
+             (unslop-exercise--draw desk)
+             (unslop-expect "a file opened with a key is in view, its folder unfolded"
+                            (and (equal "src/other.lisp" (desk-name desk))
+                                 (not (desk-folded-p desk "src/"))
+                                 (unslop-exercise--region desk '(:shelf-file "src/other.lisp"))))
+             (unslop-exercise--click desk '(:shelf-folder "src/"))
+             ;; Marks and folded folders are remembered.
              (let ((again (unslop-make-desk launch)))
                (unslop-expect "what was completed is remembered by the next window"
                               (and (desk-completed-p again "greet.lisp")
-                                   (not (desk-completed-p again "src/other.lisp")))))
+                                   (not (desk-completed-p again "src/other.lisp"))))
+               (unslop-expect "and so is what was folded"
+                              (desk-folded-p again "src/")))
+             (unslop-exercise--click desk '(:shelf-folder "src/"))
              (when shots
                (desk-open-file desk "greet.lisp")
                (unslop-exercise--draw desk)

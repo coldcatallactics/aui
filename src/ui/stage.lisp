@@ -121,14 +121,15 @@
   "Called with a report string when a drawing or input handler signals an error, or NIL to only log it.")
 
 (defmacro with-stage-guard ((what) &body body)
-  "Run BODY, and when it signals an error report WHAT failed instead of unwinding into FLTK.
+  "Run BODY and return its values; when it fails, report WHAT failed and return NIL instead of unwinding into FLTK.
 
-A handler runs inside one of FLTK's callbacks, where a Lisp error has
-nowhere to go but through foreign frames. The window stays up, the failure
-goes to standard error, and the interface is told so that it can say so."
+A handler runs inside one of FLTK's callbacks, where a Lisp error, or a
+stack or heap run out, has nowhere to go but through foreign frames. The
+window stays up, the failure goes to standard error, and the interface is
+told so that it can say so."
   (let ((condition (gensym "CONDITION")))
     `(handler-case (progn ,@body)
-       (error (,condition)
+       (serious-condition (,condition)
          (let ((report (format nil "~A failed: ~A" ,what ,condition)))
            (format *error-output* "~&aui: ~A~%" report)
            (when *stage-failure-function*
@@ -369,8 +370,11 @@ otherwise."
                   :height   (lightfast:widget-height window)
                   :callback (lambda (widget event value)
                               (declare (ignore widget event value))
-                              (with-stage-guard ("Drawing")
-                                (stage--paint stage))))))
+                              ;; A drawing that failed asks for no other, which would fail the same way.
+                              (unless (with-stage-guard ("Drawing")
+                                        (stage--paint stage)
+                                        t)
+                                (setf (stage-dirty-p stage) nil))))))
     (setf (stage-canvas stage) canvas
           (stage-width stage)  (lightfast:widget-width window)
           (stage-height stage) (lightfast:widget-height window))

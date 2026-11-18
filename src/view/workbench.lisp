@@ -620,6 +620,9 @@ name is NIL when TEXT is neither."
     (t
      nil)))
 
+(defparameter *history-recall-limit* 200
+  "How many of the texts sent from the window are kept for recall with the arrow keys.")
+
 (-> workbench-submit (workbench string &key (:steer-p boolean) (:images list)) boolean)
 (defun workbench-submit (workbench text &key steer-p images)
   "Send TEXT with IMAGES to the channel and return whether it went.
@@ -654,7 +657,9 @@ agent takes it up."
          (setf (workbench-notice workbench)        nil
                (workbench-history-index workbench) nil)
          (unless (equal trimmed (first (workbench-history workbench)))
-           (push trimmed (workbench-history workbench)))
+           (let ((history (cons trimmed (workbench-history workbench))))
+             (setf (workbench-history workbench)
+                   (subseq history 0 (min (length history) *history-recall-limit*)))))
          (session-submit session trimmed
                          :images     images
                          :steer-p    steer-p

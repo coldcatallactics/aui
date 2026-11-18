@@ -15,6 +15,9 @@
 (defvar *preferences-read-p* nil
   "Whether the preferences file was read in this run.")
 
+(defvar *preferences-read-from* nil
+  "The file the preferences were last read from, so that they are read again when another file is named.")
+
 (-> preferences-default-pathname () pathname)
 (defun preferences-default-pathname ()
   "Return where the preferences are kept when nothing says otherwise."
@@ -37,9 +40,10 @@
 (-> preference (keyword &optional t) t)
 (defun preference (name &optional default)
   "Return the preference NAME, or DEFAULT when it was never set."
-  (unless *preferences-read-p*
-    (setf *preferences*        (preferences--read)
-          *preferences-read-p* t))
+  (unless (and *preferences-read-p* (equal *preferences-read-from* *preferences-pathname*))
+    (setf *preferences*           (preferences--read)
+          *preferences-read-p*    t
+          *preferences-read-from* *preferences-pathname*))
   (getf *preferences* name default))
 
 (-> (setf preference) (t keyword) t)

@@ -100,9 +100,10 @@
 
 (defmacro with-test-preferences (() &body body)
   "Run BODY with preferences of its own that are kept nowhere."
-  `(let ((*preferences*          nil)
-         (*preferences-read-p*   t)
-         (*preferences-pathname* nil))
+  `(let ((*preferences*           nil)
+         (*preferences-read-p*    t)
+         (*preferences-read-from* nil)
+         (*preferences-pathname*  nil))
      ,@body))
 
 (-> test-desk (pathname list) desk)

@@ -469,8 +469,9 @@ stands beside the conversation."
         (others nil))
     (dolist (line (markdown-lines dropped))
       (let* ((trimmed (string-trim '(#\Space #\Return) line))
+             ;; A dropped file arrives as a URL, its spaces and the like written as percent escapes.
              (path    (if (and (> (length trimmed) 7) (string= "file://" trimmed :end2 7))
-                          (subseq trimmed 7)
+                          (quri:url-decode (subseq trimmed 7) :lenient t)
                           trimmed)))
         (cond
           ((zerop (length trimmed))

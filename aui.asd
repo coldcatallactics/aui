@@ -107,7 +107,11 @@
       ((:file "lexer")
        (:file "proof")
        (:file "checkout")
-       (:file "ledger")))))))
+       (:file "ledger")
+       (:file "desk")
+       (:file "shelf")
+       (:file "page")
+       (:file "unslop")))))))
 
 (asdf:defsystem #:aui/test-support
   :description "The suite every AUI test belongs to and the function that runs it."

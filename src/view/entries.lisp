@@ -12,7 +12,10 @@
   "The argument names tried, in order, for a tool call's one-line preview.")
 
 (defparameter *output-preview-lines* 14
-  "How many lines of a tool's output an opened row shows before offering the rest.")
+  "How many lines of what a notice has to add are shown when it is opened.")
+
+(defparameter *output-open-lines* 200
+  "How many lines of a tool's result are shown once a person opened the call.")
 
 (defgeneric entry-blocks (entry toggle)
   (:documentation "Return the blocks that draw ENTRY. TOGGLE is a function of no arguments that opens or closes the entry's detail."))
@@ -296,12 +299,13 @@ What is removed is red and what is added green, marks and text alike."
         when member
           do (return (rest member))))
 
-(-> entries--preview (string) string)
-(defun entries--preview (text)
-  "Return the first lines of TEXT, as many as a result shows at once, and how many more there are."
-  (let* ((lines (markdown-lines (string-right-trim '(#\Newline #\Space) text)))
-         (shown (if (> (length lines) *output-preview-lines*)
-                    (subseq lines 0 *output-preview-lines*)
+(-> entries--preview (string &key (:lines integer)) string)
+(defun entries--preview (text &key (lines *output-preview-lines*))
+  "Return the first LINES lines of TEXT, by default as many as a result shows at a glance, and how many more there are."
+  (let* ((limit lines)
+         (lines (markdown-lines (string-right-trim '(#\Newline #\Space) text)))
+         (shown (if (> (length lines) limit)
+                    (subseq lines 0 limit)
                     lines)))
     (format nil "~{~A~^~%~}~@[~%… ~D more lines~]" shown
             (and (> (length lines) (length shown)) (- (length lines) (length shown))))))
@@ -349,7 +353,8 @@ What is removed is red and what is added green, marks and text alike."
       (let ((alone-p (null (rest sections))))
         (or (loop for (label . text) in sections
                   for first-p = t then nil
-                  collect (let ((shown (entries--preview (if lisp-p (entries--lisp-output text) text))))
+                  collect (let ((shown (entries--preview (if lisp-p (entries--lisp-output text) text)
+                                                         :lines *output-open-lines*)))
                             (make-code-block
                              shown
                              ;; One section is the result; several go by what they captured.

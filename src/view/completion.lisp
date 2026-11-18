@@ -29,9 +29,9 @@
                        -1))))
     (values (subseq text start) start)))
 
-(-> completion--commands (workbench string string) list)
-(defun completion--commands (workbench prefix opener)
-  "Return the commands whose names begin with PREFIX, written with OPENER, a slash or an opening parenthesis."
+(-> completion--commands (workbench string (member :slash :form)) list)
+(defun completion--commands (workbench prefix notation)
+  "Return the commands whose names begin with PREFIX, written in NOTATION: after a slash, or as a Lisp form."
   (loop for row in (workbench-operations workbench)
         for name = (portable-get row "name")
         when (and (stringp name)
@@ -39,12 +39,17 @@
                   (not (member name *terminal-only-commands* :test #'string=))
                   (>= (length name) (length prefix))
                   (string-equal prefix name :end2 (length prefix)))
-          collect (make-completion
-                   :label  (format nil "~A~A" opener name)
-                   :detail (entries--one-line (or (portable-get row "description") ""))
-                   :text   (if (portable-string (portable-get row "argumentHint"))
-                               (format nil "~A~A " opener name)
-                               (format nil "~A~A~A" opener name (if (string= opener "(") ")" ""))))))
+          collect (let ((opened (format nil "~:[(~;/~]~A" (eq notation ':slash) name)))
+                    (make-completion
+                     :label  opened
+                     :detail (entries--one-line (or (portable-get row "description") ""))
+                     :text   (cond
+                               ((portable-string (portable-get row "argumentHint"))
+                                (format nil "~A " opened))
+                               ((eq notation ':form)
+                                (format nil "~A)" opened))
+                               (t
+                                opened))))))
 
 (-> completion--participants (workbench string) list)
 (defun completion--participants (workbench prefix)
@@ -75,9 +80,9 @@
        nil)
       ;; A command is completed only as the first thing in the draft.
       ((and (zerop start) (char= (char word 0) #\/))
-       (completion--commands workbench (subseq word 1) "/"))
+       (completion--commands workbench (subseq word 1) ':slash))
       ((and (zerop start) (char= (char word 0) #\() (not (find #\) word)))
-       (completion--commands workbench (subseq word 1) "("))
+       (completion--commands workbench (subseq word 1) ':form))
       ((and (char= (char word 0) #\@) (not (find #\/ word)))
        (completion--participants workbench (subseq word 1)))
       (t

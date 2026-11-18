@@ -237,7 +237,7 @@ back, since the close found none to give back."
           (unless (world-served-p world)
             (session--post session 'attachment-event
                            :state  ':opening
-                           :detail (list 0 "Starting the world server"))
+                           :detail (list 0 "starting the world server"))
             (world-start-server world))
           (session--open-served session
                                 :channel   channel

@@ -151,7 +151,7 @@
   (let* ((content (overlay-content overlay))
          (inner   (max 80 (- width 56))))
     (if (null content)
-        (paint-text-in "Waiting for the answer" (text-style ':small :face ':serif-italic)
+        (paint-text-in "waiting for the answer" (text-style ':small :face ':serif-italic)
                        :x      (+ x 24)
                        :y      (+ y 8)
                        :width  inner

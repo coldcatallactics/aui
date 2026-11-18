@@ -190,7 +190,7 @@
                              :message "#<APPLICATION-TURN-CANCELLED {1}>")
                            '(:turn-aborted :seq 2 :reason :application-error :message "the provider refused")))))
     (fiveam:is (equal '(notice-entry notice-entry) (mapcar #'type-of entries)))
-    (fiveam:is (string= "Stopped" (notice-entry-text (first entries))))
+    (fiveam:is (string= "stopped" (notice-entry-text (first entries))))
     (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
     (fiveam:is (null (notice-entry-detail (first entries))))
     (fiveam:is (eq ':failure (notice-entry-tone (second entries))))

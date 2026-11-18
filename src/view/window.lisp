@@ -243,7 +243,7 @@ stands beside the conversation."
          (when (workbench-notice workbench)
            (destructuring-bind (x y width height) (box :notice)
              (paint-mark ':cross x (+ y 5) :size 14 :color *red*)
-             (paint-text-in (workbench-notice workbench) (text-style ':meta)
+             (paint-text-in (workbench-notice workbench) (text-style ':meta :color *red*)
                             :x      (+ x 20)
                             :y      y
                             :width  (- width 20)

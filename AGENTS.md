@@ -88,6 +88,14 @@ Labels, tooltips, notices and the README say what a person does or state a
 plain fact. A key, a window or a list is never the subject of a verb: "Stop
 (Esc)", not "Esc stops". Short sentences, plain words.
 
+What the window says in its own voice reads as Autolith's terminal writes it:
+a mark first, the ink of its kind, a small first letter and no closing period.
+That is a notice among the entries, the line above the composer that says what
+did not work, and the status line. A notice entry draws its mark from its
+tone, and `(setf workbench-notice)` brings any report into this shape, so
+give both plain lowercase words. Titles, headings, buttons and menus keep
+sentence case.
+
 Menus, pickers, prompts and panels are overlays drawn on the stage
 (`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
 share the faces. A file chooser is the one exception. A wide window sets the

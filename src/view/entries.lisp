@@ -122,7 +122,7 @@
                            (when (and origin opener)
                              (list (make-instance 'button-block
                                                   :identifier (list ':entry-channel (entry-identifier entry))
-                                                  :label      (format nil "Go to ~A" (channel-display-name origin))
+                                                  :label      (format nil "go to ~A" (channel-display-name origin))
                                                   :action     (lambda () (funcall opener origin))
                                                   :margin-top 10))))
            :frame-p       nil
@@ -191,8 +191,8 @@ being written reads the same as it did, so its blocks are kept."
                                                    ':closed))
                                     ;; The summary's own emphasis shows; its markers do not.
                                     :title      (cons (make-span (if (reasoning-entry-streaming-p entry)
-                                                                     "Thinking  "
-                                                                     "Thought  ")
+                                                                     "thinking  "
+                                                                     "thought  ")
                                                                  label)
                                                       (prose-spans
                                                        (markdown-inline
@@ -257,7 +257,7 @@ being written reads the same as it did, so its blocks are kept."
     :padding-y     10
     :margin-top    10
     :margin-bottom 10
-    :children      (cons (make-text-block (spans (list "Plan" (text-style ':label-bold)))
+    :children      (cons (make-text-block (spans (list "plan" (text-style ':label-bold)))
                                           :style (text-style ':label-bold) :margin-bottom 4)
                          (entries--plan-steps entry)))))
 
@@ -280,7 +280,7 @@ What is removed is red and what is added green, marks and text alike."
                      do (push (make-span (format nil "~A~A~%" mark line) style) spans))
                (when (> (length lines) *diff-preview-lines*)
                  (push (make-span (format nil "  … ~D more lines~%" (- (length lines) *diff-preview-lines*))
-                                  nil)
+                                  (text-style ':code :face ':mono-italic))
                        spans)))))
       (when (plusp (length old))
         (side old "- " removed))
@@ -584,7 +584,7 @@ else is one section."
   (list (make-instance 'row-block
                        :identifier (list ':entry (entry-identifier entry))
                        :mark       ':point
-                       :title      (cons (make-span "Tool schemas  " (text-style ':label))
+                       :title      (cons (make-span "tool schemas  " (text-style ':label))
                                          (loop for name in (schemas-entry-names entry)
                                                for first-p = t then nil
                                                unless first-p

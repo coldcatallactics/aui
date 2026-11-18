@@ -357,7 +357,7 @@ A count of context that Autolith estimated instead of measured opens with a tild
       ((workbench-working-p workbench)
        (setf (stage-animating-p stage) t)
        (paint-spinner x (+ y (floor (- height 14) 2)) :size 14 :phase (stage-phase stage) :color *green*)
-       (paint-text-in (format nil "Working~@[ ~A~]"
+       (paint-text-in (format nil "working~@[ ~A~]"
                               (and (workbench-working-since workbench)
                                    (chrome--elapsed (- (get-universal-time)
                                                        (workbench-working-since workbench))))) meta
@@ -584,7 +584,7 @@ A choice is taken with its number or a click."
       (setf top (chrome--paint-mascot left top column)))
     (ecase (workbench-attachment workbench)
       (:opening
-       (destructuring-bind (&optional (step 0) (description "Connecting to the world")) (workbench-progress workbench)
+       (destructuring-bind (&optional (step 0) (description "connecting to the world")) (workbench-progress workbench)
          (let ((below (chrome--paint-centered "Autolith" (text-style ':display) :x left :y top :width column)))
            (setf below (chrome--paint-centered description (text-style ':label)
                                                :x     left

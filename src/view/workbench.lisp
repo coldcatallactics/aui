@@ -130,7 +130,7 @@
     :documentation "The universal time the jobs were last asked for.")
    (notice
     :initform      nil
-    :accessor      workbench-notice
+    :reader        workbench-notice
     :type          (or null string)
     :documentation "A line telling the person something did not work, shown above the composer until the next action.")
    (sidebar-shown-p
@@ -240,6 +240,25 @@
     :type          (or null real)
     :documentation "The part of the width beside the channel list that the console takes, as the person left it, or NIL for what was remembered."))
   (:documentation "One AUI window and everything it knows."))
+
+(-> notice-text (string) string)
+(defun notice-text (text)
+  "Return TEXT as a line of the interface reads: one line, begun with a small letter, without a closing period.
+
+A first word written in capitals, such as a name, keeps them."
+  (let* ((line  (string-right-trim '(#\Space #\Newline #\.)
+                                   (subseq text 0 (or (position #\Newline text) (length text)))))
+         (small (and (> (length line) 1)
+                     (upper-case-p (char line 0))
+                     (not (upper-case-p (char line 1))))))
+    (if small
+        (concatenate 'string (string (char-downcase (char line 0))) (subseq line 1))
+        line)))
+
+(-> (setf workbench-notice) ((or null string) workbench) (or null string))
+(defun (setf workbench-notice) (text workbench)
+  "Tell the person TEXT above the composer, or with NIL take the line away."
+  (setf (slot-value workbench 'notice) (and text (notice-text text))))
 
 (-> workbench-redraw (workbench) null)
 (defun workbench-redraw (workbench)

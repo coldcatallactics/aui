@@ -195,7 +195,7 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
     (make-instance 'notice-entry
                    :time   time
                    :tone   (if (eq outcome ':failure) ':failure ':quiet)
-                   :text   (format nil "Job ~A~@[ · ~A~]"
+                   :text   (format nil "job ~A~@[ · ~A~]"
                                    (case outcome
                                      (:cancellation-pending
                                       "cancellation pending")
@@ -243,11 +243,11 @@ the one the request arrived in."
   "Return the words that stand for the automatic continuation prompt CONTENT."
   (cond
     ((string= content autolith::*application-goal-continuation-prompt*)
-     "Goal continues")
+     "goal continues")
     ((string= content autolith::*application-job-completion-continuation-prompt*)
-     "Continuing with job results")
+     "continuing with job results")
     (t
-     (format nil "Mission wakeup: ~A" content))))
+     (format nil "mission wakeup: ~A" content))))
 
 (-> record--message-entry (projector list) (or null entry))
 (defun record--message-entry (projector record)
@@ -423,7 +423,7 @@ transcript instead."
        (when (and (integerp count) (plusp count))
          (make-instance 'notice-entry
                         :time (record--time record)
-                        :text (format nil "Yielded: ~D job~:P will wake the agent" count)))))
+                        :text (format nil "yielded: ~D job~:P will wake the agent" count)))))
     ((:summary :native-compaction)
      (make-instance 'marker-entry :time (record--time record) :label *compaction-label*))
     (:turn-aborted
@@ -432,11 +432,11 @@ transcript instead."
      (if (eq (getf (rest record) :reason) ':cancelled)
          (make-instance 'notice-entry
                         :time (record--time record)
-                        :text "Stopped")
+                        :text "stopped")
          (make-instance 'notice-entry
                         :time   (record--time record)
                         :tone   ':failure
-                        :text   "The turn stopped"
+                        :text   "the turn stopped"
                         :detail (let ((message (getf (rest record) :message)))
                                   (and (stringp message) message)))))
     (otherwise

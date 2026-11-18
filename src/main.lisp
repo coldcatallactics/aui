@@ -121,12 +121,13 @@ reports them, not the moment before it answered."
     (window-show workbench)
     (lightfast:add-timeout *tick-seconds*
                            (lambda ()
-                             (let ((stage (workbench-stage workbench)))
-                               (workbench-poll-jobs workbench)
-                               (workbench-poll-waiting workbench)
-                               (when (stage-animating-p stage)
-                                 (incf (stage-phase stage))
-                                 (stage-redraw stage))))
+                             (with-stage-guard ("Looking at the channel again")
+                               (let ((stage (workbench-stage workbench)))
+                                 (workbench-poll-jobs workbench)
+                                 (workbench-poll-waiting workbench)
+                                 (when (stage-animating-p stage)
+                                   (incf (stage-phase stage))
+                                   (stage-redraw stage)))))
                            :repeat t)
     ;; A window that was never shown has no event loop to run: draw it once
     ;; offscreen and leave.

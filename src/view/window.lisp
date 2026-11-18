@@ -537,30 +537,31 @@ stands beside the conversation."
     (lightfast:on filter
                   (lambda (widget event value)
                     (declare (ignore widget event))
-                    (let* ((key-event (parse-key-event value))
-                           (key       (key-event-key key-event)))
-                      (cond
-                        ;; Escape empties the filter; from an empty one it leaves the list.
-                        ((eq key ':escape)
-                         (if (plusp (length (workbench-filter workbench)))
-                             (setf (lightfast:value filter)     ""
-                                   (workbench-filter workbench) "")
-                             (sidebar--close-drawer workbench))
-                         (window-arrange workbench)
-                         (unless (window-drawer-p workbench)
-                           (window-focus-composer workbench))
-                         (workbench-redraw workbench)
-                         (lightfast:consume-event))
-                        ((member key '(:enter :keypad-enter))
-                         (let ((first (find ':channel (sidebar--visible-entries workbench)
-                                            :key (lambda (entry) (getf entry :kind)))))
-                           (when first
-                             (setf (lightfast:value filter)     ""
-                                   (workbench-filter workbench) "")
-                             (sidebar--open workbench (getf first :id))))
-                         (lightfast:consume-event))
-                        ((window--shortcut workbench key-event)
-                         (lightfast:consume-event)))))
+                    (with-stage-guard ("A key in the channel filter")
+                      (let* ((key-event (parse-key-event value))
+                             (key       (key-event-key key-event)))
+                        (cond
+                          ;; Escape empties the filter; from an empty one it leaves the list.
+                          ((eq key ':escape)
+                           (if (plusp (length (workbench-filter workbench)))
+                               (setf (lightfast:value filter)     ""
+                                     (workbench-filter workbench) "")
+                               (sidebar--close-drawer workbench))
+                           (window-arrange workbench)
+                           (unless (window-drawer-p workbench)
+                             (window-focus-composer workbench))
+                           (workbench-redraw workbench)
+                           (lightfast:consume-event))
+                          ((member key '(:enter :keypad-enter))
+                           (let ((first (find ':channel (sidebar--visible-entries workbench)
+                                              :key (lambda (entry) (getf entry :kind)))))
+                             (when first
+                               (setf (lightfast:value filter)     ""
+                                     (workbench-filter workbench) "")
+                               (sidebar--open workbench (getf first :id))))
+                           (lightfast:consume-event))
+                          ((window--shortcut workbench key-event)
+                           (lightfast:consume-event))))))
                   :event lightfast:+event-key+)
     (lightfast:on query
                   (lambda (widget event value)
@@ -656,17 +657,19 @@ stands beside the conversation."
             (workbench-editor workbench) (first natives)))
     (lightfast:on-resize window
                          (lambda (resized)
-                           (lightfast:refresh-geometry resized)
-                           (stage-resize stage (lightfast:widget-width resized) (lightfast:widget-height resized))
-                           ;; A list opened over a narrow window does not come
-                           ;; back when the window is made narrow again.
-                           (unless (window--narrow-p workbench)
-                             (setf (workbench-drawer-open-p workbench) nil))
-                           (window-arrange workbench)))
+                           (with-stage-guard ("Resizing the window")
+                             (lightfast:refresh-geometry resized)
+                             (stage-resize stage (lightfast:widget-width resized) (lightfast:widget-height resized))
+                             ;; A list opened over a narrow window does not come
+                             ;; back when the window is made narrow again.
+                             (unless (window--narrow-p workbench)
+                               (setf (workbench-drawer-open-p workbench) nil))
+                             (window-arrange workbench))))
     (lightfast:on window
                   (lambda (widget event value)
                     (declare (ignore widget event value))
-                    (workbench-close workbench))
+                    (with-stage-guard ("Closing the window")
+                      (workbench-close workbench)))
                   :event lightfast:+event-close+))
   nil)
 

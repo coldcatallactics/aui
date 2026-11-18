@@ -20,12 +20,6 @@
 (defparameter *shelf-footer-height* 44
   "The room at the list's foot for the count of completed files and the switch.")
 
-(-> shelf-folder (string) string)
-(defun shelf-folder (name)
-  "Return the folder the file NAME lies in, with its closing slash, or the empty string for a file at the root."
-  (let ((slash (position #\/ name :from-end t)))
-    (if slash (subseq name 0 (1+ slash)) "")))
-
 (-> shelf-names (desk) list)
 (defun shelf-names (desk)
   "Return the files to list: those whose names hold what is in the filter, without the completed ones when the person hides them. The open file is listed whatever it is."
@@ -44,7 +38,7 @@
   (let ((rows   nil)
         (folder ':none))
     (dolist (name (shelf-names desk))
-      (let ((own (shelf-folder name)))
+      (let ((own (checkout-folder name)))
         (unless (equal own folder)
           (setf folder own)
           (push (cons ':folder own) rows))
@@ -94,7 +88,7 @@
              (paint-frame box-x box-y :width 13 :height 13)
              (when completed-p
                (paint-mark ':check (- box-x 1) (- box-y 2) :size 16))
-             (paint-text-in (text-fit-tail (subseq name (length (shelf-folder name))) style
+             (paint-text-in (text-fit-tail (subseq name (length (checkout-folder name))) style
                                            (max 0 (- right edited-w text-x)))
                             style
                             :x      text-x

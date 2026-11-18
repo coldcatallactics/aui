@@ -13,7 +13,7 @@
   "The file types that hold Lisp source.")
 
 (defstruct checkout
-  "A folder of Lisp source, as its ROOT, whether Git knows it, the PREFIX that leads from the top of its repository to it, and its source FILES as names from the root, sorted."
+  "A folder of Lisp source, as its ROOT, whether Git knows it, the PREFIX that leads from the top of its repository to it, and its source FILES as names from the root, folder by folder."
   (root   nil)
   (git-p  nil :type boolean)
   (prefix ""  :type string)
@@ -69,9 +69,25 @@
              (push (subseq name prefix) names))))))
     names))
 
+(-> checkout-folder (string) string)
+(defun checkout-folder (name)
+  "Return the folder the file NAME lies in, with its closing slash, or the empty string for a file at the root."
+  (let ((slash (position #\/ name :from-end t)))
+    (if slash (subseq name 0 (1+ slash)) "")))
+
+(-> checkout--before-p (string string) boolean)
+(defun checkout--before-p (first second)
+  "Return T when the file FIRST is listed before SECOND. Files are in the order of their folders and then of their names, so those of one folder stand together, ahead of the folders inside it."
+  (let ((first-folder  (checkout-folder first))
+        (second-folder (checkout-folder second)))
+    (and (if (string= first-folder second-folder)
+             (string< first second)
+             (string< first-folder second-folder))
+         t)))
+
 (-> checkout-list-files (checkout) list)
 (defun checkout-list-files (checkout)
-  "Return the source files CHECKOUT holds now, as names from its root, sorted. In a Git checkout they are the files Git tracks and those it would add."
+  "Return the source files CHECKOUT holds now, as names from its root, folder by folder. In a Git checkout they are the files Git tracks and those it would add."
   (let ((root (checkout-root checkout)))
     (sort (if (checkout-git-p checkout)
               (remove-if-not (lambda (name)
@@ -80,7 +96,7 @@
                              (checkout--records
                               (checkout--git root '("ls-files" "-z" "--cached" "--others" "--exclude-standard"))))
               (checkout--walk root))
-          #'string<)))
+          #'checkout--before-p)))
 
 (-> checkout-open (pathname) checkout)
 (defun checkout-open (directory)

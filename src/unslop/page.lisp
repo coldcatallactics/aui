@@ -318,10 +318,10 @@ shows, and the editor moves its own text as the caret moves."
          (right       (- (+ x width) *page-margin*))
          (button-w    (if completed-p 130 160))
          (kinds       (desk-kinds)))
-    (paint-text-in (subseq name (length (shelf-folder name))) (text-style ':heading-2)
+    (paint-text-in (subseq name (length (checkout-folder name))) (text-style ':heading-2)
                    :x left :y (+ y 10) :width (max 0 (- right left button-w 20)) :height 30)
     (paint-text-in (format nil "~A~D ~:*~[texts~;text~:;texts~]~:[~; · edited~]"
-                           (let ((folder (shelf-folder name)))
+                           (let ((folder (checkout-folder name)))
                              (if (zerop (length folder)) "" (format nil "~A · " folder)))
                            (proof-passage-count proof)
                            (desk-edited-p desk name))

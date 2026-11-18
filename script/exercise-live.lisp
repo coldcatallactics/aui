@@ -416,7 +416,7 @@ which may happen to a person's own world."
                                 (exercise-live--until workbench
                                                       (lambda ()
                                                         (when (equal (second (workbench-progress workbench))
-                                                                     "Starting the world server")
+                                                                     "starting the world server")
                                                           (setf command-p t))
                                                         (workbench-attached-p workbench))
                                                       :seconds 600))
@@ -500,7 +500,7 @@ which may happen to a person's own world."
              (exercise-expect "a stopped turn says so quietly"
                               (let ((notice (first (last (exercise-live--entries workbench 'notice-entry)))))
                                 (and notice
-                                     (string= "Stopped" (notice-entry-text notice))
+                                     (string= "stopped" (notice-entry-text notice))
                                      (eq ':quiet (notice-entry-tone notice)))))
              ;; Steering a running turn.
              (exercise-live--type workbench "Tell me once more, slowly" #xff0d)

@@ -288,7 +288,7 @@
       (window--editor-key workbench (make-key-event :code #xff0d))
       (exercise-expect "Enter in the composer sends"
                        (and (workbench-notice workbench)
-                            (search "Not attached" (workbench-notice workbench))))
+                            (search "not attached" (workbench-notice workbench))))
       (setf (workbench-notice workbench) nil
             (composer-text workbench)    "")
       ;; A wide window sets the console beside the conversation.

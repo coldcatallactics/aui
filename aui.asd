@@ -82,6 +82,7 @@
      (:file "records-tests")
      (:file "history-tests")
      (:file "session-tests")
+     (:file "document-tests")
      (:file "links-tests")
      (:file "launch-tests"))))
   :perform     (asdf:test-op (operation component)

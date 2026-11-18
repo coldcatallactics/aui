@@ -3,9 +3,13 @@
 ;;;; -- Document View --
 
 ;;; The transcript as a scrolling column of blocks. Each entry is typeset
-;;; once and again only when its revision moves; drawing touches only what is
-;;; in view, so a long history costs what its visible part costs. A drag
-;;; selects text across entries, and the selection is copied when released.
+;;; when it arrives and again when its revision moves; drawing touches only
+;;; what is in view, so a long history costs what its visible part costs.
+;;; Entries far from the view give their blocks up and keep only their height,
+;;; and are typeset again when the view comes near, so a long conversation
+;;; holds the layouts of what is around the view and no more. A new width is
+;;; met the same way, by what is near first. A drag selects text across
+;;; entries, and the selection is copied when released.
 
 (defparameter *document-measure* 760
   "The widest the reading column gets, in FLTK units: about seventy characters of the body face.")
@@ -16,10 +20,14 @@
 (defparameter *document-wheel-step* 54
   "How far one wheel step scrolls.")
 
+(defparameter *document-kept-items* 200
+  "How many entries on each side of those in view keep their blocks.")
+
 (defstruct item
-  "One entry as it is laid out, with its blocks, where it starts in the column, and its selectable leaves."
+  "One entry as it is laid out, with its blocks, where it starts in the column, and its selectable leaves. WIDTH is the column width the blocks are laid out to, or zero for an item that holds none and keeps the height it last had."
   (entry    nil)
   (revision -1  :type integer)
+  (width    0   :type integer)
   (blocks   nil :type list)
   (top      0   :type integer)
   (height   0   :type integer)
@@ -130,17 +138,25 @@
                     (setf (entry-expanded-p entry) (not (entry-expanded-p entry)))
                     (transcript-touch transcript entry)))))
 
+(-> document--current-p (document item) boolean)
+(defun document--current-p (document item)
+  "Return T when ITEM holds the blocks of its entry as it is now, laid out to the column."
+  (and (= (item-revision item) (entry-revision (item-entry item)))
+       (= (item-width item) (document--column-width document))))
+
 (-> document--lay-item (document item) null)
 (defun document--lay-item (document item)
   "Bring ITEM's layout up to its entry and the column.
 
-An entry whose revision moved is typeset again; one that only meets a new
-width keeps its blocks and has them laid out again. An entry that cannot be
-typeset is shown as a line saying so, and the rest of the document as usual."
+An entry whose revision moved, or whose item gave its blocks up, is typeset;
+one that only meets a new width has its blocks laid out again. An entry that
+cannot be typeset is shown as a line saying so, and the rest of the document
+as usual."
   (let ((entry (item-entry item)))
     (handler-case
         (document--place document item
-                         (if (= (item-revision item) (entry-revision entry))
+                         (if (and (plusp (item-width item))
+                                  (= (item-revision item) (entry-revision entry)))
                              (mapcar #'first (item-blocks item))
                              (document--entry-blocks document entry)))
       (error (condition)
@@ -150,7 +166,26 @@ typeset is shown as a line saying so, and the rest of the document as usual."
                                 (spans (format nil "! this entry could not be shown: ~A"
                                                (condition-report condition)))
                                 :style (text-style ':meta :color *red*))))))
-    (setf (item-revision item) (entry-revision entry)))
+    (setf (item-revision item) (entry-revision entry)
+          (item-width item)    (document--column-width document)))
+  nil)
+
+(-> document--release-item (item) null)
+(defun document--release-item (item)
+  "Have ITEM give its blocks up and keep its height."
+  (setf (item-blocks item) nil
+        (item-leaves item) nil
+        (item-width item)  0)
+  nil)
+
+(-> document--place-items (document) null)
+(defun document--place-items (document)
+  "Set where each item starts from the heights of those before it, and the height of them all."
+  (let ((top 0))
+    (loop for item across (document--items document)
+          do (setf (item-top item) top)
+             (incf top (item-height item)))
+    (setf (document-content-height document) top))
   nil)
 
 (-> document--aligned-p (vector vector) boolean)
@@ -179,29 +214,26 @@ typeset is shown as a line saying so, and the rest of the document as usual."
 
 (-> document-sync (document integer) null)
 (defun document-sync (document width)
-  "Bring the laid-out items up to the transcript and to the column WIDTH wide.
+  "Bring the items up to the transcript's entries, for a column WIDTH wide.
 
-Entries whose revision did not move keep their layout. When entries arrive
-in front, as an earlier page of history does, the view stays on what it
-showed."
+An entry that is new or whose revision moved is laid out now, so its height
+is true. One that only meets a new width keeps its height until the view
+comes near it. When entries arrive in front, as an earlier page of history
+does, the view stays on what it showed."
   (let* ((transcript (document-transcript document))
-         (entries    (transcript-entries transcript))
-         (resized-p  (/= width (document--column-width document))))
-    (when (or resized-p (/= (transcript-revision transcript) (document--laid-revision document)))
-      (setf (document--column-width document) width)
+         (entries    (transcript-entries transcript)))
+    (setf (document--column-width document) width)
+    (unless (= (transcript-revision transcript) (document--laid-revision document))
       (let* ((old      (document--items document))
              (first    (and (plusp (length old)) (item-entry (aref old 0))))
              (old-top  (and first (item-top (aref old 0))))
              (selected (document--anchor document))
-             (items    (document--items-for document entries))
-             (top      0))
+             (items    (document--items-for document entries)))
         (loop for item across items
-              do (when (or resized-p (/= (item-revision item) (entry-revision (item-entry item))))
-                   (document--lay-item document item))
-                 (setf (item-top item) top)
-                 (incf top (item-height item)))
-        (setf (document--items document)        items
-              (document-content-height document) top)
+              do (unless (= (item-revision item) (entry-revision (item-entry item)))
+                   (document--lay-item document item)))
+        (setf (document--items document) items)
+        (document--place-items document)
         ;; Keep the first entry that was shown where it was when a page went in front.
         (when (and first old-top (not (document-following-p document)))
           (let ((moved (find first items :key #'item-entry)))
@@ -211,6 +243,38 @@ showed."
           (setf (document--anchor document) nil
                 (document--focus document)  nil)))
       (setf (document--laid-revision document) (transcript-revision transcript))))
+  nil)
+
+(-> document--bring-near (document) null)
+(defun document--bring-near (document)
+  "Lay out the items in the view and a view's height around it that are not laid out to the column, and release those far from it.
+
+An item above the view that changes height moves the scroll with it, so what
+is shown stays where it is."
+  (let* ((items  (document--items document))
+         (height (fourth (document--viewport document)))
+         (first  (or (document--item-at document (max 0 (- (document-scroll document) height))) 0))
+         (last   first)
+         (shift  0))
+    (loop for index from first below (length items)
+          for item = (aref items index)
+          for top = (+ (item-top item) shift)
+          while (< top (+ (document-scroll document) (* 2 height)))
+          do (setf last index)
+             (unless (document--current-p document item)
+               (let ((before (item-height item)))
+                 (document--lay-item document item)
+                 (let ((grown (- (item-height item) before)))
+                   (incf shift grown)
+                   (when (< top (document-scroll document))
+                     (incf (document-scroll document) grown))))))
+    (unless (zerop shift)
+      (document--place-items document))
+    (loop for item across items
+          for index from 0
+          do (unless (or (zerop (item-width item))
+                         (<= (- first *document-kept-items*) index (+ last *document-kept-items*)))
+               (document--release-item item))))
   nil)
 
 (-> document--maximum-scroll (document) integer)
@@ -348,9 +412,22 @@ showed."
                               (setf (gethash paragraph table) (cons from to))))))
         table))))
 
+(-> document--lay-selection (document) null)
+(defun document--lay-selection (document)
+  "Lay out the selected items that gave their blocks up, so that their text can be read."
+  (multiple-value-bind (start end) (document--selection-range document)
+    (when start
+      (let ((items (document--items document)))
+        (loop for index from (first start) to (min (first end) (1- (length items)))
+              do (unless (document--current-p document (aref items index))
+                   (document--lay-item document (aref items index))))
+        (document--place-items document))))
+  nil)
+
 (-> document-selected-text (document) (or null string))
 (defun document-selected-text (document)
   "Return the selected text, paragraphs on their own lines, or NIL when nothing is selected."
+  (document--lay-selection document)
   (let ((table (document--selection-table document)))
     (when table
       (let ((parts nil))
@@ -401,10 +478,14 @@ showed."
          (left   (+ x (floor (- width column) 2))))
     (setf (document--viewport document) (list x y width height))
     (document-sync document column)
-    (when (document-following-p document)
-      (setf (document-scroll document) (document--maximum-scroll document)))
-    (setf (document-scroll document)
-          (max 0 (min (document-scroll document) (document--maximum-scroll document))))
+    (flet ((settle ()
+             (setf (document-scroll document)
+                   (if (document-following-p document)
+                       (document--maximum-scroll document)
+                       (max 0 (min (document-scroll document) (document--maximum-scroll document)))))))
+      (settle)
+      (document--bring-near document)
+      (settle))
     (stage-region stage ':document
                   :x      x
                   :y      y

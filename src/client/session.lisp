@@ -183,7 +183,8 @@ back, since the close found none to give back."
                                      :session       session
                                      :identifier    identifier
                                      :configuration (world-configuration (session-world session))
-                                     :approves-p    t))
+                                     :approves-p    t
+                                     :evaluates-p   t))
         (attached-p   nil))
     (bordeaux-threads:with-lock-held ((session--lock session))
       (setf (session--identifier session)   identifier

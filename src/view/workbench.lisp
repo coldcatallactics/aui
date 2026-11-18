@@ -391,7 +391,10 @@ pages of history read so far, and those that arrive while the window looks."
 
 (-> workbench-run-aside (workbench t function) null)
 (defun workbench-run-aside (workbench request function)
-  "Call FUNCTION on a thread of its own and post what it returns, or why it failed, as the result of REQUEST."
+  "Call FUNCTION on a thread of its own and post what it returns, or why it failed, as the result of REQUEST.
+
+Such a request is about the world, not the channel shown, so its result is
+stamped as it arrives and reaches the window whichever channel it shows then."
   (bordeaux-threads:make-thread
    (lambda ()
      (multiple-value-bind (outcome value report)

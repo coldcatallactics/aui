@@ -194,12 +194,22 @@
    (waiting-pathname
     :initform      nil
     :accessor      workbench--waiting-pathname
-    :documentation "The file of the channel's snapshot of waiting messages, :NONE when it has none, or NIL before it was looked for.")
+    :documentation "The file of the channel's snapshot of waiting messages, or NIL while the channel has none.")
    (waiting-read-at
     :initform      0
     :accessor      workbench--waiting-read-at
     :type          integer
     :documentation "When the snapshot of waiting messages was last read, in internal time units.")
+   (participants
+    :initform      nil
+    :accessor      workbench--participants
+    :type          list
+    :documentation "The world's participants as last read, each a property list of :NAME, :KIND, :IDENTIFIER and :RESIDENCE.")
+   (participants-asked-at
+    :initform      nil
+    :accessor      workbench--participants-asked-at
+    :type          (or null integer)
+    :documentation "When the participants were last asked for, in internal time units, or NIL before the first time.")
    (digest
     :initform      nil
     :accessor      workbench--digest
@@ -410,6 +420,22 @@ stamped as it arrives and reaches the window whichever channel it shows then."
                                      :report     report))))
    :name "AUI aside")
   nil)
+
+(defparameter *participants-seconds* 3
+  "How long the participants last read are taken for the world's before they are read again.")
+
+(-> workbench-participants (workbench) list)
+(defun workbench-participants (workbench)
+  "Return the world's participants as last read, and have them read again, off this thread, when that was a while ago."
+  (let ((now   (get-internal-real-time))
+        (asked (workbench--participants-asked-at workbench)))
+    (when (and (not (workbench-demo-p workbench))
+               (or (null asked)
+                   (>= (- now asked) (* *participants-seconds* internal-time-units-per-second))))
+      (setf (workbench--participants-asked-at workbench) now)
+      (let ((world (workbench-world workbench)))
+        (workbench-run-aside workbench ':participants (lambda () (world-participants world))))))
+  (workbench--participants workbench))
 
 (-> workbench-leave (workbench) null)
 (defun workbench-leave (workbench)
@@ -756,7 +782,7 @@ where, followed by what this window sent that the snapshot does not show yet."
 
 (-> workbench-poll-waiting (workbench &key (:now-p boolean)) null)
 (defun workbench-poll-waiting (workbench &key now-p)
-  "Read the channel's snapshot of waiting messages again when the last reading is old, or at once when NOW-P."
+  "Have the channel's snapshot of waiting messages read again, off this thread, when the last reading is old, or at once when NOW-P."
   (let ((channel (workbench-channel workbench))
         (now     (get-internal-real-time)))
     (when (and channel
@@ -766,17 +792,27 @@ where, followed by what this window sent that the snapshot does not show yet."
                    (>= (- now (workbench--waiting-read-at workbench))
                        (* *waiting-poll-seconds* internal-time-units-per-second))))
       (setf (workbench--waiting-read-at workbench) now)
-      (unless (workbench--waiting-pathname workbench)
-        (setf (workbench--waiting-pathname workbench)
-              (or (history-pending-pathname (world-configuration (workbench-world workbench)) channel)
-                  ':none)))
-      (let ((pathname (workbench--waiting-pathname workbench)))
-        (when (pathnamep pathname)
-          (let ((waiting (history-pending-inputs pathname channel)))
-            (unless (equal waiting (workbench--waiting workbench))
-              (setf (workbench--waiting workbench) waiting)
-              (workbench-redraw workbench)))))))
+      (let ((configuration (world-configuration (workbench-world workbench)))
+            (known         (workbench--waiting-pathname workbench)))
+        (workbench-run-aside
+         workbench (list ':waiting channel)
+         (lambda ()
+           ;; A channel has no snapshot until it has a history; look again until it has.
+           (let ((pathname (or known (history-pending-pathname configuration channel))))
+             (list pathname (and pathname (history-pending-inputs pathname channel)))))))))
   nil)
+
+(-> workbench--take-waiting (workbench string list) boolean)
+(defun workbench--take-waiting (workbench channel reading)
+  "Take READING, the snapshot file of CHANNEL and the messages waiting in it, and return whether what waits changed.
+
+A reading of a channel the window has left is dropped."
+  (when (equal channel (workbench-channel workbench))
+    (destructuring-bind (pathname waiting) reading
+      (setf (workbench--waiting-pathname workbench) pathname)
+      (unless (equal waiting (workbench--waiting workbench))
+        (setf (workbench--waiting workbench) waiting)
+        t))))
 
 (-> workbench--drop-pending (workbench t) null)
 (defun workbench--drop-pending (workbench submission)
@@ -875,12 +911,13 @@ where, followed by what this window sent that the snapshot does not show yet."
              (workbench-failure workbench)    (or detail "The channel closed.")))))
   nil)
 
-(-> workbench--result-event (workbench result-event) null)
+(-> workbench--result-event (workbench result-event) boolean)
 (defun workbench--result-event (workbench event)
-  "Take the outcome of a request WORKBENCH made."
-  (let ((request (result-event-request event))
-        (value   (result-event-value event))
-        (ok-p    (eq (result-event-outcome event) ':ok)))
+  "Take the outcome of a request WORKBENCH made, and return whether it changed what the window shows."
+  (let ((request   (result-event-request event))
+        (value     (result-event-value event))
+        (ok-p      (eq (result-event-outcome event) ':ok))
+        (changed-p t))
     (cond
       ((equal request "_autolith/state")
        (when ok-p
@@ -924,6 +961,17 @@ where, followed by what this window sent that the snapshot does not show yet."
        (unless ok-p
          (setf (workbench-notice workbench)
                (or (result-event-report event) "The channel could not be deleted."))))
+      ;; What is read again and again says the same most of the time.
+      ((eq request ':participants)
+       (setf changed-p (and ok-p (not (equal value (workbench--participants workbench)))))
+       (when changed-p
+         (setf (workbench--participants workbench) value)))
+      ((and (consp request) (eq (first request) ':waiting))
+       (setf changed-p (and ok-p (workbench--take-waiting workbench (second request) value))))
+      ((and (consp request) (eq (first request) ':read))
+       (panel-take-read workbench request
+                        :value  value
+                        :report (and (not ok-p) (or (result-event-report event) "It could not be read."))))
       ((eq request ':stop-server)
        (unless ok-p
          (setf (workbench-notice workbench)
@@ -953,27 +1001,30 @@ where, followed by what this window sent that the snapshot does not show yet."
                (format nil "Not sent: ~A" (or (result-event-report event) "the channel refused.")))))
       ((not ok-p)
        (when (result-event-report event)
-         (setf (workbench-notice workbench) (result-event-report event))))))
-  nil)
+         (setf (workbench-notice workbench) (result-event-report event)))))
+    changed-p))
 
 (-> workbench-apply (workbench ui-event) null)
 (defun workbench-apply (workbench event)
   "Apply EVENT, which a client thread posted, to WORKBENCH; an event of a channel already left is dropped."
-  (when (= (ui-event-generation event) (workbench-generation workbench))
-    (etypecase event
-      (channel-event
-       (workbench--channel-event workbench (channel-event-payload event)))
-      (history-event
-       (let ((projector (workbench-projector workbench)))
-         (transcript-prepend (workbench-transcript workbench)
-                             (records->entries projector (history-event-records event)))
-         (setf (workbench--goal-record workbench)
-               (records-newest-goal (history-event-records event) (workbench--goal-record workbench)))
-         (setf (document-more-p (workbench-document workbench)) (history-event-more-p event))))
-      (attachment-event
-       (workbench--attachment-event workbench event))
-      (result-event
-       (workbench--result-event workbench event)))
+  (when (and (= (ui-event-generation event) (workbench-generation workbench))
+             (etypecase event
+               (channel-event
+                (workbench--channel-event workbench (channel-event-payload event))
+                t)
+               (history-event
+                (let ((projector (workbench-projector workbench)))
+                  (transcript-prepend (workbench-transcript workbench)
+                                      (records->entries projector (history-event-records event)))
+                  (setf (workbench--goal-record workbench)
+                        (records-newest-goal (history-event-records event) (workbench--goal-record workbench)))
+                  (setf (document-more-p (workbench-document workbench)) (history-event-more-p event)))
+                t)
+               (attachment-event
+                (workbench--attachment-event workbench event)
+                t)
+               (result-event
+                (workbench--result-event workbench event))))
     (workbench-redraw workbench))
   nil)
 

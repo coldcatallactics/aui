@@ -15,20 +15,20 @@
 
 (-> workbench-tell (workbench string string) null)
 (defun workbench-tell (workbench channel text)
-  "Send TEXT to CHANNEL as the person, reporting a refusal above the composer."
-  (handler-case (world-tell (workbench-world workbench) channel text)
-    (client-error (condition)
-      (setf (workbench-notice workbench) (client-error-message condition))))
-  (workbench-redraw workbench)
+  "Send TEXT to CHANNEL as the person, off this thread, reporting a refusal above the composer."
+  (let ((world (workbench-world workbench)))
+    (workbench-run-aside workbench (list ':tell channel)
+                         (lambda ()
+                           (world-tell world channel text))))
   nil)
 
 (-> workbench-close-channel (workbench string) null)
 (defun workbench-close-channel (workbench channel)
-  "Ask the server to stop serving CHANNEL, reporting a refusal above the composer."
-  (handler-case (world-close-channel (workbench-world workbench) channel)
-    (client-error (condition)
-      (setf (workbench-notice workbench) (client-error-message condition))))
-  (workbench-redraw workbench)
+  "Ask the server to stop serving CHANNEL, off this thread, reporting a refusal above the composer."
+  (let ((world (workbench-world workbench)))
+    (workbench-run-aside workbench (list ':close-channel channel)
+                         (lambda ()
+                           (world-close-channel world channel))))
   nil)
 
 (-> chrome--channel-agent (workbench) (or null string))
@@ -36,7 +36,7 @@
   "Return the name of the agent residing in the channel shown, or NIL when it has none."
   (unless (workbench-demo-p workbench)
     (let ((channel (workbench-channel workbench)))
-      (loop for participant in (world-participants (workbench-world workbench))
+      (loop for participant in (workbench-participants workbench)
             when (and (eq (getf participant :kind) ':agent)
                       (equal (getf participant :residence) channel))
               do (return (getf participant :name))))))
@@ -46,7 +46,7 @@
   "Return the names of the agents that do not reside in the channel shown, parked ones included."
   (unless (workbench-demo-p workbench)
     (let ((channel (workbench-channel workbench)))
-      (loop for participant in (world-participants (workbench-world workbench))
+      (loop for participant in (workbench-participants workbench)
             when (and (eq (getf participant :kind) ':agent)
                       (not (equal (getf participant :residence) channel))
                       (stringp (getf participant :name)))
@@ -115,7 +115,7 @@
     (workbench-pick
      workbench
      (loop for participant in (and (not (workbench-demo-p workbench))
-                                   (world-participants (workbench-world workbench)))
+                                   (workbench-participants workbench))
            when (and (eq (getf participant :kind) ':agent)
                      (not (equal (getf participant :residence) channel))
                      (stringp (getf participant :name)))

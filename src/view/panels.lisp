@@ -98,26 +98,52 @@ A tab with nothing in it says so."
                 (block-margin-bottom (first (last blocks))) 0))
         blocks)))))
 
+(-> panel--shown-p (workbench string) boolean)
+(defun panel--shown-p (workbench title)
+  "Return T while the panel titled TITLE is the overlay shown."
+  (let ((overlay (workbench-overlay workbench)))
+    (and overlay
+         (eq (overlay-kind overlay) ':panel)
+         (equal (overlay-title overlay) title))))
+
+(-> panel--show-read (workbench string &key (:read function) (:show function)) null)
+(defun panel--show-read (workbench title &key read show)
+  "Open a panel titled TITLE at once, and call SHOW with what READ returns once READ, run off this thread, has returned."
+  (workbench-show-panel workbench title nil)
+  (workbench-run-aside workbench (list ':read title show) read)
+  nil)
+
+(-> panel-take-read (workbench list &key (:value t) (:report (or null string))) null)
+(defun panel-take-read (workbench request &key value report)
+  "Show VALUE, read for the panel REQUEST opened, when that panel still waits for it; REPORT says why nothing was read."
+  (destructuring-bind (title show) (rest request)
+    (when (panel--shown-p workbench title)
+      (if report
+          (workbench-show-panel workbench title (panel--empty report))
+          (funcall show value))))
+  nil)
+
 (-> panel-show-agenda (workbench) null)
 (defun panel-show-agenda (workbench)
   "Show the agenda of the workspace the channel works in as a board: a tab for each state an item can be in, and the items as cards."
-  (let ((directory (workbench-directory workbench)))
-    (handler-case
-        (let ((items (stable-sort (copy-list (if (workbench-demo-p workbench)
-                                                 (demo-agenda)
-                                                 (workspace-agenda directory)))
-                                  #'<
-                                  :key (lambda (item)
-                                         (or (position (getf item :status) '(:doing :todo :blocked :note :done))
-                                             1)))))
-          (workbench-show-board workbench
-                                (format nil "Agenda of ~A" (short-directory directory))
-                                (panel--tabs '((:doing . "Doing") (:todo . "To do") (:blocked . "Blocked")
-                                               (:note . "Notes") (:done . "Done"))
-                                             items
-                                             #'panel--agenda-card)))
-      (client-error (condition)
-        (workbench-show-panel workbench "Agenda" (panel--empty (client-error-message condition))))))
+  (let* ((directory (workbench-directory workbench))
+         (title     (format nil "Agenda of ~A" (short-directory directory))))
+    (flet ((show (items)
+             (workbench-show-board
+              workbench title
+              (panel--tabs '((:doing . "Doing") (:todo . "To do") (:blocked . "Blocked")
+                             (:note . "Notes") (:done . "Done"))
+                           (stable-sort (copy-list items) #'<
+                                        :key (lambda (item)
+                                               (or (position (getf item :status)
+                                                             '(:doing :todo :blocked :note :done))
+                                                   1)))
+                           #'panel--agenda-card))))
+      (if (workbench-demo-p workbench)
+          (show (demo-agenda))
+          (panel--show-read workbench title
+                            :read (lambda () (workspace-agenda directory))
+                            :show #'show))))
   nil)
 
 
@@ -166,18 +192,19 @@ A tab with nothing in it says so."
 (-> panel-show-memories (workbench) null)
 (defun panel-show-memories (workbench)
   "Show what is remembered for the workspace the channel works in as a board: a tab for each state a memory can be in, and the memories as cards."
-  (handler-case
-      (let ((memories (if (workbench-demo-p workbench)
-                          (demo-memories)
-                          (workspace-memories (workbench-directory workbench)))))
-        (workbench-show-board workbench
-                              "Memories"
-                              (panel--tabs '((:stale . "Stale") (:unverified . "Unverified")
-                                             (:current . "Current"))
-                                           memories
-                                           #'panel--memory-card)))
-    (client-error (condition)
-      (workbench-show-panel workbench "Memories" (panel--empty (client-error-message condition)))))
+  (let ((directory (workbench-directory workbench)))
+    (flet ((show (memories)
+             (workbench-show-board workbench
+                                   "Memories"
+                                   (panel--tabs '((:stale . "Stale") (:unverified . "Unverified")
+                                                  (:current . "Current"))
+                                                memories
+                                                #'panel--memory-card))))
+      (if (workbench-demo-p workbench)
+          (show (demo-memories))
+          (panel--show-read workbench "Memories"
+                            :read (lambda () (workspace-memories directory))
+                            :show #'show))))
   nil)
 
 
@@ -201,9 +228,7 @@ A tab with nothing in it says so."
 (defun panel-take-output (workbench title text)
   "Put TEXT, which the channel reported, into the panel titled TITLE when that is still the one shown."
   (let ((overlay (workbench-overlay workbench)))
-    (when (and overlay
-               (eq (overlay-kind overlay) ':panel)
-               (equal (overlay-title overlay) title))
+    (when (panel--shown-p workbench title)
       (setf (overlay-content overlay)
             (make-instance 'box-block
                            :children  (list (make-text-block

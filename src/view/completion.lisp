@@ -50,7 +50,7 @@
 (defun completion--participants (workbench prefix)
   "Return the world's participants whose names begin with PREFIX, as mentions."
   (unless (workbench-demo-p workbench)
-    (loop for participant in (world-participants (workbench-world workbench))
+    (loop for participant in (workbench-participants workbench)
           for name = (getf participant :name)
           when (and (stringp name)
                     (>= (length name) (length prefix))

@@ -227,25 +227,40 @@ reads on paper and inverts on ink."
 
 ;;;; -- Measurement --
 
+(defparameter *text-width-limit* 20000
+  "How many measured strings one face and size keeps before it forgets them all and measures afresh.")
+
 (defvar *text-widths* (make-hash-table :test #'equal)
   "The measured width of each string by face and size, so wrapping a paragraph measures each word once.")
 
 (defvar *face-metrics* (make-hash-table :test #'equal)
   "The (HEIGHT . DESCENT) of each face and size.")
 
-(-> text-width (string text-style) integer)
-(defun text-width (text style)
-  "Return the advance width of TEXT set in STYLE, in FLTK units."
+(-> text-measure (string text-style) integer)
+(defun text-measure (text style)
+  "Return the advance width of TEXT set in STYLE, measured now and not remembered.
+
+It is for text that is measured once, such as a line as it grows or a label
+cut to fit; `text-width' is for the words that come again and again."
   (if (zerop (length text))
       0
-      (let* ((face  (text-style-face style))
-             (size  (text-style-size style))
-             (table (or (gethash (cons face size) *text-widths*)
-                        (setf (gethash (cons face size) *text-widths*)
-                              (make-hash-table :test #'equal)))))
+      (values (lightfast:measure-text text
+                                      :font (theme-font (text-style-face style))
+                                      :size (text-style-size style)))))
+
+(-> text-width (string text-style) integer)
+(defun text-width (text style)
+  "Return the advance width of TEXT set in STYLE, in FLTK units, remembering it for the next time."
+  (if (zerop (length text))
+      0
+      (let* ((key   (cons (text-style-face style) (text-style-size style)))
+             (table (or (gethash key *text-widths*)
+                        (setf (gethash key *text-widths*) (make-hash-table :test #'equal)))))
         (or (gethash text table)
-            (setf (gethash text table)
-                  (values (lightfast:measure-text text :font (theme-font face) :size size)))))))
+            (progn
+              (when (>= (hash-table-count table) *text-width-limit*)
+                (clrhash table))
+              (setf (gethash text table) (text-measure text style)))))))
 
 (-> text-metrics (text-style) (values integer integer))
 (defun text-metrics (style)

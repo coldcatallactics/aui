@@ -127,33 +127,39 @@ Text wider than the box is cut at the box's edge with an ellipsis."
     (paint-text fitted start baseline :style style :color color))
   nil)
 
+(-> text--fit (string text-style integer &key (:cut function)) string)
+(defun text--fit (text style width &key cut)
+  "Return TEXT, or the longest of its cuts that fits WIDTH in STYLE.
+
+CUT is called with a count of characters and returns TEXT cut to that many
+with its ellipsis; a longer cut is never narrower, so the longest that fits
+is found by halving."
+  (if (<= (text-width text style) width)
+      text
+      (let ((low  0)
+            (high (1- (length text))))
+        (loop while (< low high)
+              do (let ((middle (ceiling (+ low high) 2)))
+                   (if (<= (text-measure (funcall cut middle) style) width)
+                       (setf low middle)
+                       (setf high (1- middle)))))
+        (funcall cut low))))
+
 (-> text-fit (string text-style integer) string)
 (defun text-fit (text style width)
   "Return TEXT, or its longest beginning followed by an ellipsis that fits WIDTH in STYLE."
-  (if (<= (text-width text style) width)
-      text
-      (let ((ellipsis "…"))
-        (loop for end from (1- (length text)) downto 1
-              for candidate = (concatenate 'string
-                                           (string-right-trim " " (subseq text 0 end))
-                                           ellipsis)
-              when (<= (text-width candidate style) width)
-                do (return candidate)
-              finally (return ellipsis)))))
+  (text--fit text style width
+             :cut (lambda (count)
+                    (concatenate 'string (string-right-trim " " (subseq text 0 count)) "…"))))
 
 (-> text-fit-tail (string text-style integer) string)
 (defun text-fit-tail (text style width)
   "Return TEXT, or an ellipsis followed by its longest ending that fits WIDTH in STYLE.
 
 A path says most at its end, so that is the end kept."
-  (if (<= (text-width text style) width)
-      text
-      (let ((ellipsis "…"))
-        (loop for start from 1 below (length text)
-              for candidate = (concatenate 'string ellipsis (subseq text start))
-              when (<= (text-width candidate style) width)
-                do (return candidate)
-              finally (return ellipsis)))))
+  (text--fit text style width
+             :cut (lambda (count)
+                    (concatenate 'string "…" (subseq text (- (length text) count))))))
 
 
 ;;;; -- Marks --

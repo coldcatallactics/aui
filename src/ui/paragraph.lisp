@@ -221,7 +221,7 @@ When the paragraph wraps anywhere, every character is its own word."
     (loop while (< start (length word))
           do (let ((end (1+ start)))
                (loop while (and (< end (length word))
-                                (<= (text-width (subseq word start (1+ end)) style) width))
+                                (<= (text-measure (subseq word start (1+ end)) style) width))
                      do (incf end))
                (push (subseq word start end) pieces)
                (setf start end)))
@@ -251,7 +251,7 @@ When the paragraph wraps anywhere, every character is its own word."
                             (= (+ (fragment-start previous) (length (fragment-text previous))) start))
                        (let ((joined (concatenate 'string (fragment-text previous) text)))
                          (setf (fragment-text previous)  joined
-                               (fragment-width previous) (text-width joined style)
+                               (fragment-width previous) (text-measure joined style)
                                x                         (+ (fragment-x previous) (fragment-width previous))))
                        (let ((measured (text-width text style)))
                          (push (make-fragment :x x :width measured :text text :span span :start start)
@@ -275,7 +275,7 @@ When the paragraph wraps anywhere, every character is its own word."
                         (extent   (if ordered
                                       (let ((last (first (last ordered))))
                                         (+ (fragment-x last)
-                                           (text-width (string-right-trim " " (fragment-text last))
+                                           (text-measure (string-right-trim " " (fragment-text last))
                                                        (paragraph--span-style paragraph (fragment-span last)))))
                                       0))
                         (offset   (+ (if continued-p hanging 0)
@@ -350,9 +350,7 @@ When the paragraph wraps anywhere, every character is its own word."
     ((>= count (length (fragment-text fragment)))
      (fragment-width fragment))
     (t
-     (values (lightfast:measure-text (subseq (fragment-text fragment) 0 count)
-                                     :font (theme-font (text-style-face style))
-                                     :size (text-style-size style))))))
+     (text-measure (subseq (fragment-text fragment) 0 count) style))))
 
 (-> paragraph--line-at (paragraph integer) (or null text-line))
 (defun paragraph--line-at (paragraph y)

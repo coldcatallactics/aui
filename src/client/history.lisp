@@ -50,117 +50,142 @@
                  (push (+ from index 1) starts)))
       (nreverse starts))))
 
-(-> history--read-from (pathname integer &key (:below (or null integer))) (values list boolean))
-(defun history--read-from (pathname position &key below)
-  "Return the records of PATHNAME from octet POSITION on, and whether they read as a well-formed run.
+(-> history--read-from (pathname integer &key (:end (or null integer))) (values list boolean list))
+(defun history--read-from (pathname position &key end)
+  "Return the records of PATHNAME from octet POSITION on, whether they read as a well-formed run, and the octet position each one's form starts at.
 
-Reading stops at the first record whose sequence reaches BELOW, so a page
+Reading stops at the first form that starts at or after END, so a page
 before one already shown does not read what follows it. A run is well formed
 when every form has a record's shape and the sequence numbers never fall,
 which a start inside a string or a record's middle soon fails."
   (let ((records nil)
+        (starts  nil)
         (last    0)
         (sound-p t))
     (block reading
       (handler-case
-          (autolith::conversation--map-records
-           pathname
-           (lambda (record)
+          (sexp-store:log-map
+           (lambda (record start form-end)
+             (declare (ignore form-end))
              (let ((sequence (record-sequence record)))
                (cond
+                 ((and end (>= start end))
+                  (return-from reading))
                  ((eq (first record) ':conversation)
                   nil)
-                 ((and below sequence (>= sequence below))
-                  (return-from reading))
                  ((and (keywordp (first record))
                        (evenp (length (rest record)))
                        (or (null sequence) (>= sequence last)))
                   (when sequence
                     (setf last sequence))
-                  (push record records))
+                  (push record records)
+                  (push start starts))
                  (t
                   (setf sound-p nil)
                   (return-from reading)))))
-           :start-position position)
+           pathname
+           :start-position   position
+           :with-positions-p t)
         (error ()
           (setf sound-p nil))))
-    (values (nreverse records) sound-p)))
+    (values (nreverse records) sound-p (nreverse starts))))
 
-(-> history--window (pathname integer integer &key (:below (or null integer))) (values list integer))
-(defun history--window (pathname offset octets &key below)
-  "Return the records in about the OCTETS of the segment PATHNAME that end at OFFSET, and the octet position they start at.
+(-> history--window (pathname integer integer) (values list integer list))
+(defun history--window (pathname offset octets)
+  "Return the records in about the OCTETS of the segment PATHNAME that end at OFFSET, the octet position they start at, and the position of each.
 
 The position is zero when the window reaches the segment's beginning."
   (let ((start (max 0 (- offset octets))))
     (if (zerop start)
-        (values (history--read-from pathname 0 :below below) 0)
+        (multiple-value-bind (records sound-p starts) (history--read-from pathname 0 :end offset)
+          (declare (ignore sound-p))
+          (values records 0 starts))
         (loop for candidate in (history--line-starts pathname start (min offset (+ start *history-scan-octets*)))
-              do (multiple-value-bind (records sound-p) (history--read-from pathname candidate :below below)
+              do (multiple-value-bind (records sound-p starts) (history--read-from pathname candidate :end offset)
                    (when (and sound-p records)
-                     (return (values records candidate))))
-              finally (return (values nil start))))))
+                     (return (values records candidate starts))))
+              finally (return (values nil start nil))))))
+
+(-> history--cut (list) list)
+(defun history--cut (page)
+  "Return the newest part of PAGE, a list of (START . RECORD) oldest first, that makes one page of history.
+
+A form that holds several records is never divided, so the page before this
+one ends where this one starts."
+  (let ((tail (nthcdr (max 0 (- (length page) *history-page-records*)) page)))
+    (loop for rest on page
+          until (or (eq rest tail)
+                    (= (first (first rest)) (first (first tail))))
+          finally (return rest))))
+
+(-> history--page
+    (list &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer)))
+    (values list boolean (or null history-cursor)))
+(defun history--page (segments &key cursor before through)
+  "Return a page of the records in the log SEGMENTS, newest segment first, as `history-read-page' does."
+  (let ((page nil)
+        (next nil))
+    (flet ((wanted-p (record)
+             (let ((sequence (record-sequence record)))
+               (and (or (null before) (null sequence) (< sequence before))
+                    (or (null through) (null sequence) (<= sequence through))))))
+      (loop for (segment . older) on (if cursor
+                                         (member (history-cursor-segment cursor) segments :test #'equal)
+                                         segments)
+            for first-p = t then nil
+            do (let ((offset (if (and first-p cursor)
+                                 (history-cursor-offset cursor)
+                                 (history--file-length segment)))
+                     (octets *history-tail-octets*))
+                 (loop
+                   (multiple-value-bind (records start starts) (history--window segment offset octets)
+                     (let ((kept (loop for record in records
+                                       for record-start in starts
+                                       when (wanted-p record)
+                                         collect (cons record-start record))))
+                       (when (or (zerop start)
+                                 (>= (+ (length kept) (length page)) *history-minimum-records*)
+                                 (>= octets *history-maximum-octets*))
+                         (let ((cut (history--cut (append kept page))))
+                           (setf page cut
+                                 next (cond
+                                        ((and kept (not (eq (first cut) (first kept))))
+                                         (make-history-cursor :segment segment :offset (first (first cut))))
+                                        ((plusp start)
+                                         (make-history-cursor :segment segment :offset start))
+                                        (older
+                                         (make-history-cursor
+                                          :segment (first older)
+                                          :offset  (history--file-length (first older))))
+                                        (t
+                                         nil))))
+                         (return))
+                       (setf octets (* octets 2))))))
+               (when (or (>= (length page) *history-minimum-records*) (null next))
+                 (return))))
+    (values (mapcar #'rest page) (and next t) next)))
 
 (-> history-read-page
-    (t string &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer))
-       (:limit integer))
+    (t string &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer)))
     (values list boolean (or null history-cursor)))
-(defun history-read-page (configuration identifier &key cursor before through (limit *history-page-records*))
+(defun history-read-page (configuration identifier &key cursor before through)
   "Return a page of channel IDENTIFIER's durable records, oldest first, whether older ones remain, and the cursor for the page before it.
 
 Without CURSOR the page is the newest; with the cursor a call returned, it is
 the one before that call's. BEFORE keeps only records whose sequence is below
 it and THROUGH only those at or below it, the boundary a live attachment takes
-over from. A page is what one bounded window of the log holds, at most LIMIT
-records, so a conversation of any length opens in the time its last page
-takes. A conversation with no durable history yet yields no records."
+over from. A page is the newest records of one bounded window of the log, and
+the cursor is where its first record starts, so a conversation of any length
+opens in the time its last page takes and no record is read twice or missed.
+A conversation with no durable history yet yields no records."
   (let ((conversation (handler-case (autolith::conversation-replay-load configuration identifier)
                         (error ()
                           nil))))
-    (if (null conversation)
-        (values nil nil nil)
-        (let* ((segments (reverse (autolith::conversation-storage-pathnames
-                                   (autolith::conversation-pathname conversation))))
-               (segments (if cursor
-                             (member (history-cursor-segment cursor) segments :test #'equal)
-                             segments))
-               (page     nil)
-               (next     nil))
-          (flet ((wanted-p (record)
-                   (let ((sequence (record-sequence record)))
-                     (and (or (null before) (null sequence) (< sequence before))
-                          (or (null through) (null sequence) (<= sequence through))))))
-            (loop for (segment . older) on segments
-                  for first-p = t then nil
-                  do (let ((offset (if (and first-p cursor)
-                                       (history-cursor-offset cursor)
-                                       (history--file-length segment)))
-                           (octets *history-tail-octets*))
-                       (loop
-                         (multiple-value-bind (records start) (history--window segment offset octets :below before)
-                           (let ((kept (remove-if-not #'wanted-p records)))
-                             (when (or (zerop start)
-                                       (>= (+ (length kept) (length page)) *history-minimum-records*)
-                                       (>= octets *history-maximum-octets*))
-                               (setf page (append kept page)
-                                     next (cond
-                                            ((plusp start)
-                                             (make-history-cursor :segment segment :offset start))
-                                            (older
-                                             (make-history-cursor
-                                              :segment (first older)
-                                              :offset  (history--file-length (first older))))
-                                            (t
-                                             nil)))
-                               (return))
-                             (setf octets (* octets 2))))))
-                     (when (or (>= (length page) *history-minimum-records*) (null next))
-                       (return))))
-          ;; A window can hold more than a page; the newest LIMIT of it are the page,
-          ;; and the cursor still points before the whole window, so nothing is read twice.
-          (let ((excess (- (length page) limit)))
-            (values (if (plusp excess) (nthcdr excess page) page)
-                    (and next t)
-                    next))))))
+    (if conversation
+        (history--page (reverse (autolith::conversation-storage-pathnames
+                                 (autolith::conversation-pathname conversation)))
+                       :cursor cursor :before before :through through)
+        (values nil nil nil))))
 
 (-> history-image-root (t string) (or null pathname))
 (defun history-image-root (configuration identifier)

@@ -146,10 +146,31 @@
                              :margin-top    22
                              :margin-bottom 22)))))
 
+(defvar *answers-under-way* (make-hash-table :test #'eq :weakness ':key)
+  "For each answer still streaming, how much of its text is set in blocks already and those blocks, as (END . BLOCKS).")
+
+(-> entries--streaming-blocks (assistant-entry) list)
+(defun entries--streaming-blocks (entry)
+  "Return the blocks of ENTRY's text so far, typesetting only what came after the last settled part.
+
+An answer grows by a few words at a time, and all of it but the paragraph
+being written reads the same as it did, so its blocks are kept."
+  (let* ((text    (assistant-entry-text entry))
+         (known   (gethash entry *answers-under-way*))
+         (from    (if known (first known) 0))
+         (end     (markdown-settled-end text :start from))
+         (settled (append (rest known) (and (> end from) (prose-blocks (subseq text from end))))))
+    (setf (gethash entry *answers-under-way*) (cons end settled))
+    (append settled (prose-blocks (subseq text end)))))
+
 (defmethod entry-blocks ((entry assistant-entry) toggle)
-  "The agent's answer as prose."
+  "The agent's answer as prose; one that has finished is read whole."
   (declare (ignore toggle))
-  (let ((blocks (prose-blocks (assistant-entry-text entry))))
+  (let ((blocks (if (assistant-entry-streaming-p entry)
+                    (entries--streaming-blocks entry)
+                    (progn
+                      (remhash entry *answers-under-way*)
+                      (prose-blocks (assistant-entry-text entry))))))
     (when blocks
       (setf (block-margin-top (first blocks)) (max 8 (block-margin-top (first blocks)))))
     blocks))

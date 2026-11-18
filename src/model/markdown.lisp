@@ -260,6 +260,27 @@ stay as text."
             (return))))
     (nreverse lines)))
 
+(-> markdown-settled-end (string &key (:start integer)) integer)
+(defun markdown-settled-end (text &key (start 0))
+  "Return the position after the last blank line of TEXT at or after START that lies outside a fenced block, or START when there is none.
+
+START is itself such a position. What stands before the result reads the
+same whatever is written after it, so text that grows is read from there."
+  (let ((settled  start)
+        (fenced-p nil)
+        (position start))
+    (loop
+      (let ((end (position #\Newline text :start position)))
+        (unless end
+          (return settled))
+        (let ((line (string-right-trim '(#\Return) (subseq text position end))))
+          (cond
+            ((markdown--fence line)
+             (setf fenced-p (not fenced-p)))
+            ((and (not fenced-p) (markdown--blank-p line))
+             (setf settled (1+ end)))))
+        (setf position (1+ end))))))
+
 (-> markdown-blocks (string &key (:breaks-p boolean)) list)
 (defun markdown-blocks (text &key breaks-p)
   "Return TEXT's block nodes in order.

@@ -112,3 +112,12 @@
                     (getf (rest (first (markdown-inline "[`window.lisp`](notes.md)"))) :link)))
   (fiveam:is (equal '(("https://www.fltk.org" :link "https://www.fltk.org"))
                     (markdown-inline "[](https://www.fltk.org)"))))
+
+(fiveam:test text-that-grows-is-settled-up-to-its-last-blank-line-outside-a-fence
+  (fiveam:is (= 0 (markdown-settled-end "one paragraph still being")))
+  (fiveam:is (= 5 (markdown-settled-end (format nil "one~%~%two"))))
+  (let ((fenced (format nil "one~%~%```lisp~%(a)~%~%(b)")))
+    (fiveam:is (= 5 (markdown-settled-end fenced)))
+    (fiveam:is (= (+ (length fenced) 6)
+                  (markdown-settled-end (format nil "~A~%```~%~%after" fenced)))))
+  (fiveam:is (= 10 (markdown-settled-end (format nil "one~%~%two~%~%three") :start 5))))

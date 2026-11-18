@@ -51,17 +51,49 @@
          (member (subseq name (1+ dot)) *source-types* :test #'string-equal)
          t)))
 
+(defparameter *walk-ignored-folders* '("quicklisp" "node_modules")
+  "The folders a walk through a folder Git does not know leaves out, besides those whose names start with a dot: they hold libraries of others.")
+
+(-> checkout--repository-p (pathname) boolean)
+(defun checkout--repository-p (directory)
+  "Return T when DIRECTORY is the top of a Git repository."
+  (let ((git (merge-pathnames ".git" directory)))
+    (and (or (uiop:directory-exists-p (uiop:ensure-directory-pathname git))
+             (uiop:file-exists-p git))
+         t)))
+
+(-> checkout--tracked (pathname) (or (eql :walk) list))
+(defun checkout--tracked (directory)
+  "Return the source files of the Git repository at DIRECTORY that Git tracks or would add, as names from it, or :WALK when DIRECTORY is no repository or Git does not answer."
+  (if (checkout--repository-p directory)
+      (multiple-value-bind (output ok-p)
+          (checkout--git directory '("ls-files" "-z" "--cached" "--others" "--exclude-standard"))
+        (if ok-p
+            (remove-if-not #'checkout--source-p (checkout--records output))
+            ':walk))
+      ':walk))
+
 (-> checkout--walk (pathname) list)
 (defun checkout--walk (root)
-  "Return the source files beneath ROOT as names from it, leaving out every folder whose name starts with a dot."
+  "Return the source files beneath ROOT as names from it. Folders whose names start with a dot are left out, and so are those of *WALK-IGNORED-FOLDERS*. A Git repository beneath ROOT gives the files Git tracks or would add, so what it ignores is left out too."
   (let ((names  nil)
         (prefix (length (uiop:native-namestring root))))
     (uiop:collect-sub*directories
      root
      (constantly t)
      (lambda (directory)
+       ;; A folder entered is walked; a repository is listed here by Git instead.
        (let ((leaf (first (last (pathname-directory directory)))))
-         (not (and (stringp leaf) (plusp (length leaf)) (char= (char leaf 0) #\.)))))
+         (and (stringp leaf)
+              (plusp (length leaf))
+              (char/= (char leaf 0) #\.)
+              (not (member leaf *walk-ignored-folders* :test #'string=))
+              (let ((files (checkout--tracked directory)))
+                (or (eq files ':walk)
+                    (let ((base (subseq (uiop:native-namestring directory) prefix)))
+                      (dolist (name files nil)
+                        (when (probe-file (merge-pathnames (uiop:parse-native-namestring name) directory))
+                          (push (concatenate 'string base name) names)))))))))
      (lambda (directory)
        (dolist (file (uiop:directory-files directory))
          (let ((name (uiop:native-namestring file)))

@@ -145,8 +145,11 @@
                                              "Commands")
                                             (:settings
                                              "Settings"))))
-      (progn
+      (let ((field (overlay--field workbench)))
         (setf (workbench-overlay workbench) nil)
+        ;; What was typed, which may be a key, does not stay behind in the field.
+        (when field
+          (setf (lightfast:value field) ""))
         (overlay--focus workbench)
         (workbench-redraw workbench)))
   nil)

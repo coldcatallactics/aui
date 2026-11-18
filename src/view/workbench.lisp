@@ -976,8 +976,10 @@ where, followed by what this window sent that the snapshot does not show yet."
 (-> workbench-drain (workbench) null)
 (defun workbench-drain (workbench)
   "Apply every event waiting in WORKBENCH's queue, and take what changed in the world's channel tree."
+  ;; Each event is guarded by itself: one that fails must not take the rest with it.
   (dolist (event (ui-queue-drain (workbench-queue workbench)))
-    (workbench-apply workbench event))
+    (with-stage-guard ("Applying what the channel said")
+      (workbench-apply workbench event)))
   (when (and (not (workbench-demo-p workbench))
              (world-refresh (workbench-world workbench)))
     (workbench-redraw workbench))

@@ -860,9 +860,9 @@ where, followed by what this window sent that the snapshot does not show yet."
        (setf (world-current-channel (workbench-world workbench)) (ui-event-channel event))
        (workbench-refresh workbench "_autolith/state" "_autolith/operations" "_autolith/settings"
                           "_autolith/models")
-       ;; What the command line asked to send goes out once, to the first channel attached.
-       (let ((prompt (launch-prompt (workbench-launch workbench))))
-         (when (and prompt (= (workbench-generation workbench) 1))
+       ;; What the command line asked to send goes out once, to the first channel that attaches.
+       (let ((prompt (shiftf (launch-prompt (workbench-launch workbench)) nil)))
+         (when prompt
            (workbench-submit workbench prompt))))
       (:failed
        (setf (workbench-attachment workbench) ':failed

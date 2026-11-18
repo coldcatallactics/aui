@@ -77,9 +77,9 @@
    (prompt
     :initarg       :prompt
     :initform      nil
-    :reader        launch-prompt
+    :accessor      launch-prompt
     :type          (or null string)
-    :documentation "Text to send as soon as the channel is attached, or NIL."))
+    :documentation "Text to send as soon as a channel is attached, or NIL once it was sent or when none was given."))
   (:documentation "What one invocation of aui asked for, once its options were read."))
 
 (-> launch--window-options () list)

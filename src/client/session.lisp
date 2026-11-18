@@ -369,7 +369,7 @@ IDENTIFIER names the submission in the channel's events about it."
                             :submission (list :id     (or identifier (autolith::make-identifier))
                                               :client (autolith::channel-subscription-client-identifier
                                                        (session--subscription session))
-                                              :source (if steer-p "steering" "prompt"))))))
+                                              :source (if steer-p ':steering ':prompt))))))
           (values ':ok (list :busy-p (getf reply :busy-p))))))))
   nil)
 

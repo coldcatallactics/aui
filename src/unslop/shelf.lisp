@@ -8,8 +8,11 @@
 ;;; last committed. The field above the list narrows it by name, and the
 ;;; switch at its foot leaves the completed files out.
 
-(defparameter *shelf-width* 310
-  "The width of the list of files.")
+(defparameter *shelf-share* 3/10
+  "The part of the window's width the list of files takes.")
+
+(defparameter *shelf-least-width* 300
+  "The narrowest the list of files is in a window with room for it.")
 
 (defparameter *shelf-row-height* 26
   "The height of one file or folder in the list.")
@@ -19,6 +22,12 @@
 
 (defparameter *shelf-footer-height* 44
   "The room at the list's foot for the count of completed files and the switch.")
+
+(-> shelf-width (integer) integer)
+(defun shelf-width (width)
+  "Return how wide the list of files is in a window WIDTH wide: its share of the window, not narrower than its least width, and never more than two fifths of a narrow window."
+  (min (max *shelf-least-width* (round (* width *shelf-share*)))
+       (floor (* width 2) 5)))
 
 (-> shelf-names (desk) list)
 (defun shelf-names (desk)

@@ -87,7 +87,7 @@ written to its file when you stop typing. Nothing is committed.
 (-> unslop--layout (integer integer) list)
 (defun unslop--layout (width height)
   "Return where the panes of a window WIDTH by HEIGHT lie, as a property list of (X Y WIDTH HEIGHT) boxes: the :SHELF, the :PAGE and the :FIELD the file filter is typed in."
-  (let ((shelf (min *shelf-width* (floor (* width 2) 5))))
+  (let ((shelf (shelf-width width)))
     (list :shelf (list 0 0 shelf height)
           :page  (list (1+ shelf) 0 (max 0 (- width shelf 1)) height)
           :field (list 18 66 (- shelf 36) 26))))

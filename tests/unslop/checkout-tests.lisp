@@ -140,6 +140,12 @@
         (setf (desk-name desk) "src/c.lisp")
         (fiveam:is (equal '("src/b.lisp" "src/c.lisp" "tests/d.lisp") (shelf-names desk)))))))
 
+(fiveam:test the-list-is-as-wide-as-its-share-of-the-window
+  (fiveam:is (= 420 (shelf-width 1400)))
+  (fiveam:is (= 768 (shelf-width 2560)))
+  (fiveam:is (= 300 (shelf-width 900)))
+  (fiveam:is (= 240 (shelf-width 600))))
+
 (fiveam:test kinds-of-text-are-switched-off-but-never-all
   (with-unslop-folder (directory)
     (with-test-preferences ()

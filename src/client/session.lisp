@@ -414,10 +414,13 @@ The RESULT-EVENT carries REQUEST and the operation's typed outcome."
 
 (-> session-load-earlier (session) null)
 (defun session-load-earlier (session)
-  "Deliver the page of history before the earliest one delivered so far."
+  "Deliver the page of history before the earliest one delivered so far.
+
+A page that cannot be read is delivered empty with more still to come, so
+the person can ask for it again."
   (session--enqueue session
                     (lambda ()
                       (handler-case (session--deliver-history session)
                         (error ()
-                          nil))))
+                          (session--post session 'history-event :records nil :more-p t)))))
   nil)

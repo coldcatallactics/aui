@@ -394,9 +394,11 @@ shows, and the editor moves its own text as the caret moves."
   "Draw the line under the page: what was not written, or when the file was last written, and the keys that move through the texts. After a comment was deleted the line says so and has the chip that brings it back."
   (let* ((meta    (text-style ':meta))
          (left    (+ x *page-margin*))
-         (keys    "Tab next text   Esc done   Ctrl+D delete comment   Ctrl+Enter completed, next file")
+         (keys    "Tab next text   Esc done   Ctrl+D delete comment   Ctrl+Shift+Enter section completed   Ctrl+Enter file completed")
          (keys-w  (text-width keys meta))
-         (room    (max 0 (- width (* 2 *page-margin*) keys-w 20)))
+         ;; What went wrong, or what can be undone, takes the line from the keys.
+         (keys-p  (and (not (desk-notice desk)) (> width (+ keys-w 260))))
+         (room    (max 0 (- width (* 2 *page-margin*) (if keys-p (+ keys-w 20) 0))))
          (removal (desk-removal desk)))
     (paint-line x y :x2 (+ x width) :y2 y)
     (cond
@@ -418,7 +420,7 @@ shows, and the editor moves its own text as the caret moves."
       ((desk-saved-at desk)
        (paint-text-in (format nil "saved ~A" (page--clock (desk-saved-at desk))) (text-style ':meta :color *green*)
                       :x left :y y :width room :height *page-status-height*)))
-    (when (> width (+ keys-w 260))
+    (when keys-p
       (paint-text-in keys meta
                      :x      (- (+ x width) *page-margin* keys-w)
                      :y      y

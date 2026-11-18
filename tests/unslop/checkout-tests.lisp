@@ -97,3 +97,77 @@
       (fiveam:is (string= (file-digest one) (file-digest one)))
       (fiveam:is (string/= (file-digest one) (file-digest two)))
       (fiveam:is (null (file-digest (merge-pathnames "absent.lisp" directory)))))))
+
+(defmacro with-test-preferences (() &body body)
+  "Run BODY with preferences of its own that are kept nowhere."
+  `(let ((*preferences*          nil)
+         (*preferences-read-p*   t)
+         (*preferences-pathname* nil))
+     ,@body))
+
+(-> test-desk (pathname list) desk)
+(defun test-desk (directory files)
+  "Return a desk without a window for a checkout at DIRECTORY that holds the files named FILES."
+  (make-instance 'desk
+                 :checkout (make-checkout :root directory :files files)
+                 :ledger   (ledger-open directory)
+                 :files    files))
+
+(fiveam:test the-list-of-files-is-narrowed-and-grouped
+  (with-unslop-folder (directory)
+    (with-test-preferences ()
+      (let* ((*ledger-directory* (merge-pathnames "state/" directory))
+             (desk               (test-desk directory '("a.lisp" "src/b.lisp" "src/c.lisp" "tests/d.lisp"))))
+        (fiveam:is (equal '((:folder . "") (:file . "a.lisp") (:folder . "src/") (:file . "src/b.lisp")
+                            (:file . "src/c.lisp") (:folder . "tests/") (:file . "tests/d.lisp"))
+                          (shelf-rows desk)))
+        (fiveam:is (string= "src/" (shelf-folder "src/b.lisp")))
+        (fiveam:is (string= "" (shelf-folder "a.lisp")))
+        (setf (desk-filter desk) "SRC")
+        (fiveam:is (equal '("src/b.lisp" "src/c.lisp") (shelf-names desk)))
+        (setf (desk-filter desk) "")
+        ;; Completed files are left out when the person hides them, but never the open one.
+        (setf (gethash "src/c.lisp" (desk-completed desk)) t
+              (gethash "a.lisp" (desk-completed desk))     t)
+        (fiveam:is (= 2 (desk-completed-count desk)))
+        (fiveam:is (= 4 (length (shelf-names desk))))
+        (setf (preference ':hide-completed) t)
+        (fiveam:is (equal '("src/b.lisp" "tests/d.lisp") (shelf-names desk)))
+        (setf (desk-name desk) "src/c.lisp")
+        (fiveam:is (equal '("src/b.lisp" "src/c.lisp" "tests/d.lisp") (shelf-names desk)))))))
+
+(fiveam:test kinds-of-text-are-switched-off-but-never-all
+  (with-unslop-folder (directory)
+    (with-test-preferences ()
+      (let* ((*ledger-directory* (merge-pathnames "state/" directory))
+             (desk               (test-desk directory nil)))
+        (fiveam:is (equal '(:comment :docstring :string) (desk-kinds)))
+        (desk-toggle-kind desk ':string)
+        (desk-toggle-kind desk ':comment)
+        (fiveam:is (equal '(:docstring) (desk-kinds)))
+        ;; The last kind shown stays.
+        (desk-toggle-kind desk ':docstring)
+        (fiveam:is (equal '(:docstring) (desk-kinds)))
+        (desk-toggle-kind desk ':string)
+        (fiveam:is (equal '(:docstring :string) (desk-kinds)))))))
+
+(fiveam:test the-command-line-names-a-folder-and-little-else
+  (let ((launch (unslop-parse '("/tmp/work" "--file" "src/a.lisp" "--size" "1200x800" "--shot" "/tmp/p.png"))))
+    (fiveam:is (string= "/tmp/work" (unslop-launch-directory launch)))
+    (fiveam:is (string= "src/a.lisp" (unslop-launch-file launch)))
+    (fiveam:is (equal '(1200 . 800) (unslop-launch-size launch)))
+    (fiveam:is (string= "/tmp/p.png" (unslop-launch-shot launch))))
+  ;; Without a folder it is the one the command was started in.
+  (fiveam:is (string= (uiop:native-namestring (uiop:getcwd)) (unslop-launch-directory (unslop-parse nil))))
+  (fiveam:signals proof-error (unslop-parse '("--commit")))
+  (fiveam:signals proof-error (unslop-parse '("one" "two")))
+  (fiveam:signals proof-error (unslop-parse '("--size" "big")))
+  (fiveam:signals proof-error (unslop-parse '("--file"))))
+
+(fiveam:test a-text-that-would-show-nothing-is-described
+  (fiveam:is (string= "empty" (page--unseen-words "")))
+  (fiveam:is (string= "1 blank" (page--unseen-words " ")))
+  (fiveam:is (string= "3 blanks" (page--unseen-words "   ")))
+  (fiveam:is (string= "2 line ends" (page--unseen-words (format nil "~%~%"))))
+  (fiveam:is (string= "blanks and line ends" (page--unseen-words (format nil " ~% "))))
+  (fiveam:is (null (page--unseen-words " a "))))

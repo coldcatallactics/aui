@@ -95,7 +95,7 @@
         ;; The file changed: it is open again.
         (fiveam:is (not (ledger-completed-p ledger "a.lisp" "other")))
         (fiveam:is (not (ledger-completed-p ledger "a.lisp" nil))))
-      ;; It is remembered outside the checkout, for that checkout alone.
+      ;; It is remembered outside the checkout, by the file's whole path.
       (let ((again (ledger-open root)))
         (fiveam:is (ledger-completed-p again "a.lisp" "one"))
         (fiveam:is (ledger-completed-p again "src/b.lisp" "two"))
@@ -103,8 +103,41 @@
         (fiveam:is (not (ledger-completed-p (ledger-open root) "a.lisp" "one")))
         (fiveam:is (ledger-completed-p (ledger-open root) "src/b.lisp" "two")))
       (fiveam:is (not (ledger-completed-p (ledger-open other) "src/b.lisp" "two")))
-      (fiveam:is (not (equal (ledger-pathname root) (ledger-pathname other))))
+      ;; A folder that holds the checkout, or one inside it, sees the same marks.
+      (fiveam:is (ledger-completed-p (ledger-open (merge-pathnames "work/" directory)) "project/src/b.lisp" "two"))
+      (fiveam:is (ledger-completed-p (ledger-open (merge-pathnames "work/project/src/" directory)) "b.lisp" "two"))
+      (fiveam:is (equal '(("src/b.lisp" . "two"))
+                        (let ((ledger (ledger-open root)))
+                          (ledger-entries ledger (ledger-completed ledger)))))
+      ;; Two windows do not undo each other's marks.
+      (let ((one (ledger-open root))
+            (two (ledger-open root)))
+        (fiveam:is (ledger-mark one "c.lisp" "three"))
+        (fiveam:is (ledger-mark two "d.lisp" "four"))
+        (let ((after (ledger-open root)))
+          (fiveam:is (ledger-completed-p after "c.lisp" "three"))
+          (fiveam:is (ledger-completed-p after "d.lisp" "four"))))
       (fiveam:is (null (uiop:directory-files root))))))
+
+(fiveam:test the-ledgers-of-one-folder-from-before-are-taken-in-once
+  (with-unslop-folder (directory)
+    (let* ((*ledger-directory* (merge-pathnames "state/" directory))
+           (old                (merge-pathnames "mag-DC3EF141C495680A.sexp" *ledger-directory*)))
+      ;; Written as the first ledgers were, strings and all.
+      (test-write-file old (format nil "(:root #A((10) BASE-CHAR . \"/home/mag/\")~% :completed ((#A((22) BASE-CHAR . \"common-lisp/a/one.lisp\") . \"D1\")~%  (\"common-lisp/b/two.lisp\" . \"D2\"))~% :baseline ((\"common-lisp/a/one.lisp\" . \"B1\"))~% :folded (\"common-lisp/b/\"))~%"))
+      (let ((ledger (ledger-open #p"/home/mag/common-lisp/")))
+        (fiveam:is (ledger-completed-p ledger "a/one.lisp" "D1"))
+        (fiveam:is (ledger-completed-p ledger "b/two.lisp" "D2"))
+        (fiveam:is (ledger-folded-p ledger "b/"))
+        (fiveam:is (equal '(("a/one.lisp" . "B1")) (ledger-entries ledger (ledger-baseline ledger))))
+        ;; A mark taken away does not come back from the old ledger, which stays where it was.
+        (fiveam:is (ledger-mark ledger "a/one.lisp" nil)))
+      (fiveam:is (probe-file old))
+      (let ((again (ledger-open #p"/home/mag/")))
+        (fiveam:is (not (ledger-completed-p again "common-lisp/a/one.lisp" "D1")))
+        (fiveam:is (ledger-completed-p again "common-lisp/b/two.lisp" "D2")))
+      ;; The new ledger holds plain strings.
+      (fiveam:is (null (search "#A" (uiop:read-file-string (ledger-pathname))))))))
 
 (fiveam:test a-digest-tells-two-files-apart
   (with-unslop-folder (directory)

@@ -322,8 +322,8 @@ changed, the baseline is not looked at."
 (-> desk-look (desk &key (:wait-p boolean)) null)
 (defun desk-look (desk &key wait-p)
   "Start a look at DESK's checkout on a thread of its own, unless one is under way. With WAIT-P, look now on this thread and take up what is found."
-  (let ((marked   (ledger--pairs (ledger-completed (desk-ledger desk))))
-        (baseline (ledger--pairs (ledger-baseline (desk-ledger desk))))
+  (let ((marked   (ledger-entries (desk-ledger desk) (ledger-completed (desk-ledger desk))))
+        (baseline (ledger-entries (desk-ledger desk) (ledger-baseline (desk-ledger desk))))
         (marks    (desk--marks desk)))
     (cond
       (wait-p
@@ -357,9 +357,7 @@ the look began, since the look would not know of it."
           (desk-look desk))
       (let ((seen (getf found :first-seen)))
         (when seen
-          (loop for (name . digest) in seen
-                do (setf (gethash name (ledger-baseline (desk-ledger desk))) digest))
-          (ledger-save (desk-ledger desk))))
+          (ledger-note-baseline (desk-ledger desk) seen)))
       (desk-redraw desk)
       t)))
 

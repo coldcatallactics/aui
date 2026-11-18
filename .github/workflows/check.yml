@@ -67,6 +67,7 @@ jobs:
         run: |
           cd aui
           script/exercise
+          script/exercise-unslop
 
       - name: Photograph the demonstration
         run: |
@@ -160,6 +161,7 @@ jobs:
         run: |
           cd aui
           script/exercise
+          script/exercise-unslop
 
       - name: Photograph the demonstration
         env:

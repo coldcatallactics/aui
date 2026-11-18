@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Drive the unslop window offscreen against a throwaway checkout: write in a
+# passage, wait for the save, mark a file completed, change a file from
+# outside. Needs a display to measure text with, and Git. Set
+# AUI_EXERCISE_SHOTS to a directory to keep pictures of it.
+
+set -euo pipefail
+root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=lightfast.sh
+source "$root/script/lightfast.sh"
+aui_build_bridge
+exec "$root/script/lisp" \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui/unslop))' \
+  --load "$root/script/exercise-unslop.lisp"

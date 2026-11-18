@@ -647,21 +647,52 @@
 
 ;;;; -- Image --
 
+(defparameter *image-limit* 24
+  "How many loaded pictures are kept; the one drawn longest ago is given back first.")
+
+(defvar *images* nil
+  "The loaded pictures, the one used last first, each as (NAMESTRING . HANDLE), the handle NIL for a file that cannot be read.")
+
+(-> image-handle (string) t)
+(defun image-handle (pathname)
+  "Return the loaded picture of the file PATHNAME, or NIL when it cannot be read.
+
+A picture is loaded once however many blocks show it, and given back when
+more than the limit are loaded, so a long conversation holds few."
+  (let ((known (assoc pathname *images* :test #'string=)))
+    (if known
+        (setf *images* (cons known (delete known *images* :test #'eq)))
+        (push (cons pathname (lightfast:load-image pathname)) *images*))
+    (let ((spare (nthcdr *image-limit* *images*)))
+      (when spare
+        (setf *images* (ldiff *images* spare))
+        (images--release spare)))
+    (rest (first *images*))))
+
+(-> images--release (list) null)
+(defun images--release (images)
+  "Give the pictures in IMAGES back."
+  (loop for (nil . handle) in images
+        when handle
+          do (lightfast:release-image handle))
+  nil)
+
+(-> images-forget () null)
+(defun images-forget ()
+  "Give every loaded picture back, as when the window leaves the conversation that showed them."
+  (images--release (shiftf *images* nil)))
+
 (defclass image-block (flow-block)
   ((pathname
     :initarg       :pathname
     :reader        image-block-pathname
     :type          string
     :documentation "The image file.")
-   (image
-    :initform      nil
-    :accessor      image-block--image
-    :documentation "The loaded image handle, :MISSING when the file could not be read, or NIL before loading.")
    (extent
     :initform      nil
     :accessor      image-block--extent
     :type          (or null cons)
-    :documentation "The (WIDTH . HEIGHT) the image is drawn at."))
+    :documentation "The (WIDTH . HEIGHT) the image is drawn at, or NIL when the file cannot be read."))
   (:documentation "A picture, scaled down to fit the column."))
 
 (defparameter *image-maximum-height* 320
@@ -669,11 +700,8 @@
 
 (defmethod block-layout ((block image-block) width)
   "Scale the picture to fit the width and the height limit, keeping its shape."
-  (unless (image-block--image block)
-    (setf (image-block--image block)
-          (or (lightfast:load-image (image-block-pathname block)) ':missing)))
-  (let ((image (image-block--image block)))
-    (if (eq image ':missing)
+  (let ((image (image-handle (image-block-pathname block))))
+    (if (null image)
         (progn
           (setf (image-block--extent block) nil)
           (text-style-line-height (text-style ':meta)))
@@ -686,11 +714,11 @@
 
 (defmethod block-paint ((block image-block) x y)
   "Draw the picture in a hairline frame, or the file's name when it cannot be shown."
-  (let ((extent (image-block--extent block)))
-    (if extent
+  (let* ((extent (image-block--extent block))
+         (image  (and extent (image-handle (image-block-pathname block)))))
+    (if image
         (progn
-          (lightfast:draw-image (image-block--image block) (1+ x) (1+ y)
-                                :width (first extent) :height (rest extent))
+          (lightfast:draw-image image (1+ x) (1+ y) :width (first extent) :height (rest extent))
           (paint-frame x y :width (+ (first extent) 2) :height (+ (rest extent) 2)))
         (paint-text (format nil "[~A]" (file-namestring (image-block-pathname block))) x (+ y (text-baseline (text-style ':meta)))
                     :style (text-style ':meta)))))

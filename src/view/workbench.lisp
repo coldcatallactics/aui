@@ -339,6 +339,7 @@ pages of history read so far, and those that arrive while the window looks."
 (-> workbench--reset-channel (workbench) null)
 (defun workbench--reset-channel (workbench)
   "Forget everything about the channel shown and start an empty transcript."
+  (images-forget)
   (let ((transcript (make-transcript)))
     (setf (workbench-transcript workbench)    transcript
           (workbench-projector workbench)     (make-projector transcript)

@@ -35,10 +35,11 @@
     :type          integer
     :documentation "Stamped on every event, so the interface drops those of a session it already left.")
    (identifier
+    :initarg       :identifier
     :initform      nil
-    :accessor      session-identifier
+    :accessor      session--identifier
     :type          (or null string)
-    :documentation "The channel's identifier, once the server named it.")
+    :documentation "The channel's identifier, once the server named it; read and written under the lock.")
    (subscription
     :initform      nil
     :accessor      session--subscription
@@ -46,7 +47,7 @@
    (lock
     :initform      (bordeaux-threads:make-lock "AUI session")
     :reader        session--lock
-    :documentation "Guards the request queue and the closed flag.")
+    :documentation "Guards the request queue, the identifier, the subscription and the closed flag.")
    (condition
     :initform      (bordeaux-threads:make-condition-variable :name "AUI session")
     :reader        session--condition
@@ -62,9 +63,9 @@
     :documentation "The thread that opens the channel and then sends ordered requests.")
    (closed-p
     :initform      nil
-    :accessor      session-closed-p
+    :accessor      session--closed-p
     :type          boolean
-    :documentation "Whether the session was closed or lost its channel.")
+    :documentation "Whether the session was closed or lost its channel; read and written under the lock.")
    (history-floor
     :initform      nil
     :accessor      session--history-floor
@@ -75,6 +76,27 @@
     :accessor      session--history-cursor
     :documentation "Where the page of history before the earliest one delivered ends, or NIL before the first page."))
   (:documentation "This client's attachment to one channel."))
+
+(-> session-identifier (session) (or null string))
+(defun session-identifier (session)
+  "Return the identifier of SESSION's channel, or NIL before the server named it."
+  (bordeaux-threads:with-lock-held ((session--lock session))
+    (session--identifier session)))
+
+(-> session-closed-p (session) boolean)
+(defun session-closed-p (session)
+  "Return T once SESSION was closed or lost its channel."
+  (bordeaux-threads:with-lock-held ((session--lock session))
+    (session--closed-p session)))
+
+(-> session--mark-closed (session) boolean)
+(defun session--mark-closed (session)
+  "Close SESSION to further work, wake its worker, and return whether it was open until now."
+  (bordeaux-threads:with-lock-held ((session--lock session))
+    (unless (session--closed-p session)
+      (setf (session--closed-p session) t)
+      (bordeaux-threads:condition-notify (session--condition session))
+      t)))
 
 (-> session--post (session symbol &rest t) ui-event)
 (defun session--post (session class &rest initargs)
@@ -93,34 +115,21 @@
   "Tell the interface when the channel went away on its own rather than because the session left it."
   (declare (ignore wire-p))
   (let ((session (session-subscription-session subscription)))
-    (unless (session-closed-p session)
-      (setf (session-closed-p session) t)
+    (when (session--mark-closed session)
       (session--post session 'attachment-event
                      :state  ':closed
                      :detail (autolith::channel-subscription-reconnect-failure subscription))))
   nil)
 
+(defmethod autolith::channel-subscription-prepare-attachment
+    ((subscription session-subscription) greeting &key replay-p)
+  "Post the attachment and the newest page of history before any event that arrived since the greeting."
+  (declare (ignore replay-p))
+  (session--deliver-attachment (session-subscription-session subscription) greeting)
+  nil)
+
 
 ;;;; -- Opening --
-
-(-> session--attach (session string) list)
-(defun session--attach (session identifier)
-  "Attach SESSION to the opened channel IDENTIFIER and return the server's greeting.
-
-The subscription never claims to have started the channel, so leaving it
-leaves it running, as a terminal that detaches does: an agent at work goes on
-while the person looks at another channel, and the server unloads the channel
-once it has idled."
-  (let ((subscription (make-instance 'session-subscription
-                                     :session       session
-                                     :identifier    identifier
-                                     :configuration (world-configuration (session-world session))
-                                     :approves-p    t)))
-    (setf (session-identifier session)    identifier
-          (session--subscription session) subscription)
-    (autolith::channel-subscription-attach subscription)
-    (autolith::localgroup-client-connection-attached
-     (autolith::channel-subscription-connection subscription))))
 
 (-> session--deliver-history (session &key (:through (or null integer))) null)
 (defun session--deliver-history (session &key through)
@@ -138,47 +147,88 @@ once it has idled."
     (session--post session 'history-event :records records :more-p more-p))
   nil)
 
-(-> session--open-served (session &key (:channel (or null string)) (:directory (or null string))
-                                      (:new-p boolean) (:images list))
-    null)
-(defun session--open-served (session &key channel directory new-p images)
-  "Open the channel in the world server that runs, attach to it and deliver its newest history, reporting each step."
-  (let* ((world      (session-world session))
-         (identifier (handler-bind ((autolith::channel-loading-progress
-                                     (lambda (progress)
-                                       (session--post session 'attachment-event
-                                                      :state  ':opening
-                                                      :detail (list (autolith::channel-loading-progress-step progress)
-                                                                    (autolith::channel-loading-progress-description
-                                                                     progress))))))
-                       (autolith::world-client-open (world-configuration world)
-                                                    :directory       directory
-                                                    :channel         channel
-                                                    :new-p           new-p
-                                                    :permission-mode (world-permission-mode world)
-                                                    :immutable-p     (world-immutable-p world)
-                                                    :launch          (shiftf (world-launch world) nil)
-                                                    :images          images
-                                                    ;; A window shows its own progress, so the
-                                                    ;; channel skips the terminal's boot screen
-                                                    ;; and first-run tour, which wait for a key.
-                                                    :switch-p        t)))
-         (greeting   (session--attach session identifier)))
+(-> session--deliver-attachment (session list) null)
+(defun session--deliver-attachment (session greeting)
+  "Post that SESSION is attached, with what the server's GREETING says of the channel, and then its newest history."
+  (let ((configuration (world-configuration (session-world session)))
+        (identifier    (session-identifier session))
+        (boundary      (getf (rest greeting) :record-sequence)))
     (session--post session 'attachment-event
                    :state  ':attached
                    :detail (list :status          (rest (getf (rest greeting) :state))
-                                 :record-sequence (getf (rest greeting) :record-sequence)
-                                 :image-root      (history-image-root (world-configuration world)
-                                                                      identifier)
-                                 :goal-record     (history-goal-record (world-configuration world)
-                                                                       identifier)))
-    (session--deliver-history session :through (getf (rest greeting) :record-sequence)))
+                                 :record-sequence boundary
+                                 :image-root      (history-image-root configuration identifier)
+                                 :goal-record     (history-goal-record configuration identifier)))
+    (session--deliver-history session :through boundary))
+  nil)
+
+(-> session--release (session-subscription) null)
+(defun session--release (subscription)
+  "Give SUBSCRIPTION's connection back, whatever became of it."
+  (handler-case (autolith::channel-subscription-close subscription)
+    (error ()
+      nil))
+  nil)
+
+(-> session--attach (session string) null)
+(defun session--attach (session identifier)
+  "Attach SESSION to the opened channel IDENTIFIER.
+
+The subscription never claims to have started the channel, so leaving it
+leaves it running, as a terminal that detaches does: an agent at work goes on
+while the person looks at another channel, and the server unloads the channel
+once it has idled. A session closed while it attached gives its connection
+back, since the close found none to give back."
+  (let ((subscription (make-instance 'session-subscription
+                                     :session       session
+                                     :identifier    identifier
+                                     :configuration (world-configuration (session-world session))
+                                     :approves-p    t))
+        (attached-p   nil))
+    (bordeaux-threads:with-lock-held ((session--lock session))
+      (setf (session--identifier session)   identifier
+            (session--subscription session) subscription))
+    (unwind-protect
+         (unless (session-closed-p session)
+           (autolith::channel-subscription-attach subscription)
+           (setf attached-p (not (session-closed-p session))))
+      (unless attached-p
+        (session--release subscription))))
+  nil)
+
+(-> session--open-served (session &key (:channel (or null string)) (:directory (or null string))
+                                      (:new-p boolean) (:images list) (:launch list))
+    null)
+(defun session--open-served (session &key channel directory new-p images launch)
+  "Open the channel in the world server that runs and attach to it, reporting each step."
+  (let ((world (session-world session)))
+    (session--attach
+     session
+     (handler-bind ((autolith::channel-loading-progress
+                      (lambda (progress)
+                        (session--post session 'attachment-event
+                                       :state  ':opening
+                                       :detail (list (autolith::channel-loading-progress-step progress)
+                                                     (autolith::channel-loading-progress-description
+                                                      progress))))))
+       (autolith::world-client-open (world-configuration world)
+                                    :directory       directory
+                                    :channel         channel
+                                    :new-p           new-p
+                                    :permission-mode (world-permission-mode world)
+                                    :immutable-p     (world-immutable-p world)
+                                    :launch          launch
+                                    :images          images
+                                    ;; A window shows its own progress, so the
+                                    ;; channel skips the terminal's boot screen
+                                    ;; and first-run tour, which wait for a key.
+                                    :switch-p        t))))
   nil)
 
 (-> session--open (session &key (:channel (or null string)) (:directory (or null string)) (:new-p boolean)
-                               (:images list))
+                               (:images list) (:launch list))
     null)
-(defun session--open (session &key channel directory new-p images)
+(defun session--open (session &key channel directory new-p images launch)
   "Start the world server when none runs, open the channel in it, attach to it and deliver its newest history, reporting each step and a failure of any."
   (let ((world (session-world session)))
     (handler-case
@@ -193,9 +243,10 @@ once it has idled."
                                 :channel   channel
                                 :directory directory
                                 :new-p     new-p
-                                :images    images))
+                                :images    images
+                                :launch    launch))
       (error (condition)
-        (setf (session-closed-p session) t)
+        (session--mark-closed session)
         (session--post session 'attachment-event
                        :state  ':failed
                        :detail (condition-report condition)))))
@@ -207,7 +258,7 @@ once it has idled."
   (loop
     (let ((request (bordeaux-threads:with-lock-held ((session--lock session))
                      (loop while (and (null (session--requests session))
-                                      (not (session-closed-p session)))
+                                      (not (session--closed-p session)))
                            do (bordeaux-threads:condition-wait (session--condition session)
                                                                (session--lock session)))
                      (pop (session--requests session)))))
@@ -233,15 +284,17 @@ once it has idled."
 
 ATTACHMENT-EVENTs report the opening, then the attachment with the channel's
 status, or the failure; a HISTORY-EVENT follows a successful attachment."
-  (let ((session (make-instance 'session :world world :queue queue :generation generation)))
-    (setf (session-identifier session) channel)
+  (let ((session (make-instance 'session :world world :queue queue :generation generation :identifier channel))
+        ;; What the command line stated goes to the first channel opened, and is spent here on the caller's thread.
+        (launch  (shiftf (world-launch world) nil)))
     (session--enqueue session
                       (lambda ()
                         (session--open session
                                        :channel   channel
                                        :directory directory
                                        :new-p     new-p
-                                       :images    images)))
+                                       :images    images
+                                       :launch    launch)))
     (setf (session--worker session)
           (bordeaux-threads:make-thread (lambda () (session--work session)) :name "AUI session"))
     session))
@@ -249,19 +302,14 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 (-> session-close (session) null)
 (defun session-close (session)
   "Leave the channel: stop delivering events and release the connection. The channel keeps running."
-  (let ((subscription (session--subscription session)))
-    (bordeaux-threads:with-lock-held ((session--lock session))
-      (setf (session-closed-p session) t)
-      (bordeaux-threads:condition-notify (session--condition session)))
+  (session--mark-closed session)
+  (let ((subscription (bordeaux-threads:with-lock-held ((session--lock session))
+                        (session--subscription session))))
     (when subscription
       ;; Closing joins the reader thread, which may be delivering; do it off
       ;; the interface thread so a slow server cannot freeze the window.
-      (bordeaux-threads:make-thread
-       (lambda ()
-         (handler-case (autolith::channel-subscription-close subscription)
-           (error ()
-             nil)))
-       :name "AUI session close")))
+      (bordeaux-threads:make-thread (lambda () (session--release subscription))
+                                    :name "AUI session close")))
   nil)
 
 
@@ -270,8 +318,10 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 (-> session--call (session keyword list) list)
 (defun session--call (session command arguments)
   "Send COMMAND with ARGUMENTS on SESSION's connection and return the reply's fields."
-  (let ((subscription (session--subscription session)))
-    (unless (and subscription (not (session-closed-p session)))
+  (let ((subscription (bordeaux-threads:with-lock-held ((session--lock session))
+                        (and (not (session--closed-p session))
+                             (session--subscription session)))))
+    (unless subscription
       (error 'client-error :message "The channel is not attached."))
     (apply #'autolith::channel-subscription-call subscription command arguments)))
 

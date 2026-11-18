@@ -32,8 +32,7 @@
         (choices (mapcar #'princ-to-string (portable-items (portable-get row "choices")))))
     (workbench-show-overlay workbench nil)
     (cond
-      ((and (member name *interface-commands* :test #'equal)
-            (workbench-run-interface-command workbench name))
+      ((and (stringp name) (workbench-run-interface-command workbench name))
        nil)
       ((not (equal (portable-get row "kind") "command"))
        (setf (composer-text workbench) (format nil "(~A )" name))

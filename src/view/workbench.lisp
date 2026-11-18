@@ -603,8 +603,19 @@ call, and only the last answer matters."
          t)))
 
 (defparameter *interface-commands*
-  '("settings" "model" "effort" "permissions" "open" "new" "delete" "agenda" "memories")
-  "Commands that, given no argument, open a picker or a page in the terminal and a view of its own in the window.")
+  (list (cons "settings" (lambda (workbench)
+                           (workbench-show-overlay workbench ':settings)))
+        (cons "model" 'composer--choose-model)
+        (cons "effort" 'composer--choose-effort)
+        (cons "permissions" 'composer--choose-mode)
+        (cons "agenda" 'panel-show-agenda)
+        (cons "memories" 'panel-show-memories)
+        (cons "open" 'window-focus-filter)
+        (cons "new" 'workbench-new-channel)
+        (cons "delete" (lambda (workbench)
+                         (when (workbench-channel workbench)
+                           (sidebar-confirm-delete workbench (workbench-channel workbench))))))
+  "The commands that, given no argument, open a picker or a page in the terminal and a view of its own in the window, each with what shows that view, called with the workbench.")
 
 (defparameter *terminal-only-commands*
   '("onboard" "close" "exit" "detach" "rollback" "auth" "complain" "wtf")
@@ -631,37 +642,10 @@ name is NIL when TEXT is neither."
 (-> workbench-run-interface-command (workbench string) boolean)
 (defun workbench-run-interface-command (workbench name)
   "Show the window's own view for the command NAME and return whether it has one."
-  (cond
-    ((equal name "settings")
-     (workbench-show-overlay workbench ':settings)
-     t)
-    ((equal name "model")
-     (composer--choose-model workbench)
-     t)
-    ((equal name "effort")
-     (composer--choose-effort workbench)
-     t)
-    ((equal name "permissions")
-     (composer--choose-mode workbench)
-     t)
-    ((equal name "agenda")
-     (panel-show-agenda workbench)
-     t)
-    ((equal name "memories")
-     (panel-show-memories workbench)
-     t)
-    ((equal name "open")
-     (window-focus-filter workbench)
-     t)
-    ((equal name "new")
-     (workbench-new-channel workbench)
-     t)
-    ((equal name "delete")
-     (when (workbench-channel workbench)
-       (sidebar-confirm-delete workbench (workbench-channel workbench)))
-     t)
-    (t
-     nil)))
+  (let ((command (assoc name *interface-commands* :test #'string=)))
+    (when command
+      (funcall (rest command) workbench)
+      t)))
 
 (defparameter *history-recall-limit* 200
   "How many of the texts sent from the window are kept for recall with the arrow keys.")
@@ -682,7 +666,6 @@ agent takes it up."
       ((multiple-value-bind (name arguments-p) (command-text-name trimmed)
          (and name
               (not arguments-p)
-              (member name *interface-commands* :test #'string=)
               (workbench-run-interface-command workbench name)))
        t)
       ((not (and session (workbench-attached-p workbench)))

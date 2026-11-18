@@ -110,23 +110,72 @@
              (setf previous (block-margin-bottom block)))
     (values (+ top previous) (nreverse placed))))
 
+(-> document--place (document item list) null)
+(defun document--place (document item blocks)
+  "Lay BLOCKS out to the column as ITEM's."
+  (multiple-value-bind (height placed) (document--stack blocks (document--column-width document))
+    (setf (item-blocks item) placed
+          (item-height item) height
+          (item-leaves item) (loop for (block . top) in placed
+                                   append (loop for (paragraph leaf-x leaf-y) in (block-leaves block)
+                                                collect (list paragraph leaf-x (+ top leaf-y))))))
+  nil)
+
+(-> document--entry-blocks (document entry) list)
+(defun document--entry-blocks (document entry)
+  "Typeset ENTRY into blocks; a click on what opens and closes it touches the transcript."
+  (let ((transcript (document-transcript document)))
+    (entry-blocks entry
+                  (lambda ()
+                    (setf (entry-expanded-p entry) (not (entry-expanded-p entry)))
+                    (transcript-touch transcript entry)))))
+
 (-> document--lay-item (document item) null)
 (defun document--lay-item (document item)
-  "Typeset ITEM's entry again and lay it out to the column."
-  (let* ((entry      (item-entry item))
-         (transcript (document-transcript document))
-         (blocks     (entry-blocks entry
-                                   (lambda ()
-                                     (setf (entry-expanded-p entry) (not (entry-expanded-p entry)))
-                                     (transcript-touch transcript entry)))))
-    (multiple-value-bind (height placed) (document--stack blocks (document--column-width document))
-      (setf (item-blocks item)   placed
-            (item-height item)   height
-            (item-revision item) (entry-revision entry)
-            (item-leaves item)   (loop for (block . top) in placed
-                                       append (loop for (paragraph leaf-x leaf-y) in (block-leaves block)
-                                                    collect (list paragraph leaf-x (+ top leaf-y)))))))
+  "Bring ITEM's layout up to its entry and the column.
+
+An entry whose revision moved is typeset again; one that only meets a new
+width keeps its blocks and has them laid out again. An entry that cannot be
+typeset is shown as a line saying so, and the rest of the document as usual."
+  (let ((entry (item-entry item)))
+    (handler-case
+        (document--place document item
+                         (if (= (item-revision item) (entry-revision entry))
+                             (mapcar #'first (item-blocks item))
+                             (document--entry-blocks document entry)))
+      (error (condition)
+        (format *error-output* "~&aui: an entry could not be shown: ~A~%" condition)
+        (document--place document item
+                         (list (make-text-block
+                                (spans (format nil "! this entry could not be shown: ~A"
+                                               (condition-report condition)))
+                                :style (text-style ':meta :color *red*))))))
+    (setf (item-revision item) (entry-revision entry)))
   nil)
+
+(-> document--aligned-p (vector vector) boolean)
+(defun document--aligned-p (items entries)
+  "Return T when ITEMS are the layouts of the first of ENTRIES in order, as they are unless entries went in front or away."
+  (and (<= (length items) (length entries))
+       (loop for item across items
+             for entry across entries
+             always (eq (item-entry item) entry))))
+
+(-> document--items-for (document vector) vector)
+(defun document--items-for (document entries)
+  "Return the items of ENTRIES in order, each entry keeping the item it has in DOCUMENT."
+  (let ((items (document--items document)))
+    (if (document--aligned-p items entries)
+        (loop for index from (length items) below (length entries)
+              do (vector-push-extend (make-item :entry (aref entries index)) items)
+              finally (return items))
+        (let ((known (make-hash-table :test #'eq))
+              (next  (make-array (length entries) :adjustable t :fill-pointer 0)))
+          (loop for item across items
+                do (setf (gethash (item-entry item) known) item))
+          (loop for entry across entries
+                do (vector-push (or (gethash entry known) (make-item :entry entry)) next))
+          next))))
 
 (-> document-sync (document integer) null)
 (defun document-sync (document width)
@@ -137,33 +186,28 @@ in front, as an earlier page of history does, the view stays on what it
 showed."
   (let* ((transcript (document-transcript document))
          (entries    (transcript-entries transcript))
-         (items      (document--items document))
          (resized-p  (/= width (document--column-width document))))
     (when (or resized-p (/= (transcript-revision transcript) (document--laid-revision document)))
       (setf (document--column-width document) width)
-      (let* ((known    (make-hash-table :test #'eq))
-             (first    (and (plusp (length items)) (item-entry (aref items 0))))
-             (old-top  (and first (item-top (aref items 0))))
-             (selected (document--anchor document)))
+      (let* ((old      (document--items document))
+             (first    (and (plusp (length old)) (item-entry (aref old 0))))
+             (old-top  (and first (item-top (aref old 0))))
+             (selected (document--anchor document))
+             (items    (document--items-for document entries))
+             (top      0))
         (loop for item across items
-              do (setf (gethash (item-entry item) known) item))
-        (setf (fill-pointer items) 0)
-        (loop for entry across entries
-              do (let ((item (or (gethash entry known) (make-item :entry entry))))
-                   (when (or resized-p (/= (item-revision item) (entry-revision entry)))
-                     (document--lay-item document item))
-                   (vector-push-extend item items)))
-        (let ((top 0))
-          (loop for item across items
-                do (setf (item-top item) top)
-                   (incf top (item-height item)))
-          (setf (document-content-height document) top))
+              do (when (or resized-p (/= (item-revision item) (entry-revision (item-entry item))))
+                   (document--lay-item document item))
+                 (setf (item-top item) top)
+                 (incf top (item-height item)))
+        (setf (document--items document)        items
+              (document-content-height document) top)
         ;; Keep the first entry that was shown where it was when a page went in front.
         (when (and first old-top (not (document-following-p document)))
           (let ((moved (find first items :key #'item-entry)))
             (when (and moved (/= (item-top moved) old-top))
               (incf (document-scroll document) (- (item-top moved) old-top)))))
-        (when (and selected (not (eq (aref entries 0) first)))
+        (when (and selected (not (and (plusp (length entries)) (eq (aref entries 0) first))))
           (setf (document--anchor document) nil
                 (document--focus document)  nil)))
       (setf (document--laid-revision document) (transcript-revision transcript))))

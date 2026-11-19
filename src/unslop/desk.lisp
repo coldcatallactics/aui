@@ -106,6 +106,10 @@
     :reader        desk-layouts
     :type          hash-table
     :documentation "Paragraphs already laid out for the open file, from a passage's words to the paragraph.")
+   (typed-layout
+    :initform      nil
+    :accessor      desk-typed-layout
+    :documentation "The paragraph of what the editor holds, as (TEXT . PARAGRAPH), or NIL. It is kept apart from the other paragraphs, so that a new text for each key does not add a paragraph that is kept.")
    (layout-width
     :initform      -1
     :accessor      desk-layout-width
@@ -385,6 +389,7 @@ the look began, since the look would not know of it."
 (defun desk--forget-layouts (desk)
   "Forget the paragraphs laid out for the open file."
   (clrhash (desk-layouts desk))
+  (setf (desk-typed-layout desk) nil)
   nil)
 
 (-> desk-open-file (desk string) null)

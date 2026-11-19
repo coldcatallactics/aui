@@ -47,20 +47,39 @@
   (values (+ x *page-margin* *page-gutter*)
           (max 120 (min *page-text-width* (- width (* 2 *page-margin*) *page-gutter*)))))
 
-(-> page--paragraph (desk string integer) paragraph)
-(defun page--paragraph (desk text width)
-  "Return the paragraph of TEXT laid out WIDTH wide, made once for each text of the open file."
+(defparameter *page-kept-paragraphs* 2000
+  "The number of paragraphs that are kept laid out for the open file beyond one for each of its texts.")
+
+(-> page--layout (string integer) paragraph)
+(defun page--layout (text width)
+  "Return a new paragraph of TEXT laid out WIDTH wide."
+  (let ((paragraph (make-paragraph (list (make-span text nil)) :style (text-style ':code))))
+    (paragraph-layout paragraph width)
+    paragraph))
+
+(-> page--paragraph (desk string integer &key (:typed-p boolean)) paragraph)
+(defun page--paragraph (desk text width &key typed-p)
+  "Return the paragraph of TEXT laid out WIDTH wide. The paragraphs of the texts of the open file are kept. With TYPED-P, TEXT is what the editor holds, and only the paragraph of the last such text is kept."
   (let ((layouts (desk-layouts desk)))
     (unless (= width (desk-layout-width desk))
       (clrhash layouts)
-      (setf (desk-layout-width desk) width))
-    ;; What is typed makes a new text with every key; they are not all kept.
-    (when (> (hash-table-count layouts) 8000)
-      (clrhash layouts))
-    (or (gethash text layouts)
-        (let ((paragraph (make-paragraph (list (make-span text nil)) :style (text-style ':code))))
-          (paragraph-layout paragraph width)
-          (setf (gethash text layouts) paragraph)))))
+      (setf (desk-typed-layout desk) nil
+            (desk-layout-width desk) width))
+    (cond
+      (typed-p
+       (let ((kept (desk-typed-layout desk)))
+         (if (and kept (string= text (first kept)))
+             (rest kept)
+             (let ((paragraph (or (gethash text layouts) (page--layout text width))))
+               (setf (desk-typed-layout desk) (cons text paragraph))
+               paragraph))))
+      (t
+       ;; Each written text adds one; a file written many times does not keep them all.
+       (when (>= (hash-table-count layouts)
+                 (+ *page-kept-paragraphs* (if (desk-proof desk) (proof-passage-count (desk-proof desk)) 0)))
+         (clrhash layouts))
+       (or (gethash text layouts)
+           (setf (gethash text layouts) (page--layout text width)))))))
 
 (-> page-rows (desk integer) (values list integer))
 (defun page-rows (desk width)
@@ -97,11 +116,9 @@ as tall as what the editor holds."
                               (let* ((focused-p (and focus
                                                      (= definition-index (first focus))
                                                      (= passage-index (rest focus))))
-                                     (paragraph (page--paragraph desk
-                                                                 (if focused-p
-                                                                     (desk-typed-text desk)
-                                                                     (passage-text passage))
-                                                                 width))
+                                     (paragraph (if focused-p
+                                                    (page--paragraph desk (desk-typed-text desk) width :typed-p t)
+                                                    (page--paragraph desk (passage-text passage) width)))
                                      ;; The editor breaks lines a little sooner than a paragraph does,
                                      ;; so the passage being written in has a line to spare.
                                      (height    (+ (* 2 *page-padding*)

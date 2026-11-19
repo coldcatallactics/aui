@@ -1,11 +1,11 @@
 ;;;; -- Live Exercise --
 
-;;; Drive real turns through a world server, without a screen and without an
-;;; account. The model is a script in this process that speaks the Chat
-;;; Completions protocol on a local port; the world server is Autolith's own,
-;;; started for a world that script/exercise-live makes and throws away. What
-;;; a person does in the window is done here by handing it the same keys and
-;;; clicks: send, queue, approve a command, stop, steer, run a command, and
+;;; Drive real turns through a world server without a screen and without an
+;;; account. The model is a script in this process. Requests to the model use
+;;; the Chat Completions protocol on a local port. The world server is the real
+;;; server of Autolith, started for a temporary world created by
+;;; script/exercise-live. The window gets the same keys and clicks as from a
+;;; person: send, queue, approve a command, stop, steer, run a command, and
 ;;; reopen the channel from its history.
 ;;;
 ;;; Usage: script/exercise-live
@@ -15,11 +15,11 @@
 (in-package #:aui)
 
 
-;;;; -- A Model That Is a Script --
+;;;; -- A Scripted Model --
 
 (defparameter *mock-title*
   "{\"title\": \"A short title\", \"agent_name\": \"bridge-builder\"}"
-  "What the mock answers when Autolith asks for a channel's title and its agent's name.")
+  "The answer of the mock model to a request for the title of a channel and the name of the agent.")
 
 (defparameter *mock-answer*
   "## What I found
@@ -44,7 +44,7 @@ The bridge builds on both systems now. Three things changed:
 
 That is all of it.
 "
-  "What the mock model answers a question with: Markdown of every kind the window typesets.")
+  "The answer of the mock model to a question. It contains every kind of Markdown typeset by the window.")
 
 (-> mock--octets (string) (simple-array (unsigned-byte 8) (*)))
 (defun mock--octets (string)
@@ -53,13 +53,13 @@ That is all of it.
 
 (-> mock--pieces (string integer) list)
 (defun mock--pieces (text size)
-  "Return TEXT cut into pieces of SIZE characters, as a model streams it."
+  "Return TEXT cut into pieces of SIZE characters."
   (loop for start from 0 below (length text) by size
         collect (subseq text start (min (length text) (+ start size)))))
 
 (-> mock--read-request (stream) (values string string))
 (defun mock--read-request (stream)
-  "Return the method and the body of the HTTP request arriving on STREAM."
+  "Return the method and the body of the HTTP request on STREAM."
   (let ((header (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer t)))
     (loop for octet = (read-byte stream nil nil)
           while octet
@@ -83,14 +83,14 @@ That is all of it.
 
 (-> mock--send (stream string) null)
 (defun mock--send (stream string)
-  "Write STRING to STREAM and push it out."
+  "Write STRING to STREAM and flush the stream."
   (write-sequence (mock--octets string) stream)
   (finish-output stream)
   nil)
 
 (-> mock--send-json (stream t) null)
 (defun mock--send-json (stream value)
-  "Answer the request on STREAM with the JSON VALUE."
+  "Send the JSON VALUE as the answer to the request on STREAM."
   (let ((body (mock--octets (autolith::json-encode value))))
     (mock--send stream (format nil "HTTP/1.1 200 OK~C~CContent-Type: application/json~C~CContent-Length: ~D~C~CConnection: close~C~C~C~C"
                                #\Return #\Newline #\Return #\Newline (length body)
@@ -101,7 +101,7 @@ That is all of it.
 
 (-> mock--send-event (stream string) null)
 (defun mock--send-event (stream data)
-  "Send DATA as one server-sent event in one chunk of the chunked answer on STREAM."
+  "Send DATA on STREAM as one server-sent event in one chunk of a chunked answer."
   (let ((octets (mock--octets (format nil "data: ~A~C~C" data #\Newline #\Newline))))
     (mock--send stream (format nil "~X~C~C" (length octets) #\Return #\Newline))
     (write-sequence octets stream)
@@ -110,7 +110,7 @@ That is all of it.
 
 (-> mock--chunk (t &key (:finish (or null string))) string)
 (defun mock--chunk (delta &key finish)
-  "Return a streamed completion chunk carrying DELTA, ending the answer with FINISH when given."
+  "Return a streamed completion chunk that contains DELTA. If FINISH is given, it is the finish reason."
   (autolith::json-encode
    (autolith::json-object
     "id"      "chatcmpl-mock"
@@ -122,7 +122,7 @@ That is all of it.
 
 (-> mock--text (t) string)
 (defun mock--text (content)
-  "Return the text of a message's CONTENT, which is a string or an array of parts."
+  "Return the text of the message content CONTENT. CONTENT is a string or an array of parts."
   (cond
     ((stringp content)
      content)
@@ -136,7 +136,7 @@ That is all of it.
 
 (-> mock--spoken (t) list)
 (defun mock--spoken (request)
-  "Return REQUEST's messages without the temporary context Autolith ends each request with."
+  "Return the messages of REQUEST without the messages that contain temporary context."
   (let ((messages (autolith::json-get request "messages")))
     (remove-if (lambda (message)
                  (let ((text (mock--text (autolith::json-get message "content"))))
@@ -145,15 +145,14 @@ That is all of it.
 
 (-> mock--stream (stream t) null)
 (defun mock--stream (stream request)
-  "Answer REQUEST on STREAM as a model would, by what the person or a tool said last.
+  "Stream an answer to REQUEST on STREAM, as a model would.
 
-A request without tools is one of Autolith's own, a title or a
-classification, and gets the title and the agent's name as Autolith asks for
-them. A tool's result gets a closing sentence. A request made while a goal
-is in force gets the words that say the goal is met. A message that mentions
-a shell gets a call to the shell tool.
-Anything else gets a thought and the Markdown answer, slowly when the message
-says so."
+Requests without tools come from Autolith itself, for a title or a
+classification. They are answered with *MOCK-TITLE*. A tool result is answered
+with a closing sentence. If a goal is active, the answer contains the marker for
+a met goal. A message that contains the word shell is answered with a call of
+the shell tool. Other messages are answered with a thought and *MOCK-ANSWER*.
+The answer is streamed slowly if the message contains the word slowly."
   (let* ((tools     (let ((value (autolith::json-get request "tools")))
                       (if (vectorp value) (coerce value 'list) nil)))
          (spoken    (mock--spoken request))
@@ -167,8 +166,8 @@ says so."
                             :from-end t)
                       "content")))
          (slow-p    (search "slowly" last-user :test #'char-equal))
-         ;; While a goal is in force Autolith tells the model, in each request,
-         ;; which marker says that the goal is met.
+         ;; If a goal is active, each request from Autolith contains the marker
+         ;; for a met goal.
          (goal-p    (some (lambda (message)
                             (and (not (equal (autolith::json-get message "role") "assistant"))
                                  (search autolith::*application-goal-complete-marker*
@@ -190,7 +189,7 @@ says so."
         ((equal (autolith::json-get last "role") "tool")
          (say "The command ran and printed what you see above.")
          (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
-        ;; A turn toward the goal: the model says the goal is met, as Autolith asks it to.
+        ;; A turn toward a goal. The answer contains the marker for a met goal.
         (goal-p
          (say (format nil "The bridge builds. ~A" autolith::*application-goal-complete-marker*))
          (mock--send-event stream (mock--chunk (autolith::json-object) :finish "stop")))
@@ -234,7 +233,7 @@ says so."
 
 (-> mock--answer (stream) null)
 (defun mock--answer (stream)
-  "Answer the one request arriving on STREAM."
+  "Answer the request on STREAM."
   (multiple-value-bind (method body) (mock--read-request stream)
     (cond
       ((string= method "GET")
@@ -262,10 +261,10 @@ says so."
 
 (-> mock-start () integer)
 (defun mock-start ()
-  "Start the mock model on a free local port and return the port.
+  "Start the mock model on a free local port. Returns the port.
 
-Each request is answered on a thread of its own; a client that goes away in
-the middle of an answer, as a stopped turn does, ends only that thread."
+Each request is answered on a separate thread. If a client disconnects in the
+middle of an answer, only that thread ends."
   (let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type ':stream :protocol ':tcp)))
     (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
     (sb-bsd-sockets:socket-bind socket #(127 0 0 1) 0)
@@ -291,16 +290,15 @@ the middle of an answer, as a stopped turn does, ends only that thread."
     (nth-value 1 (sb-bsd-sockets:socket-name socket))))
 
 
-;;;; -- A World of Its Own --
+;;;; -- A Separate World --
 
 (-> exercise-live--world-root () string)
 (defun exercise-live--world-root ()
-  "Return the directory of the throwaway world this exercise may use.
+  "Return the directory of the temporary world from AUI_EXERCISE_WORLD.
 
-Leave at once when the process was not given one, or when any of the places
-Autolith keeps state or looks for a login lies outside it: the exercise starts
-a world server, registers a provider and stops the server again, none of
-which may happen to a person's own world."
+Exit if the variable is empty. Also exit if a directory for the state or the
+logins of Autolith is outside the world directory. The world of a person must
+not be changed by the exercise."
   (let ((root (uiop:getenv "AUI_EXERCISE_WORLD")))
     (unless (and root
                  (plusp (length root))
@@ -308,23 +306,23 @@ which may happen to a person's own world."
                           (let ((value (uiop:getenv name)))
                             (and value (uiop:string-prefix-p root value))))
                         '("XDG_DATA_HOME" "XDG_STATE_HOME" "XDG_CONFIG_HOME" "CODEX_HOME" "GROK_HOME")))
-      (format t "~&Run script/exercise-live, which gives the exercise a world of its own.~%")
+      (format t "~&Run script/exercise-live. The exercise needs the separate world created by that script.~%")
       (finish-output)
       (sb-ext:exit :code 64 :abort t))
     root))
 
 (-> exercise-live--prepare (string integer) null)
 (defun exercise-live--prepare (root port)
-  "Register the mock model listening on PORT as the only provider of the world under ROOT, with a key that opens nothing."
+  "Register the mock model on PORT as the only provider of the world under ROOT. The API key of the provider is fake."
   (let* ((configuration (autolith::configuration-create :immutable-p t :defer-provider-validation-p t))
          (init          (merge-pathnames "init.lisp" (autolith::config :config-root configuration)))
          (keys          (autolith::configuration-api-keys-path configuration)))
     (unless (and (uiop:string-prefix-p root (namestring init))
                  (uiop:string-prefix-p root (namestring keys)))
-      (format t "~&Autolith's configuration is not under ~A; not touching it.~%" root)
+      (format t "~&The configuration of Autolith is not under ~A. It is left as it is.~%" root)
       (finish-output)
       (sb-ext:exit :code 64 :abort t))
-    ;; The script that started this stops the server if this process dies first.
+    ;; script/exercise-live uses this file to stop the server if this process dies first.
     (with-open-file (stream (format nil "~A/autolith-program" root) :direction ':output :if-exists ':supersede)
       (write-line (installation-program) stream))
     (ensure-directories-exist init)
@@ -342,7 +340,7 @@ which may happen to a person's own world."
 
 (-> exercise-live--until (workbench function &key (:seconds real)) boolean)
 (defun exercise-live--until (workbench predicate &key (seconds 60))
-  "Apply what the channel says until PREDICATE holds and return whether it did within SECONDS."
+  "Apply the events from the channel until PREDICATE is true. Returns T if PREDICATE became true within SECONDS."
   (let ((deadline (+ (get-internal-real-time) (round (* seconds internal-time-units-per-second)))))
     (loop
       (when (funcall predicate)
@@ -353,21 +351,21 @@ which may happen to a person's own world."
 
 (-> exercise-live--type (workbench string integer) null)
 (defun exercise-live--type (workbench text code)
-  "Put TEXT in the composer and press the key with the code CODE there."
+  "Put TEXT in the composer and press the key with the code CODE in the composer."
   (setf (composer-text workbench) text)
   (window--editor-key workbench (make-key-event :code code))
   nil)
 
 (-> exercise-live--entries (workbench symbol) list)
 (defun exercise-live--entries (workbench class)
-  "Return the entries of CLASS the window shows, oldest first."
+  "Return the entries of CLASS in the transcript, oldest first."
   (remove-if-not (lambda (entry)
                    (typep entry class))
                  (coerce (transcript-entries (workbench-transcript workbench)) 'list)))
 
 (-> exercise-live--picture (workbench string) null)
 (defun exercise-live--picture (workbench name)
-  "Write a picture of the window named NAME into the directory AUI_EXERCISE_SHOTS names, when it names one."
+  "Write a picture of the window as NAME.png into the directory from AUI_EXERCISE_SHOTS, if the variable is set."
   (let ((directory (uiop:getenv "AUI_EXERCISE_SHOTS")))
     (when (and directory (plusp (length directory)))
       (window-arrange workbench)
@@ -379,14 +377,14 @@ which may happen to a person's own world."
 
 (-> exercise-live--idle-p (workbench) boolean)
 (defun exercise-live--idle-p (workbench)
-  "Return T when the channel neither works nor waits for an answer."
+  "Return T if the channel is not working and has no pending approval or pending messages."
   (and (not (workbench-working-p workbench))
        (null (workbench-approval workbench))
        (null (workbench-pending workbench))))
 
 (-> exercise-live-run () integer)
 (defun exercise-live-run ()
-  "Exercise live turns against the mock model and return how many expectations failed."
+  "Exercise live turns against the mock model. Returns the number of failed expectations."
   (let ((root (exercise-live--world-root)))
     (exercise-live--prepare root (mock-start))
     (lightfast:load-library)
@@ -410,9 +408,9 @@ which may happen to a person's own world."
       (window-show workbench)
       (unwind-protect
            (progn
-             ;; The first open starts the world server, which takes its time.
+             ;; The world server is started by the first open. The start can take a long time.
              (let ((command-p nil))
-               (exercise-expect "a first start brings up a world server and a channel"
+               (exercise-expect "a world server is started and a channel is opened on the first start"
                                 (exercise-live--until workbench
                                                       (lambda ()
                                                         (when (equal (second (workbench-progress workbench))
@@ -420,17 +418,17 @@ which may happen to a person's own world."
                                                           (setf command-p t))
                                                         (workbench-attached-p workbench))
                                                       :seconds 600))
-               (exercise-expect "the autolith command started that server" command-p))
+               (exercise-expect "the world server was started by the autolith command" command-p))
              (main--settle workbench 1)
-             (exercise-expect "the channel runs the model the command line named"
+             (exercise-expect "the model of the channel is the model given on the command line"
                               (search "mock-1" (or (workbench-model workbench) "")))
-             ;; A turn, watched while it streams.
+             ;; A turn that is watched while it streams.
              (exercise-live--type workbench "Tell me about the bridge, slowly" #xff0d)
-             (exercise-expect "Enter sends and the agent works"
+             (exercise-expect "pressing Enter sends the message, and the agent starts to work"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (workbench-working-p workbench))))
-             (exercise-expect "the answer streams while the agent works"
+             (exercise-expect "the answer is streamed while the agent works"
                               (exercise-live--until
                                workbench
                                (lambda ()
@@ -438,16 +436,16 @@ which may happen to a person's own world."
                                       (some (lambda (entry)
                                               (search "What I found" (assistant-entry-text entry)))
                                             (exercise-live--entries workbench 'assistant-entry))))))
-             (exercise-expect "what the model thought shows as a thought"
+             (exercise-expect "the reasoning of the model is shown as a thought"
                               (exercise-live--entries workbench 'reasoning-entry))
              (exercise-live--picture workbench "live-streaming")
-             ;; A follow-up queued while it works.
+             ;; A follow-up message queued while the agent works.
              (exercise-live--type workbench "Now use a shell tool to look around" #xff09)
              (main--settle workbench 0.5)
-             (exercise-expect "Tab queues a follow-up"
+             (exercise-expect "pressing Tab queues a follow-up message"
                               (find "Now use a shell tool to look around" (workbench-pending workbench)
                                     :key #'second :test #'equal))
-             (exercise-expect "what waits is read from the channel's own queue"
+             (exercise-expect "the waiting messages are read from the queue of the channel"
                               (exercise-live--until
                                workbench
                                (lambda ()
@@ -455,8 +453,8 @@ which may happen to a person's own world."
                                  (find "Now use a shell tool to look around" (workbench--waiting workbench)
                                        :key #'first :test #'equal))
                                :seconds 20))
-             ;; The follow-up asks for a command, and the channel asks first.
-             (exercise-expect "the channel asks before a command runs"
+             ;; The follow-up message leads to a command. The command needs an approval.
+             (exercise-expect "an approval is requested before the command runs"
                               (and (exercise-live--until workbench
                                                          (lambda ()
                                                            (workbench-approval workbench))
@@ -466,14 +464,14 @@ which may happen to a person's own world."
                                      (exercise--region workbench '(:approval "once")))))
              (exercise-live--picture workbench "live-approval")
              (exercise--click workbench '(:approval "once"))
-             (exercise-expect "allowed once, the command runs and the turn ends"
+             (exercise-expect "after an approval for one run, the command runs and the turn ends"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (exercise-live--idle-p workbench))
                                                     :seconds 120))
              (main--settle workbench 1)
              (let ((tool (first (exercise-live--entries workbench 'tool-entry))))
-               (exercise-expect "the call shows what the command printed"
+               (exercise-expect "the tool call contains the output of the command"
                                 (and tool
                                      (search "hello from the mock" (princ-to-string (tool-entry-output tool)))))
                (when tool
@@ -491,13 +489,13 @@ which may happen to a person's own world."
                                                    (first (last (exercise-live--entries workbench
                                                                                         'assistant-entry))))))))
              (window--editor-key workbench (make-key-event :code #xff1b))
-             (exercise-expect "Escape stops the turn"
+             (exercise-expect "pressing Escape stops the turn"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (not (workbench-working-p workbench)))
                                                     :seconds 60))
              (main--settle workbench 1)
-             (exercise-expect "a stopped turn says so quietly"
+             (exercise-expect "a quiet notice is shown after a stopped turn"
                               (let ((notice (first (last (exercise-live--entries workbench 'notice-entry)))))
                                 (and notice
                                      (string= "stopped" (notice-entry-text notice))
@@ -510,10 +508,10 @@ which may happen to a person's own world."
              (main--settle workbench 1)
              (exercise-live--type workbench "Also say which fonts" #xff0d)
              (main--settle workbench 0.5)
-             (exercise-expect "Enter while the agent works steers it"
+             (exercise-expect "pressing Enter while the agent works sends the message as steering"
                               (third (find "Also say which fonts" (workbench-pending workbench)
                                            :key #'second :test #'equal)))
-             (exercise-expect "the agent takes the steering up"
+             (exercise-expect "the agent takes up the steering message"
                               (and (exercise-live--until workbench
                                                          (lambda ()
                                                            (exercise-live--idle-p workbench))
@@ -534,7 +532,7 @@ which may happen to a person's own world."
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (search "short title" (workbench-title workbench)))))
-             (exercise-expect "the channel list names the agent as the model named it"
+             (exercise-expect "the channel list contains the agent name given by the model"
                               (exercise-live--until
                                workbench
                                (lambda ()
@@ -545,23 +543,23 @@ which may happen to a person's own world."
                                                             (getf entry :id))
                                                     :test #'equal)
                                               :name)))))
-             ;; The chips under the composer change the channel itself.
+             ;; The chips under the composer are used to change the settings of the channel.
              (workbench-set-setting workbench "reasoning-effort" "low")
-             (exercise-expect "the effort chip changes the channel's effort"
+             (exercise-expect "the effort of the channel can be changed"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (equal "low" (workbench-effort workbench)))
                                                     :seconds 30))
-             ;; Full access is a mode every platform has; a sandbox is not.
+             ;; Full access is used because it is available on all platforms.
              (workbench-set-mode workbench ':full-access)
-             (exercise-expect "the permission chip changes the channel's mode"
+             (exercise-expect "the permission mode of the channel can be changed"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (eq ':full-access (workbench-permission-mode workbench)))
                                                     :seconds 30))
-             ;; A setting whose values are keywords on the server is set by its spelling.
+             ;; Settings with keyword values on the server are set by the spelling of the value.
              (workbench-set-setting workbench "permission-mode" "auto")
-             (exercise-expect "a saved choice with keyword values can be changed"
+             (exercise-expect "a setting with keyword values can be changed"
                               (exercise-live--until
                                workbench
                                (lambda ()
@@ -571,51 +569,52 @@ which may happen to a person's own world."
                                                   :test #'equal)))
                                    (and row (equal "auto" (portable-get row "value")))))
                                :seconds 30))
-             ;; The channel works where the person says.
+             ;; The folder of the channel can be changed by the person.
              (let ((folder (namestring (uiop:ensure-directory-pathname (format nil "~A/work/elsewhere" root)))))
                (ensure-directories-exist folder)
                (workbench-submit workbench (format nil "(cwd ~S)" folder))
-               (exercise-expect "a channel's folder can be changed, and the window follows"
+               (exercise-expect "the folder of a channel can be changed, and the new folder is shown in the window"
                                 (exercise-live--until workbench
                                                       (lambda ()
                                                         (equal folder (workbench-directory workbench)))
                                                       :seconds 30)))
-             ;; A goal: set in the channel, known to the window, met when the agent says so.
+             ;; A goal is set in the channel and read by the window.
+             ;; The goal is met if the agent says so.
              (workbench-submit workbench "(goal \"Keep the bridge building.\")")
-             (exercise-expect "a goal set in the channel is known to the window"
+             (exercise-expect "a goal set in the channel is read by the window"
                               (exercise-live--until
                                workbench
                                (lambda ()
                                  (equal "Keep the bridge building." (getf (workbench-goal workbench) :objective)))
                                :seconds 60))
-             (exercise-expect "the goal is complete once the agent says so"
+             (exercise-expect "the goal is complete after the agent says that it is met"
                               (exercise-live--until
                                workbench
                                (lambda ()
                                  (and (eq ':complete (getf (workbench-goal workbench) :status))
                                       (exercise-live--idle-p workbench)))
                                :seconds 180))
-             ;; An Autolith from 0.67.57 on names the goal in the channel's state.
+             ;; From Autolith 0.67.57 on, the state of the channel contains the goal.
              (let ((state (workbench-state workbench)))
-               (format t "~&  note  the goal is read from ~:[the newest goal record~;the channel's state~]~%"
+               (format t "~&  note  the goal is read from ~:[the newest goal record~;the state of the channel~]~%"
                        (portable-member-p state "goal"))
-               (exercise-expect "a state that names the goal names the one the window shows"
+               (exercise-expect "if the state contains a goal, it is the goal shown in the window"
                                 (or (not (portable-member-p state "goal"))
                                     (equal "Keep the bridge building."
                                            (portable-get (portable-get state "goal") "objective")))))
              (stage-resize (workbench-stage workbench) 1500 900)
              (exercise--draw workbench)
-             (exercise-expect "the console names the goal and offers to change or clear it"
+             (exercise-expect "the console contains the goal and buttons to change or clear it"
                               (and (exercise--region workbench '(:console-section :goal))
                                    (exercise--region workbench '(:console-goal :update))
                                    (exercise--region workbench '(:console-goal :clear))))
              (exercise-live--picture workbench "live-goal")
              (stage-resize (workbench-stage workbench) 1200 800)
              (exercise--draw workbench)
-             ;; The same channel again, from its history.
+             ;; The same channel is opened again from its history.
              (let ((channel (workbench-channel workbench)))
                (workbench-open workbench :channel channel)
-               (exercise-expect "the channel reopens from its history"
+               (exercise-expect "the channel is reopened from its history"
                                 (and (exercise-live--until workbench
                                                            (lambda ()
                                                              (workbench-attached-p workbench))
@@ -623,25 +622,25 @@ which may happen to a person's own world."
                                      (progn
                                        (main--settle workbench 1.5)
                                        (equal channel (workbench-channel workbench)))))
-               (exercise-expect "history holds the messages, the call and its output"
+               (exercise-expect "the history contains the messages, the tool call and the output of the call"
                                 (and (>= (length (exercise-live--entries workbench 'user-entry)) 4)
                                      (let ((tool (first (exercise-live--entries workbench 'tool-entry))))
                                        (and tool
                                             (search "hello from the mock"
                                                     (princ-to-string (tool-entry-output tool)))))))
                (exercise-live--picture workbench "live-history")
-               (exercise-expect "the goal is read from the channel's history"
+               (exercise-expect "the goal is read from the history of the channel"
                                 (and (equal "Keep the bridge building."
                                             (getf (workbench-goal workbench) :objective))
                                      (eq ':complete (getf (workbench-goal workbench) :status))))
                (workbench-goal-request workbench ':clear)
-               (exercise-expect "a goal cleared from the window is gone"
+               (exercise-expect "a goal cleared from the window is removed"
                                 (exercise-live--until workbench
                                                       (lambda ()
                                                         (null (workbench-goal workbench)))
                                                       :seconds 30)))
-             (exercise-expect "nothing reported a failure" (null (workbench-notice workbench)))
-             ;; Deleting the channel leaves it and takes it out of the world.
+             (exercise-expect "no failure was reported" (null (workbench-notice workbench)))
+             ;; Deleting the channel closes it and removes it from the world.
              (let ((channel (workbench-channel workbench)))
                (workbench-delete-channel workbench channel)
                (exercise-expect "a channel can be deleted"
@@ -655,15 +654,15 @@ which may happen to a person's own world."
                                                            (getf entry :id))
                                                    :test #'equal))))
                                  :seconds 60)))
-             ;; The world server was started for this exercise alone, and the window stops it.
+             ;; The world server was started only for this exercise. It is stopped from the window.
              (workbench-stop-server workbench)
-             (exercise-expect "the window stops the world server"
+             (exercise-expect "the world server is stopped from the window"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (not (world-served-p (workbench-world workbench))))
                                                     :seconds 60)))
         (workbench-close workbench)
-        ;; A server the exercise did not get as far as stopping is stopped here.
+        ;; Stop the world server here if the exercise did not stop it.
         (uiop:run-program (list (installation-program) "stop")
                           :ignore-error-status t))))
   *exercise-failures*)

@@ -1,15 +1,16 @@
 ;;;; -- Exercise Support --
 
-;;; What the exercises share: expectations that are counted, and the way to
-;;; draw a window offscreen and click in it as FLTK would.
+;;; The code shared by the exercises. It contains the counted expectations and
+;;; the functions used to draw a window offscreen and to send clicks to the
+;;; window in the same way as FLTK.
 
 (in-package #:aui)
 
 (defvar *exercise-failures* 0
-  "How many expectations the exercise has seen fail.")
+  "The number of failed expectations of the exercise.")
 
 (defmacro exercise-expect (description form)
-  "Evaluate FORM and report DESCRIPTION as held or failed."
+  "Evaluate FORM and print DESCRIPTION as passed or failed."
   `(if ,form
        (format t "~&  ok    ~A~%" ,description)
        (progn
@@ -18,7 +19,7 @@
 
 (-> exercise--draw (workbench) null)
 (defun exercise--draw (workbench)
-  "Draw WORKBENCH's window offscreen, so its regions are those of its current state."
+  "Draw the window of WORKBENCH offscreen. The regions of the stage are then updated to the current state."
   (window-arrange workbench)
   (lightfast:capture-window (workbench-window workbench)
                             (uiop:native-namestring
@@ -27,12 +28,12 @@
 
 (-> exercise--region (workbench t) (or null region))
 (defun exercise--region (workbench identifier)
-  "Return the region the last drawing declared as IDENTIFIER, or NIL."
+  "Return the region declared as IDENTIFIER by the last drawing, or NIL."
   (stage--find-region (workbench-stage workbench) identifier))
 
 (-> exercise--click (workbench t) boolean)
 (defun exercise--click (workbench identifier)
-  "Click in the middle of the region IDENTIFIER and return whether it exists."
+  "Click in the middle of the region IDENTIFIER. Returns T if the region exists, and NIL otherwise."
   (let ((region (exercise--region workbench identifier))
         (stage  (workbench-stage workbench)))
     (when region
@@ -46,7 +47,7 @@
 
 (-> exercise--finish () null)
 (defun exercise--finish ()
-  "Say how the exercise went and leave with a status that says the same."
+  "Print the result of the exercise and exit with a status that matches the result."
   (format t "~&~:[The interface exercise passed.~;~:*~D expectation~:P failed.~]~%"
           (and (plusp *exercise-failures*) *exercise-failures*))
   (finish-output)

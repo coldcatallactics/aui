@@ -521,16 +521,16 @@ which may happen to a person's own world."
                                    (find "Also say which fonts" (exercise-live--entries workbench 'user-entry)
                                          :key #'user-entry-text :test #'equal)))
              ;; A command.
-             (exercise-live--type workbench "/status" #xff0d)
-             (exercise-expect "a command prints into the conversation under its name"
+             (exercise-live--type workbench "(status)" #xff0d)
+             (exercise-expect "the output of a command is printed in the conversation under the name of the command"
                               (exercise-live--until
                                workbench
                                (lambda ()
                                  (some (lambda (entry)
                                          (and (search "mock-1" (output-entry-text entry))
-                                              (equal "/status" (output-entry-invocation entry))))
+                                              (equal "(status)" (output-entry-invocation entry))))
                                        (exercise-live--entries workbench 'output-entry)))))
-             (exercise-expect "the channel has the title the model gave it"
+             (exercise-expect "the channel has the title given by the model"
                               (exercise-live--until workbench
                                                     (lambda ()
                                                       (search "short title" (workbench-title workbench)))))

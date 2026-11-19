@@ -48,21 +48,27 @@ typing. Nothing is committed.
 
 ## Keys
 
-| key | action |
+| Key | Action |
 |---|---|
-| Enter | send; while the agent works, steer it |
-| Tab | while the agent works, queue a follow-up |
+| Enter | send, or steer the agent while it works |
+| Tab | queue a follow-up while the agent works |
 | Escape | stop the agent |
-| `/` or `(` | a command or a Lisp form, as in the terminal |
+| `(` | type a command or a Lisp form, as in the terminal |
 | `@` | mention someone |
 | 1 to 9 | answer an approval |
-| Ctrl+K | commands |
-| Ctrl+, | settings |
+| Ctrl+K | open the commands |
+| Ctrl+, | open the settings |
 | Ctrl+S | show or hide the channel list |
 | Ctrl+O | find a channel |
-| Ctrl+N | a new channel |
+| Ctrl+N | start a new channel |
 
-On macOS use Command instead of Ctrl.
+On macOS, use Command instead of Ctrl.
+
+## Unslop
+
+`unslop` is a second program in this repository. Run `unslop DIRECTORY` to
+rewrite the comments, strings and docstrings of a Common Lisp checkout, file by
+file. Your text is saved when you stop typing. You commit the changes yourself.
 
 ## Develop
 

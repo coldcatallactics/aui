@@ -170,10 +170,10 @@
     (fiveam:is (not (portable-true-p ':false)))))
 
 (fiveam:test command-text-names-its-command
-  (dolist (case '(("/model" "model" nil)
+  (dolist (case '(("/model" nil nil)
                   ("(model)" "model" nil)
                   ("  (settings )" "settings" nil)
-                  ("/model gpt-6" "model" t)
+                  ("(model \"gpt-6\")" "model" t)
                   ("(open \"b-6\")" "open" t)
                   ("hello there" nil nil)
                   ("(" nil nil)))

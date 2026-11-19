@@ -596,10 +596,10 @@ call, and only the last answer matters."
 
 (-> workbench--command-p (string) boolean)
 (defun workbench--command-p (text)
-  "Return T when TEXT is a command or a Lisp form rather than a message to the agent."
+  "Return T if TEXT is a Lisp form instead of a message to the agent."
   (let ((trimmed (string-left-trim '(#\Space #\Newline #\Tab) text)))
     (and (plusp (length trimmed))
-         (member (char trimmed 0) '(#\/ #\( #\?))
+         (member (char trimmed 0) '(#\( #\?))
          t)))
 
 (defparameter *interface-commands*
@@ -623,13 +623,12 @@ call, and only the last answer matters."
 
 (-> command-text-name (string) (values (or null string) boolean))
 (defun command-text-name (text)
-  "Return the name of the command TEXT invokes and whether it gives the command arguments.
+  "Return the name of the command in TEXT, and T if TEXT gives the command arguments.
 
-TEXT is a slash command such as /model or a Lisp form such as (model). The
-name is NIL when TEXT is neither."
+TEXT is a Lisp form such as (model). The name is NIL if TEXT is not a form."
   (let* ((trimmed (string-trim '(#\Space #\Newline #\Tab) text))
          (length  (length trimmed)))
-    (if (and (> length 1) (member (char trimmed 0) '(#\/ #\()))
+    (if (and (> length 1) (char= (char trimmed 0) #\())
         (let* ((end  (or (position-if (lambda (character)
                                         (member character '(#\Space #\Newline #\Tab #\))))
                                       trimmed :start 1)
@@ -722,9 +721,23 @@ agent takes it up."
       (session-set-mode session mode)))
   nil)
 
+(-> workbench-invoke (workbench string string) null)
+(defun workbench-invoke (workbench name input)
+  "Run the command NAME of the channel with the argument text INPUT."
+  (let ((session (workbench-session workbench)))
+    (if (and session (workbench-attached-p workbench))
+        (session-operation session "_autolith/invoke"
+                           :params  (portable-object "operation" name
+                                                     "arguments" (portable-object "input" input))
+                           :request (list ':invoke name input))
+        (progn
+          (setf (workbench-notice workbench) "Not attached to a channel yet.")
+          (workbench-redraw workbench))))
+  nil)
+
 (-> workbench-set-setting (workbench string t) null)
 (defun workbench-set-setting (workbench name value)
-  "Set the channel's setting NAME to VALUE and fetch what depends on it again."
+  "Set the setting NAME of the channel to VALUE."
   (let ((session (workbench-session workbench)))
     (when (and session (workbench-attached-p workbench))
       (session-operation session "_autolith/set-setting"
@@ -973,6 +986,12 @@ A reading of a channel the window has left is dropped."
          (setf (workbench-notice workbench)
                (format nil "Could not cancel the job: ~A"
                        (or (result-event-report event) "the channel refused.")))))
+      ((and (consp request) (eq (first request) ':invoke))
+       (if ok-p
+           (workbench-refresh workbench "_autolith/state" "_autolith/settings")
+           (setf (workbench-notice workbench)
+                 (format nil "(~A ~A) failed: ~A" (second request) (third request)
+                         (or (result-event-report event) "the channel refused it")))))
       ((and (consp request) (eq (first request) ':set-setting))
        (destructuring-bind (name &optional choice again-p) (rest request)
          (cond

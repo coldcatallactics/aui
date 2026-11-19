@@ -38,19 +38,22 @@
        (setf (composer-text workbench) (format nil "(~A )" name))
        (window-focus-composer workbench))
       (choices
+       ;; Autolith decodes the choice, because the same spelling can stand for a keyword or a string.
        (workbench-pick workbench
-                       (cons (make-choice :label "no argument" :value (format nil "/~A" name))
+                       (cons (make-choice :label "no argument" :value "")
                              (mapcar (lambda (choice)
-                                       (make-choice :label choice :value (format nil "/~A ~A" name choice)))
+                                       (make-choice :label choice :value choice))
                                      choices))
-                       (lambda (text)
-                         (workbench-submit workbench text))
-                       :title (format nil "/~A" name)))
+                       (lambda (choice)
+                         (if (zerop (length choice))
+                             (workbench-submit workbench (format nil "(~A)" name))
+                             (workbench-invoke workbench name choice)))
+                       :title (format nil "(~A)" name)))
       ((portable-string (portable-get row "argumentHint"))
-       (setf (composer-text workbench) (format nil "/~A " name))
+       (setf (composer-text workbench) (format nil "(~A " name))
        (window-focus-composer workbench))
       (t
-       (workbench-submit workbench (format nil "/~A" name)))))
+       (workbench-submit workbench (format nil "(~A)" name)))))
   nil)
 
 (-> catalog-run-selected (workbench) null)

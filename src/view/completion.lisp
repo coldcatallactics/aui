@@ -2,36 +2,37 @@
 
 ;;;; -- Completion --
 
-;;; What the composer offers while the person types a command or a mention:
-;;; the channel's commands for a draft that begins with a slash or an opening
-;;; parenthesis, and the world's participants for a word that begins with @.
-;;; The list sits above the composer; Up and Down move in it, Tab takes the
-;;; highlighted entry, Escape puts it away.
+;;; Completions for commands and mentions in the composer. The commands of the
+;;; channel are offered for a draft that begins with an opening parenthesis.
+;;; The participants of the world are offered for a word that
+;;; begins with @. The list of completions is drawn above the composer. The
+;;; person moves in it with Up and Down, takes the highlighted entry with Tab,
+;;; and closes it with Escape.
 
 (defparameter *completion-rows* 7
-  "How many completions are shown at once.")
+  "The number of completions shown at once.")
 
 (defparameter *completion-row-height* 26
-  "The height of one completion row.")
+  "The height of a row of completions.")
 
 (defstruct completion
-  "One offer, with the LABEL shown, the DETAIL beside it, and the TEXT that replaces the word being typed."
+  "One completion. LABEL is the text shown, and DETAIL is shown beside it. TEXT replaces the word that is typed."
   (label  "" :type string)
   (detail "" :type string)
   (text   "" :type string))
 
 (-> completion--word (string) (values string integer))
 (defun completion--word (text)
-  "Return the word at the end of TEXT and where it starts."
+  "Return the word at the end of TEXT and the start position of the word."
   (let ((start (1+ (or (position-if (lambda (character)
                                       (member character '(#\Space #\Newline #\Tab)))
                                     text :from-end t)
                        -1))))
     (values (subseq text start) start)))
 
-(-> completion--commands (workbench string (member :slash :form)) list)
-(defun completion--commands (workbench prefix notation)
-  "Return the commands whose names begin with PREFIX, written in NOTATION: after a slash, or as a Lisp form."
+(-> completion--commands (workbench string) list)
+(defun completion--commands (workbench prefix)
+  "Return the completions for the commands whose names begin with PREFIX. Each completion is a Lisp form."
   (loop for row in (workbench-operations workbench)
         for name = (portable-get row "name")
         when (and (stringp name)
@@ -39,21 +40,16 @@
                   (not (member name *terminal-only-commands* :test #'string=))
                   (>= (length name) (length prefix))
                   (string-equal prefix name :end2 (length prefix)))
-          collect (let ((opened (format nil "~:[(~;/~]~A" (eq notation ':slash) name)))
-                    (make-completion
-                     :label  opened
-                     :detail (entries--one-line (or (portable-get row "description") ""))
-                     :text   (cond
-                               ((portable-string (portable-get row "argumentHint"))
-                                (format nil "~A " opened))
-                               ((eq notation ':form)
-                                (format nil "~A)" opened))
-                               (t
-                                opened))))))
+          collect (make-completion
+                   :label  (format nil "(~A" name)
+                   :detail (entries--one-line (or (portable-get row "description") ""))
+                   :text   (if (portable-string (portable-get row "argumentHint"))
+                               (format nil "(~A " name)
+                               (format nil "(~A)" name)))))
 
 (-> completion--participants (workbench string) list)
 (defun completion--participants (workbench prefix)
-  "Return the world's participants whose names begin with PREFIX, as mentions."
+  "Return the mentions of the participants of the world whose names begin with PREFIX."
   (unless (workbench-demo-p workbench)
     (loop for participant in (workbench-participants workbench)
           for name = (getf participant :name)
@@ -73,27 +69,25 @@
 
 (-> completion-candidates (workbench string) list)
 (defun completion-candidates (workbench text)
-  "Return what to offer for the composer holding TEXT, or NIL when nothing applies."
+  "Return the completions for the draft TEXT, or NIL if there are none."
   (multiple-value-bind (word start) (completion--word text)
     (cond
       ((zerop (length word))
        nil)
-      ;; A command is completed only as the first thing in the draft.
-      ((and (zerop start) (char= (char word 0) #\/))
-       (completion--commands workbench (subseq word 1) ':slash))
+      ;; Only complete a command at the start of the draft.
       ((and (zerop start) (char= (char word 0) #\() (not (find #\) word)))
-       (completion--commands workbench (subseq word 1) ':form))
+       (completion--commands workbench (subseq word 1)))
       ((and (char= (char word 0) #\@) (not (find #\/ word)))
        (completion--participants workbench (subseq word 1)))
       (t
        nil))))
 
 (defvar *completion-offer* nil
-  "What was last offered and for what, as (TEXT OPERATIONS PARTICIPANTS . CANDIDATES), so one drawing works it out once.")
+  "The last completions and their inputs, as a list (TEXT OPERATIONS PARTICIPANTS . CANDIDATES).")
 
 (-> completion--offer (workbench string) list)
 (defun completion--offer (workbench text)
-  "Return what to offer for the draft TEXT, worked out again only when the draft or what it is completed from changed."
+  "Return the completions for the draft TEXT. They are only computed again if the draft, the operations or the participants changed."
   (let ((operations   (workbench-operations workbench))
         (participants (workbench--participants workbench)))
     (destructuring-bind (&optional known-text known-operations known-participants &rest candidates)
@@ -109,12 +103,12 @@
 
 (-> completion-current (workbench) list)
 (defun completion-current (workbench)
-  "Return the completions on offer now, or NIL when the list was put away for this draft."
+  "Return the completions for the current draft, or NIL if the list was closed for this draft."
   (let ((text (composer-text workbench)))
     (if (equal text (workbench-completion-dismissed workbench))
         nil
         (let ((candidates (completion--offer workbench text)))
-          ;; One offer that the draft already spells out is nothing to offer.
+          ;; Offer nothing if the only completion is the draft itself.
           (if (and candidates
                    (null (rest candidates))
                    (string= (string-right-trim " " (completion-text (first candidates)))
@@ -124,7 +118,7 @@
 
 (-> completion-accept (workbench completion) null)
 (defun completion-accept (workbench completion)
-  "Replace the word being typed with COMPLETION's text."
+  "Replace the word that is typed with the text of COMPLETION."
   (let ((text (composer-text workbench)))
     (multiple-value-bind (word start) (completion--word text)
       (declare (ignore word))
@@ -136,7 +130,7 @@
 
 (-> completion-key (workbench key-event) boolean)
 (defun completion-key (workbench event)
-  "Handle a key while completions are on offer and return whether it was used."
+  "Handle the key EVENT for the list of completions. Return T if the key was used."
   (let* ((candidates (completion-current workbench))
          (count      (length candidates)))
     (when candidates
@@ -164,7 +158,7 @@
 
 (-> completion-height (workbench) integer)
 (defun completion-height (workbench)
-  "Return the height the completion list needs, zero when nothing is on offer."
+  "Return the height of the list of completions, or zero if there are no completions."
   (let ((count (length (completion-current workbench))))
     (if (zerop count)
         0
@@ -172,7 +166,7 @@
 
 (-> completion-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
 (defun completion-paint (workbench stage &key x y width)
-  "Draw the completions in a framed list with its top-left corner at X, Y."
+  "Draw the completions in a framed list with the top left corner at X, Y."
   (let* ((candidates (completion-current workbench))
          (count      (length candidates))
          (index      (min (workbench-completion-index workbench) (max 0 (1- count))))
@@ -181,7 +175,7 @@
          (height     (completion-height workbench))
          (bold       (text-style ':label-bold))
          (meta       (text-style ':meta))
-         ;; One column for what is offered, one for what is said about it.
+         ;; Draw the labels in one column and the details in another.
          (label-w    (min (floor (* width 2/5))
                           (loop for completion in candidates
                                 maximize (text-width (completion-label completion) bold)))))

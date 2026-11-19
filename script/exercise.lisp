@@ -277,16 +277,19 @@
       (stage-resize stage 1200 800)
       (setf (workbench-approval workbench) nil)
       ;; Completion.
+      (setf (composer-text workbench) "(st")
+      (exercise--draw workbench)
+      (exercise-expect "commands are offered after an opening parenthesis"
+                       (equal '("(status") (mapcar #'completion-label (completion-current workbench))))
+      (completion-key workbench (make-key-event :code #xff09))
+      (exercise-expect "pressing Tab accepts the offered command" (string= "(status)" (composer-text workbench)))
       (setf (composer-text workbench) "/st")
       (exercise--draw workbench)
-      (exercise-expect "a slash offers commands"
-                       (equal '("/status") (mapcar #'completion-label (completion-current workbench))))
-      (completion-key workbench (make-key-event :code #xff09))
-      (exercise-expect "Tab takes the offer" (string= "/status" (composer-text workbench)))
-      ;; Sending. The demonstration has no channel, so the composer says so.
+      (exercise-expect "nothing is offered after a slash" (null (completion-current workbench)))
+      ;; Sending. The demonstration has no channel, so a notice is shown.
       (setf (composer-text workbench) "hello")
       (window--editor-key workbench (make-key-event :code #xff0d))
-      (exercise-expect "Enter in the composer sends"
+      (exercise-expect "pressing Enter in the composer sends the text"
                        (and (workbench-notice workbench)
                             (search "not attached" (workbench-notice workbench))))
       (setf (workbench-notice workbench) nil

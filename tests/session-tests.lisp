@@ -3,14 +3,15 @@
 ;;;; -- Session Tests --
 
 (fiveam:def-suite session
-  :description "A session tells the interface of its attachment in the order the channel's history needs."
+  :description "Tests for the order of the events posted by a session that attaches to a channel."
   :in          aui)
 
 (fiveam:in-suite session)
 
 (-> test-call-with-session (function) t)
 (defun test-call-with-session (function)
-  "Call FUNCTION with a session of a channel in an empty world of its own, its subscription and its queue."
+  "Call FUNCTION with a session, the subscription of the session and the queue of the session.
+The session belongs to a channel in a new empty world."
   (let ((root (uiop:ensure-directory-pathname
                (uiop:run-program '("mktemp" "-d") :output '(:string :stripped t)))))
     (unwind-protect

@@ -3,13 +3,14 @@
 ;;;; -- Link Tests --
 
 (fiveam:def-suite links
-  :description "What a link in a conversation leads to, and which files an answer names."
+  :description "Tests for the targets of links and for the files mentioned in a conversation."
   :in          aui)
 
 (fiveam:in-suite links)
 
 (defmacro with-test-folder ((directory &rest names) &body body)
-  "Run BODY with DIRECTORY bound to the namestring of a new folder holding a file for each of NAMES, and delete the folder afterwards."
+  "Run BODY with DIRECTORY bound to the namestring of a new folder.
+The folder has a file for each of NAMES, and it is deleted after BODY."
   (let ((root (gensym "ROOT")))
     `(let* ((,root      (uiop:ensure-directory-pathname
                          (format nil "~Aaui-links-~D/" (uiop:temporary-directory) (random 1000000))))
@@ -78,15 +79,17 @@
         (transcript-append transcript entry))
       (let ((digest (digest-create transcript directory)))
         (digest--read digest)
-        ;; The plan is its latest update.
+        ;; The plan is taken from the latest update.
         (fiveam:is (equal '(2 3) (multiple-value-list (digest-plan-progress digest))))
-        ;; The file touched last comes first; what a tool changed stays marked, what it failed to change is not.
+        ;; The file that was used last is listed first. Files changed by a tool are marked.
+        ;; Files from a failed edit are not marked.
         (fiveam:is (equal '(("Makefile" . t) ("notes.md" . nil) ("src/window.lisp" . nil))
                           (loop for (file . changed-p) in (digest-files digest)
                                 collect (cons (enough-namestring file (truename directory)) changed-p))))
         (fiveam:is (equal "src" (file-place (first (third (digest-files digest))) (digest-root digest))))
         (fiveam:is (equal "" (file-place (first (first (digest-files digest))) (digest-root digest))))
-        ;; The messages are the person's and the other participants', oldest first.
+        ;; The messages are from the person and from the other participants.
+        ;; The oldest message is first.
         (fiveam:is (equal '("Why does the build fail?" "The Makefile reads well.")
                           (mapcar #'user-entry-text (digest-messages digest))))))))
 

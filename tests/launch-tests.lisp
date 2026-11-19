@@ -3,7 +3,7 @@
 ;;;; -- Launch Tests --
 
 (fiveam:def-suite launch
-  :description "The aui command line is Autolith's, with the window's options added."
+  :description "Tests for the aui command line."
   :in          aui)
 
 (fiveam:in-suite launch)
@@ -23,7 +23,7 @@
          (world  (launch-world launch)))
     (fiveam:is (eq ':sandboxed (world-permission-mode world)))
     (fiveam:is (world-immutable-p world))
-    ;; What the command line stated goes to the server as a terminal would send it.
+    ;; The options from the command line are sent to the server in the same form as from a terminal.
     (fiveam:is (equal "some-model" (getf (world-launch world) :model)))
     (fiveam:is (eq ':sandboxed (getf (world-launch world) :permission-mode)))
     (fiveam:is (getf (world-launch world) :immutable-p))))
@@ -86,11 +86,11 @@
              (ensure-directories-exist file)
              (with-open-file (stream file :direction ':output :if-exists ':supersede)
                (write-line "placeholder" stream)))
-           ;; A release keeps its source two directories beneath its launcher.
+           ;; The source of a release is two directories below the release directory.
            (fiveam:is (equal (installation--release-root packaged) release))
            (fiveam:is (string= (installation--program packaged)
                                (uiop:native-namestring (merge-pathnames "bin/autolith" release))))
-           ;; A checkout is started by the launcher it holds itself.
+           ;; A checkout is started by the launcher in the checkout.
            (fiveam:is (null (installation--release-root checkout)))
            (fiveam:is (string= (installation--program checkout)
                                (uiop:native-namestring (merge-pathnames "bin/autolith" checkout)))))

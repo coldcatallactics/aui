@@ -3,18 +3,19 @@
 ;;;; -- History Tests --
 
 (fiveam:def-suite history
-  :description "The end of a long conversation log is read without reading the rest."
+  :description "Tests for reading the end of a long conversation log without reading the rest."
   :in          aui)
 
 (fiveam:in-suite history)
 
 (-> test-write-log (pathname integer &key (:first integer) (:batch integer)) null)
 (defun test-write-log (pathname count &key (first 1) (batch 1))
-  "Write a conversation log of COUNT records numbered from FIRST at PATHNAME, in the form Autolith writes.
+  "Write a conversation log of COUNT records to PATHNAME in the format written by Autolith.
+The records are numbered from FIRST.
 
-Every record carries text with line breaks, and some of it reads like the
-start of a record, as a conversation about conversation logs does. With BATCH
-above one, that many records share each form, as a transaction writes them."
+The text of every record has line breaks. Part of the text looks like the
+start of a record. If BATCH is above one, BATCH records are written in each
+form, as in a transaction."
   (with-open-file (stream pathname :direction ':output :if-exists ':supersede :external-format ':utf-8)
     (with-standard-io-syntax
       (let ((*print-readably* nil)
@@ -36,7 +37,8 @@ above one, that many records share each form, as a transaction writes them."
 
 (-> test-read-pages (list) list)
 (defun test-read-pages (segments)
-  "Return every page of the log SEGMENTS, newest segment first, as lists of sequence numbers, newest page first."
+  "Return every page of the log SEGMENTS as a list of sequence numbers.
+SEGMENTS has the newest segment first. The newest page is first in the result."
   (let ((cursor nil)
         (pages  nil))
     (loop
@@ -54,7 +56,8 @@ above one, that many records share each form, as a transaction writes them."
       (fiveam:is (plusp (length records)))
       (fiveam:is (< (length records) 200))
       (fiveam:is (= 200 (record-sequence (first (last records)))))
-      ;; The run is contiguous: nothing was skipped and nothing read from inside a string.
+      ;; The sequence numbers are contiguous. No record was skipped,
+      ;; and no record was read from inside a string.
       (fiveam:is (equal (loop for sequence from (record-sequence (first records)) to 200 collect sequence)
                         (mapcar #'record-sequence records))))))
 

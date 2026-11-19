@@ -26,11 +26,11 @@
             "(defclass thing ()"
             "  ((slot :documentation \"A slot.\"))"
             "  (:documentation \"A thing.\"))"))
-  "A small source file with every kind of words in it.")
+  "A small source file that has comments, docstrings and strings.")
 
 (-> test-outline (proof) list)
 (defun test-outline (proof)
-  "Return PROOF's definitions as (OPERATOR NAME (KIND . TEXT) ...) lists."
+  "Return the definitions of PROOF as a list of (OPERATOR NAME (KIND . TEXT) ...) lists."
   (loop for definition in (proof-definitions proof)
         collect (list* (definition-operator definition)
                        (definition-name definition)
@@ -39,13 +39,14 @@
 
 (-> test-find-passage (proof string) passage)
 (defun test-find-passage (proof text)
-  "Return the passage of PROOF whose words are TEXT."
+  "Return the passage of PROOF that has the text TEXT."
   (or (loop for definition in (proof-definitions proof)
             thereis (find text (definition-passages definition) :key #'passage-text :test #'string=))
-      (error "No passage says ~S." text)))
+      (error "No passage has the text ~S." text)))
 
 (defmacro with-unslop-folder ((directory) &body body)
-  "Run BODY with DIRECTORY bound to a new empty folder, which is deleted afterwards with all it holds."
+  "Run BODY with DIRECTORY bound to a new empty folder.
+The folder and all files in it are deleted after BODY."
   `(let ((,directory (uiop:ensure-directory-pathname
                       (format nil "~Aunslop-test-~D-~D/" (uiop:temporary-directory) (get-universal-time)
                               (random 1000000)))))
@@ -75,7 +76,8 @@ comment."))
                          (:string . "Hello, ~A!")
                          (:comment . "behind"))
                         ("defparameter" "*limit*" (:docstring . "How many."))
-                        ;; A function's only form is what it returns, not what documents it.
+                        ;; If a string is the only form of a function,
+                        ;; the string is the return value and not a docstring.
                         ("defun" "only-string" (:string . "returned"))
                         ("defclass" "thing" (:docstring . "A slot.") (:docstring . "A thing.")))
                       (test-outline proof)))
@@ -106,23 +108,24 @@ comment."))
   (let ((proof (proof-from-text *test-source*)))
     (flet ((revised (old new)
              (proof-text (proof-revise proof (test-find-passage proof old) new))))
-      ;; A comment of more lines than before, each behind the same semicolons.
+      ;; A comment that has more lines than before gets the same semicolons in front of each line.
       (fiveam:is (search (format nil "~%;; Above~%;; the function now.~%(defun greet")
                          (revised "Above the function." (format nil "Above~%the function now."))))
-      ;; An indented one keeps its indentation, and an empty line is the semicolons alone.
+      ;; An indented comment is written at the same indentation.
+      ;; An empty line only has the semicolons.
       (fiveam:is (search (format nil "~%  ;; One.~%  ;;~%  ;; Three.~%  (format")
                          (revised "Inside." (format nil "One.  ~%~%Three."))))
-      ;; A comment behind code continues under itself.
+      ;; A comment after code is continued below the first line, at the same column.
       (let ((margin (make-string (position #\; "  (format t \"Hello, ~A!\" name)) ; behind")
                                  :initial-element #\Space)))
         (fiveam:is (search (format nil "name)) ; behind~%~A; and below~%" margin)
                            (revised "behind" (format nil "behind~%and below")))))
-      ;; A string protects its quotes and backslashes.
+      ;; Quotes and backslashes in a string are escaped.
       (fiveam:is (search "(format t \"Say \\\"hi\\\" \\\\ ~A\" name)"
                          (revised "Hello, ~A!" "Say \"hi\" \\ ~A")))
       (fiveam:is (search (format nil "  \"Say hello~%to NAME.\"~%")
                          (revised "Say hello to NAME." (format nil "Say hello~%to NAME.")))))
-    ;; The proof that was revised is as it was.
+    ;; The original proof is not changed.
     (fiveam:is (string= *test-source* (proof-text proof)))))
 
 (fiveam:test a-revised-proof-reads-back-what-was-typed
@@ -138,7 +141,7 @@ comment."))
          (new   (proof-revise proof (test-find-passage proof "Inside.") text)))
     (fiveam:is (string= (proof-skeleton proof) (proof-skeleton new)))
     (fiveam:is (string= text (passage-text (test-find-passage new text)))))
-  ;; A block comment cannot be closed from inside.
+  ;; A block comment cannot be closed by the new text.
   (let* ((proof   (proof-from-text (format nil "#| note |#~%(a)~%")))
          (passage (first (definition-passages (first (proof-definitions proof))))))
     (fiveam:is (string= " note " (passage-text passage)))
@@ -150,14 +153,15 @@ comment."))
   (let ((proof (proof-from-text *test-source*)))
     (flet ((removed (text)
              (proof-text (proof-remove proof (test-find-passage proof text)))))
-      ;; Whole lines go with a comment that stands alone on them.
+      ;; If a comment is alone on the lines, the lines are removed with it.
       (fiveam:is (search (format nil ";;;; -- Things --~%~%~%;; Above") (removed (format nil "A loose~%comment."))))
       (fiveam:is (search (format nil "\"Say hello to NAME.\"~%  (format") (removed "Inside.")))
-      ;; A comment behind code goes with the blanks before it.
+      ;; If a comment is after code, the comment is removed with the blanks before it.
       (fiveam:is (search (format nil "name))~%~%(defparameter") (removed "behind"))))
     (fiveam:is (string= (proof-skeleton proof)
                         (proof-skeleton (proof-remove proof (test-find-passage proof "Inside.")))))
-    ;; The second value is where the comment stood, and the text before it is as it was.
+    ;; The second value is the position of the removed comment.
+    ;; The text before that position is not changed.
     (let ((text (proof-text proof)))
       (multiple-value-bind (without start) (proof-remove proof (test-find-passage proof "Inside."))
         (fiveam:is (= start (1+ (position #\Newline text :end (search ";; Inside." text) :from-end t))))
@@ -179,7 +183,7 @@ comment."))
         (fiveam:is (string= (proof-digest written) (file-digest pathname)))
         (fiveam:is (string/= (proof-digest written) (proof-digest proof)))
         (fiveam:is (= mode (logand #o7777 (sb-posix:stat-mode (sb-posix:stat (uiop:native-namestring pathname))))))
-        ;; Nothing is left beside the file.
+        ;; No other file is left in the folder.
         (fiveam:is (equal '("greet.lisp") (mapcar #'file-namestring (uiop:directory-files directory))))
         ;; A file that changed since it was read is not written over.
         (let ((condition (handler-case (proof-write new proof)
@@ -187,7 +191,7 @@ comment."))
                              condition))))
           (fiveam:is (typep condition 'proof-error))
           (fiveam:is (eq ':changed (proof-error-reason condition))))
-        ;; From what it holds now it is written again.
+        ;; The written proof can be revised and written again.
         (let ((again (proof-revise written (test-find-passage written "How many at most.") "How many.")))
           (proof-write again written)
           (fiveam:is (string= *test-source* (uiop:read-file-string pathname :external-format ':utf-8))))))))
@@ -206,7 +210,8 @@ comment."))
       (fiveam:is (search "cannot be read" (proof-problem (proof-read (merge-pathnames "absent.lisp" directory))))))))
 
 (fiveam:test every-passage-of-this-program-goes-back-unchanged
-  ;; Writing a passage back with its own words changes nothing, in every file of this program.
+  ;; If a passage is written back with the same words, the file does not change.
+  ;; This is tested for every file of this program.
   (let ((files     (uiop:directory-files (asdf:system-relative-pathname :aui/unslop "src/unslop/") "*.lisp"))
         (passages  0)
         (differing nil))

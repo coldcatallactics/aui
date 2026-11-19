@@ -3,7 +3,7 @@
 ;;;; -- Transcript Tests --
 
 (fiveam:def-suite transcript
-  :description "The transcript model keeps order, identity and revisions."
+  :description "Tests for the transcript model."
   :in          aui)
 
 (fiveam:in-suite transcript)

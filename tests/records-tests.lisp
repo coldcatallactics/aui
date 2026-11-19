@@ -3,14 +3,15 @@
 ;;;; -- Record Projection Tests --
 
 (fiveam:def-suite records
-  :description "Autolith's records and live events become the entries a person reads."
+  :description "Tests for turning the records and live events of Autolith into transcript entries."
   :in          aui)
 
 (fiveam:in-suite records)
 
 (-> test-item-record (integer string) list)
 (defun test-item-record (sequence wire-json)
-  "Return a durable provider item record numbered SEQUENCE carrying WIRE-JSON."
+  "Return a durable provider item record.
+The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
   (list :provider-item :seq sequence :time 4000000000 :wire-json wire-json))
 
 (defparameter *test-history*
@@ -23,7 +24,7 @@
         (list :message :seq 6 :time 4000000002 :role :user :automatic-p t
                        :content "x" :job-completion (list :outcome :failure :job-id "job-7" :summary "exit 2"))
         (list :summary :seq 7 :time 4000000003 :through-seq 6 :content "summary"))
-  "A short durable history in the shapes Autolith writes.")
+  "A short durable history in the format written by Autolith.")
 
 (fiveam:test history-becomes-entries-in-order
   (let* ((projector (make-projector (make-transcript)))
@@ -84,7 +85,7 @@
                                              :output "no such file")))
       (fiveam:is (eq ':failed (tool-entry-status tool)))
       (fiveam:is (string= "no such file" (tool-entry-output tool))))
-    ;; Text after the call starts a new answer below it.
+    ;; Text that arrives after the call is a new answer below the call.
     (projector-apply projector '(:text :delta "It is missing."))
     (fiveam:is (= 3 (transcript-length transcript)))))
 
@@ -92,13 +93,13 @@
   (let* ((transcript (make-transcript))
          (projector  (make-projector transcript)))
     (setf (projector-boundary projector) 4)
-    ;; Already in history.
+    ;; This record is already in the history.
     (projector-apply projector (list :record :record (first *test-history*)))
     (fiveam:is (zerop (transcript-length transcript)))
-    ;; Carried by the turn's own events.
+    ;; The answer in this record is shown from the events of the turn.
     (projector-apply projector (list :record :record (fifth *test-history*)))
     (fiveam:is (zerop (transcript-length transcript)))
-    ;; A new message from the person is taken from its record.
+    ;; A new message from the person is taken from the record.
     (projector-apply projector
                      (list :record :record (list :message :seq 9 :role :user :content "And the tests?")))
     (fiveam:is (string= "And the tests?" (user-entry-text (transcript-last transcript))))))
@@ -127,9 +128,9 @@
     (let ((output (transcript-last transcript)))
       (fiveam:is (string= "(status)" (output-entry-invocation output)))
       (fiveam:is (search "model x" (output-entry-text output)))
-      ;; The NIL a printing command returns is not shown after its output.
+      ;; The NIL that is returned by a printing command is not shown after the output.
       (fiveam:is (null (search "⇒ NIL" (output-entry-text output)))))
-    ;; The next command starts its own entry.
+    ;; Output after the command has finished is a new entry.
     (projector-apply projector (list :present :text "settings"))
     (fiveam:is (= 2 (transcript-length transcript)))))
 
@@ -154,7 +155,7 @@
       (fiveam:is (string= "continuing with job results" (notice-entry-text (first entries))))
       (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
       (fiveam:is (eq ':failure (notice-entry-tone (second entries)))))
-    ;; Inside a command's output the same line stays part of the output.
+    ;; Inside the output of a command, the same line is part of the output.
     (projector-apply projector (list :present :text (format nil "* (tasks)~2%")))
     (projector-apply projector (list :present :text (format nil "∙ no jobs~%")))
     (fiveam:is (= 3 (transcript-length transcript)))
@@ -179,8 +180,8 @@
                   ("(" nil nil)))
     (destructuring-bind (text name arguments-p) case
       (multiple-value-bind (found found-arguments-p) (command-text-name text)
-        (fiveam:is (equal name found) "~S names ~S" text found)
-        (fiveam:is (eq arguments-p found-arguments-p) "~S arguments ~S" text found-arguments-p)))))
+        (fiveam:is (equal name found) "~S was read as the command name ~S" text found)
+        (fiveam:is (eq arguments-p found-arguments-p) "~S has the arguments flag ~S" text found-arguments-p)))))
 
 (fiveam:test a-stopped-turn-is-not-a-failure
   (let* ((projector (make-instance 'projector))
@@ -269,7 +270,7 @@
       (projector-apply projector
                        (list ':record
                              :record (test-item-record 9 (format nil "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"~A\"}]}" name)))))
-    ;; An answer's own record is still left to its events.
+    ;; The record of an answer is ignored. The answer is shown from the events of the turn.
     (projector-apply projector
                      (list ':record
                            :record (test-item-record 10 "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Done.\"}]}")))
@@ -304,7 +305,7 @@
                       (:syntax-parenthesis-1 . ")"))
                     (highlight--nest '((:plain . "(a (") (:syntax-string . "\"(\"") (:plain . "))"))
                                      "(a (\"(\"))")))
-  ;; Parts that do not spell the source are left alone.
+  ;; Parts that do not match the source are returned unchanged.
   (fiveam:is (equal '((:plain . "(a)"))
                     (highlight--nest '((:plain . "(a)")) "(a) ")))
   (fiveam:is (highlight--lisp-p "lisp" nil))
@@ -321,7 +322,7 @@
   (fiveam:is (eq ':mission
                  (getf (record-goal (list :goal :seq 3 :kind :mission :objective "Port it." :status :active))
                        :kind)))
-  ;; What Autolith writes when a goal is cleared states none.
+  ;; The record that Autolith writes for a cleared goal contains no goal.
   (fiveam:is (null (record-goal (list :goal :seq 10 :objective nil :status :cleared :continuations 0
                                             :created-at nil))))
   (fiveam:is (null (record-goal (list :goal :seq 11 :objective "" :status :active))))
@@ -332,7 +333,7 @@
         (late  (list :goal :seq 30 :objective "Second." :status :active))
         (other (list :message :seq 40 :role :user :content "x")))
     (fiveam:is (eq late (records-newest-goal (list early other late) nil)))
-    ;; A page of older history does not put an old goal back.
+    ;; The newer goal is kept when a page of older history is read.
     (fiveam:is (eq late (records-newest-goal (list early other) late)))
     (fiveam:is (eq late (records-newest-goal (list late) early)))
     (fiveam:is (null (records-newest-goal (list other nil) nil)))))
@@ -345,7 +346,7 @@
     (fiveam:is (eq ':mission (getf goal :kind))))
   (fiveam:is (null (portable-goal ':null)))
   (fiveam:is (null (portable-goal nil)))
-  ;; A state that names no goal differs from one that does not speak of goals.
+  ;; A state that has a goal member set to nil is different from a state without a goal member.
   (fiveam:is (portable-member-p (portable-object "goal" nil) "goal"))
   (fiveam:is (not (portable-member-p (portable-object "title" "x") "goal")))
   (fiveam:is (not (portable-member-p nil "goal"))))
@@ -363,13 +364,14 @@
     (fiveam:is (equal "grandchild" (getf (second (channel-descendants "a" rows)) :title)))
     (fiveam:is (null (channel-descendants "c" rows)))
     (fiveam:is (null (channel-descendants nil rows))))
-  ;; Channels that name each other as parents are each listed once.
+  ;; Channels that are parents of each other are listed once.
   (fiveam:is (equal '("y")
                     (mapcar (lambda (row)
                               (getf row :id))
                             (channel-descendants "x" (list (list :id "x" :parent "y")
                                                            (list :id "y" :parent "x"))))))
-  ;; Among siblings, one at work comes first and one the server does not hold last.
+  ;; Working channels are listed first among siblings.
+  ;; Channels that are absent from the server are listed last.
   (fiveam:is (equal '("busy" "under-busy" "waits" "rests" "gone")
                     (mapcar (lambda (row)
                               (getf row :id))

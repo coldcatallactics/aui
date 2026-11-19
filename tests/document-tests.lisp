@@ -3,17 +3,20 @@
 ;;;; -- Document Tests --
 
 (fiveam:def-suite document
-  :description "A document lays out what is near its view and keeps only the heights of the rest."
+  :description "Tests for the document, in which only the items near the view are laid out."
   :in          aui)
 
 (fiveam:in-suite document)
 
 (defclass test-block (flow-block)
   ()
-  (:documentation "A block of no text whose height depends on its width alone, so it is laid out without a display."))
+  (:documentation "A block without text.
+The height of the block only depends on the width.
+The block can be laid out without a display."))
 
 (defmethod block-layout ((block test-block) width)
-  "A hundred units tall at a width of four hundred, and taller as it narrows."
+  "Return a height of a hundred units at a WIDTH of four hundred.
+The height grows as WIDTH gets smaller."
   (floor 40000 width))
 
 (defmethod block-paint ((block test-block) x y)
@@ -23,16 +26,18 @@
 
 (defclass test-entry (entry)
   ()
-  (:documentation "An entry typeset as one test block."))
+  (:documentation "An entry that is typeset as one test block."))
 
 (defmethod entry-blocks ((entry test-entry) toggle)
-  "One block."
+  "Return a list of one test block."
   (declare (ignore toggle))
   (list (make-instance 'test-block)))
 
 (-> test-document (integer) document)
 (defun test-document (count)
-  "Return a document of COUNT test entries with a view four hundred units tall and a column four hundred wide, where an entry is as tall as it was taken to be."
+  "Return a document of COUNT test entries.
+The view is four hundred units tall, and the column is four hundred units wide.
+The estimated height of an entry is equal to the real height."
   (let* ((transcript               (make-transcript))
          (document                 (make-document transcript))
          (*document-item-estimate* 100))
@@ -44,7 +49,7 @@
 
 (-> test-laid-out (document) list)
 (defun test-laid-out (document)
-  "Return the indices of DOCUMENT's items that hold blocks."
+  "Return the indices of the items in DOCUMENT that have blocks."
   (loop for item across (document--items document)
         for index from 0
         when (item-blocks item)
@@ -67,7 +72,7 @@
       (fiveam:is (null (member 0 laid)))
       (fiveam:is (null (member 999 laid))))
     (fiveam:is (= 100000 (document-content-height document)))
-    ;; The view comes back to the start, and what is there is laid out again.
+    ;; Scroll back to the start. The items there are laid out again.
     (setf (document-scroll document) 0)
     (document--bring-near document)
     (fiveam:is (member 0 (test-laid-out document)))
@@ -78,11 +83,11 @@
     (setf (document-following-p document) nil
           (document-scroll document)      50000)
     (document--bring-near document)
-    ;; Half the width doubles the height of what is laid out again.
+    ;; At half the width, the items that are laid out again are twice as tall.
     (document-sync document 200)
     (document--bring-near document)
     (let ((items (document--items document)))
       (fiveam:is (= 200 (item-height (aref items 500))))
       (fiveam:is (= 100 (item-height (aref items 0))))
-      ;; The entry at the top of the view is still the one that was there.
+      ;; The same entry is at the top of the view as before.
       (fiveam:is (= (item-top (aref items 500)) (document-scroll document))))))

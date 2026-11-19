@@ -3,7 +3,7 @@
 ;;;; -- Unslop: Lexer Tests --
 
 (fiveam:def-suite unslop
-  :description "The words of Lisp source are found, changed and written back, and nothing else is."
+  :description "Tests for unslop. Only the words of the Lisp source are changed."
   :in          aui)
 
 (fiveam:in-suite unslop)
@@ -31,7 +31,7 @@
 (fiveam:test a-quote-or-a-semicolon-in-a-character-opens-nothing
   (fiveam:is (equal '((:open . "(") (:atom . "list") (:atom . "#\\\"") (:atom . "#\\;") (:atom . "#\\(") (:atom . "#\\)") (:atom . "#\\Space") (:atom . "#\\\\") (:close . ")"))
                     (test-lexemes "(list #\\\" #\\; #\\( #\\) #\\Space #\\\\)")))
-  ;; So does one between bars or behind a backslash in a symbol.
+  ;; The same is true between bars and after a backslash in a symbol.
   (fiveam:is (equal '((:atom . "|a;b \"c|") (:atom . "x\\;y") (:atom . "z"))
                     (test-lexemes "|a;b \"c| x\\;y z"))))
 

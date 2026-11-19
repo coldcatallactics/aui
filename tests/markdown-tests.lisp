@@ -3,7 +3,7 @@
 ;;;; -- Markdown Tests --
 
 (fiveam:def-suite markdown
-  :description "The Markdown that agents write is read into blocks and inline runs."
+  :description "Tests for reading Markdown into blocks and inline runs."
   :in          aui)
 
 (fiveam:in-suite markdown)
@@ -45,7 +45,7 @@
     (fiveam:is (equal (format nil "(+ 1 2)~%~%; a **comment**") (third (second blocks))))))
 
 (fiveam:test an-open-fence-is-still-code
-  ;; While an answer streams, its last code block has no closing fence yet.
+  ;; While an answer is streamed, the last code block has no closing fence yet.
   (let ((blocks (markdown-blocks (format nil "Look:~2%```~%partial"))))
     (fiveam:is (equal '(:paragraph :code) (mapcar #'first blocks)))
     (fiveam:is (equal "partial" (third (second blocks))))))
@@ -69,24 +69,25 @@
     (fiveam:is (equal '(:paragraph :item :item) (mapcar #'first hard)))))
 
 (fiveam:test text-for-a-terminal-is-shown-as-the-terminal-would
-  ;; A carriage return lets what follows overwrite the line, as git's progress does.
+  ;; The text after a carriage return is written over the line.
+  ;; The progress output of git is written this way.
   (fiveam:is (string= (format nil "Rebasing (3/3)~%done")
                       (text-clean (format nil "Rebasing (1/3)~CRebasing (2/3)~CRebasing (3/3)~%done"
                                           #\Return #\Return))))
-  ;; Colors go; a tab advances to the next multiple of eight columns.
+  ;; Colors are removed. A tab is expanded to the next multiple of eight columns.
   (fiveam:is (string= "ok  failed"
                       (text-clean (format nil "~C[32mok~C[0m  failed" (code-char 27) (code-char 27)))))
   (fiveam:is (string= "ab      c" (text-clean (format nil "ab~Cc" #\Tab))))
-  ;; Windows line endings are just line endings.
+  ;; Windows line endings are read as line endings.
   (fiveam:is (string= (format nil "a~%b") (text-clean (format nil "a~C~%b" #\Return))))
-  ;; Text without anything of the kind is returned as it is.
+  ;; Text that needs no cleaning is returned as the same string.
   (let ((plain "nothing to clean"))
     (fiveam:is (eq plain (text-clean plain)))))
 
 (fiveam:test a-long-form-is-set-out-and-keeps-its-spelling
   (let ((source "(let ((suffix (if (uiop:os-macosx-p) \"dylib\" \"so\"))) (format nil \"build/liblightfast.~A\" suffix) (list #'car '(a b) #p\"/tmp/x\" #\\( `(x ,y ,@z)))"))
     (let ((formatted (lisp-format source)))
-      ;; Several lines, every atom as it was spelled.
+      ;; The result has several lines. Every atom is spelled as in the source.
       (fiveam:is (find #\Newline formatted))
       (fiveam:is (search "uiop:os-macosx-p" formatted))
       (fiveam:is (search "#p\"/tmp/x\"" formatted))
@@ -94,7 +95,8 @@
       (fiveam:is (search "`(x ,y ,@z)" formatted))
       (fiveam:is (string= (remove-if (lambda (character) (member character '(#\Space #\Newline))) source)
                           (remove-if (lambda (character) (member character '(#\Space #\Newline))) formatted)))))
-  ;; Short forms, forms with line breaks, comments and broken forms are left alone.
+  ;; Short forms, forms with line breaks, forms with comments and broken forms
+  ;; are returned unchanged.
   (fiveam:is (string= "(+ 1 2)" (lisp-format "(+ 1 2)")))
   (let ((commented "(progn (foo) ; a comment that must stay where it is, whatever the length of the line is"))
     (fiveam:is (eq commented (lisp-format commented))))

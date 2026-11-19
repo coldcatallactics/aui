@@ -2,17 +2,17 @@
 
 ;;;; -- Painting --
 
-;;; Drawing in the theme's terms, valid only inside the stage's draw callback.
-;;; Every primitive takes its color from the ground it is drawn on unless told
-;;; otherwise: ink on paper, paper on ink. An inverted block is therefore one
-;;; fill and a rebinding, and everything drawn inside it turns with it.
+;;; Functions for drawing in the colors and faces of the theme. They are only
+;;; valid inside the draw callback of the stage. If no color is given, ink is
+;;; used on paper and paper is used on ink. An inverted block is drawn with
+;;; one fill, and everything inside it is inverted too.
 
 (defvar *on-ink-p* nil
-  "Whether drawing currently happens on an inverted, ink-filled ground.")
+  "True if the current ground is inverted and filled with ink.")
 
 (-> ink-color () list)
 (defun ink-color ()
-  "Return the color text and lines take on the current ground."
+  "Return the color of text and lines on the current ground."
   (if *on-ink-p* *paper* *ink*))
 
 (-> ground-color () list)
@@ -22,25 +22,25 @@
 
 (-> accent-color () list)
 (defun accent-color ()
-  "Return the brand green as it reads on the current ground."
+  "Return the brand green for the current ground."
   (if *on-ink-p* *green-light* *green*))
 
 (-> ground-tint (list) list)
 (defun ground-tint (color)
-  "Return COLOR as it reads on the current ground: an accent ink turns to its lighter form on an inverted one."
+  "Return COLOR for the current ground. On an inverted ground, accent inks are replaced by their lighter versions."
   (or (and *on-ink-p*
            (rest (assoc color *accents-on-ink* :test #'equal)))
       color))
 
 (-> paint--color (list) null)
 (defun paint--color (color)
-  "Make COLOR, a (RED GREEN BLUE) list, the drawing color."
+  "Set the drawing color to COLOR, which is a (RED GREEN BLUE) list."
   (lightfast:draw-color-rgb :red (first color) :green (second color) :blue (third color))
   nil)
 
 (-> paint-fill (integer integer &key (:width integer) (:height integer) (:color (or null list))) null)
 (defun paint-fill (x y &key (width 0) (height 0) color)
-  "Fill the box with COLOR, the ground's ink by default."
+  "Fill the box with COLOR. The default is the ink color of the current ground."
   (when (and (plusp width) (plusp height))
     (paint--color (or color (ink-color)))
     (lightfast:draw-filled-rect x y width height))
@@ -49,7 +49,7 @@
 (-> paint-frame
     (integer integer &key (:width integer) (:height integer) (:color (or null list)) (:dashed-p boolean)) null)
 (defun paint-frame (x y &key (width 0) (height 0) color dashed-p)
-  "Draw a hairline around the box, dashed when DASHED-P, which is how a disabled control reads."
+  "Draw a hairline around the box. The line is dashed if DASHED-P is true."
   (when (and (plusp width) (plusp height))
     (paint--color (or color (ink-color)))
     (when dashed-p
@@ -61,7 +61,7 @@
 
 (-> paint-line (integer integer &key (:x2 integer) (:y2 integer) (:color (or null list)) (:width integer)) null)
 (defun paint-line (x1 y1 &key (x2 x1) (y2 y1) color (width 0))
-  "Draw a line from X1, Y1 to X2, Y2, WIDTH units thick, a hairline by default."
+  "Draw a line from X1, Y1 to X2, Y2. The line is WIDTH units thick, and the default is a hairline."
   (paint--color (or color (ink-color)))
   (when (plusp width)
     (lightfast:draw-line-style :width width))
@@ -73,7 +73,7 @@
 (-> paint-dither
     (integer integer &key (:width integer) (:height integer) (:step integer) (:color (or null list))) null)
 (defun paint-dither (x y &key (width 0) (height 0) (step 3) color)
-  "Fill the box with one-bit dither in COLOR: STEP 3 a medium tone, 5 a light one."
+  "Fill the box with one-bit dither in COLOR. A STEP of 3 is a medium tone, and a STEP of 5 is a light tone."
   (when (and (plusp width) (plusp height))
     (let ((color (or color (ink-color))))
       (lightfast:draw-dither x y width height
@@ -81,7 +81,7 @@
   nil)
 
 (defmacro with-inversion ((x y width height) &body body)
-  "Fill the box with the ground's ink and run BODY drawing on it, so text and marks inside turn with it."
+  "Fill the box with the ink of the current ground. Run BODY with the ground inverted, so that text and marks drawn by BODY are inverted too."
   (let ((box-x (gensym "X")) (box-y (gensym "Y")) (box-w (gensym "W")) (box-h (gensym "H")))
     `(let ((,box-x ,x) (,box-y ,y) (,box-w ,width) (,box-h ,height))
        (paint-fill ,box-x ,box-y :width ,box-w :height ,box-h)
@@ -90,7 +90,7 @@
 
 (-> paint-text (string integer integer &key (:style text-style) (:color (or null list))) integer)
 (defun paint-text (text x baseline &key (style (text-style ':body)) color)
-  "Draw TEXT in STYLE with its baseline at BASELINE and its start at X, and return the X where it ends."
+  "Draw TEXT in STYLE from X on the baseline BASELINE. Returns the X where the text ends."
   (let ((width (text-width text style)))
     (when (plusp (length text))
       (let ((color (or color (text-style-color style))))
@@ -109,9 +109,9 @@
             (:color (or null list)))
     null)
 (defun paint-text-in (text style &key (x 0) (y 0) (width 0) (height 0) (align ':left) color)
-  "Draw one line of TEXT in STYLE inside the box, centered on its height and aligned :LEFT, :CENTER or :RIGHT.
+  "Draw one line of TEXT in STYLE inside the box. The text is centered vertically and aligned by ALIGN, which is :LEFT, :CENTER or :RIGHT.
 
-Text wider than the box is cut at the box's edge with an ellipsis."
+If TEXT is wider than the box, it is cut at the edge of the box and ends in an ellipsis."
   (let* ((fitted   (text-fit text style width))
          (measured (text-width fitted style))
          (start    (ecase align
@@ -129,11 +129,11 @@ Text wider than the box is cut at the box's edge with an ellipsis."
 
 (-> text--fit (string text-style integer &key (:cut function)) string)
 (defun text--fit (text style width &key cut)
-  "Return TEXT, or the longest of its cuts that fits WIDTH in STYLE.
+  "Return TEXT if it fits WIDTH in STYLE. Otherwise, return the longest cut of TEXT that fits.
 
-CUT is called with a count of characters and returns TEXT cut to that many
-with its ellipsis; a longer cut is never narrower, so the longest that fits
-is found by halving."
+CUT is a function of a character count. It returns TEXT cut to that many
+characters, with an ellipsis. Longer cuts are not narrower, so the longest
+cut that fits is found by binary search."
   (if (<= (text-width text style) width)
       text
       (let ((low  0)
@@ -147,16 +147,14 @@ is found by halving."
 
 (-> text-fit (string text-style integer) string)
 (defun text-fit (text style width)
-  "Return TEXT, or its longest beginning followed by an ellipsis that fits WIDTH in STYLE."
+  "Return TEXT if it fits WIDTH in STYLE. Otherwise, return the longest beginning of TEXT that fits, followed by an ellipsis."
   (text--fit text style width
              :cut (lambda (count)
                     (concatenate 'string (string-right-trim " " (subseq text 0 count)) "…"))))
 
 (-> text-fit-tail (string text-style integer) string)
 (defun text-fit-tail (text style width)
-  "Return TEXT, or an ellipsis followed by its longest ending that fits WIDTH in STYLE.
-
-A path says most at its end, so that is the end kept."
+  "Return TEXT if it fits WIDTH in STYLE. Otherwise, return an ellipsis followed by the longest ending of TEXT that fits."
   (text--fit text style width
              :cut (lambda (count)
                     (concatenate 'string "…" (subseq text (- (length text) count))))))
@@ -166,10 +164,9 @@ A path says most at its end, so that is the end kept."
 
 (-> paint-mark (keyword integer integer &key (:size integer) (:color (or null list))) null)
 (defun paint-mark (mark x y &key (size 14) color)
-  "Draw the small mark MARK in a SIZE by SIZE box whose top-left corner is X, Y.
+  "Draw the mark MARK in a SIZE by SIZE box. The top-left corner of the box is at X, Y.
 
-Marks are drawn from lines and polygons rather than taken from a font, so
-they look the same whatever faces the system has."
+Marks are drawn from lines and polygons, so they look the same with all system fonts."
   (let* ((color  (if color (ground-tint color) (ink-color)))
          (middle (floor size 2))
          (inset  (max 2 (floor size 5)))
@@ -221,15 +218,15 @@ they look the same whatever faces the system has."
       (:panel
        (lightfast:draw-rect left top (- right left) (- bottom top))
        (lightfast:draw-filled-rect left top (max 2 (floor (- right left) 3)) (- bottom top)))
-      ;; Three sliders across the whole box, each with its knob somewhere
-      ;; else: what is set here.
+      ;; Three sliders across the box. The knobs are at different places. The
+      ;; mark stands for settings.
       (:sliders
        (loop for row in (list (+ y (floor size 5)) (+ y middle) (- (+ y size) (floor size 5)))
              for part in '(11/16 1/4 9/16)
              do (let ((knob (+ x (round (* part size)))))
                   (lightfast:draw-filled-rect x (1- row) size 2)
                   (lightfast:draw-filled-rect (- knob 2) (- row 3) 4 6))))
-      ;; A sheet with its corner folded: a file.
+      ;; A sheet that has a folded corner. The mark stands for a file.
       (:page
        (let* ((left   (1+ left))
               (right  (1- right))
@@ -265,11 +262,15 @@ they look the same whatever faces the system has."
   nil)
 
 (defparameter *spinner-frames* 8
-  "How many positions the working mark steps through.")
+  "The number of positions of the working mark.")
 
 (-> paint-spinner (integer integer &key (:size integer) (:phase integer) (:color (or null list))) null)
 (defun paint-spinner (x y &key (size 14) (phase 0) color)
-  "Draw the working mark in a SIZE box at X, Y, as the terminal draws it: a braille cell of two columns of four dots with one dot missing, the gap running down the left column and up the right as PHASE advances."
+  "Draw the working mark in a SIZE box at X, Y.
+
+The mark is the braille cell of the terminal, which has two columns of four
+dots. One dot is missing. As PHASE advances, the gap moves down the left
+column and then up the right column."
   (let* ((color (if color (ground-tint color) (ink-color)))
          (pitch (max 3 (round size 7/2)))
          (dot   (max 2 (floor pitch 2)))

@@ -2,20 +2,21 @@
 
 ;;;; -- Paragraphs --
 
-;;; Text set in lines: runs of styled text broken at word boundaries to a
-;;; width, with the positions kept so that a point can be mapped back to a
-;;; character and a range of characters drawn selected. Everything a person
-;;; reads in the transcript is a paragraph inside some block.
+;;; Styled text broken into lines. Runs of styled text are broken at word
+;;; boundaries to fit a width. The positions of the fragments are kept, so
+;;; that a point can be mapped back to a character and a range of characters
+;;; can be drawn as selected. All text in the transcript is set in paragraphs
+;;; inside blocks.
 
 (defstruct (span (:constructor %make-span (text style link)))
-  "One run of a paragraph, TEXT set in STYLE, opening LINK when clicked."
+  "A run of a paragraph. TEXT is set in STYLE, and LINK is opened if the run is clicked."
   (text  ""  :type string)
   (style nil :type (or null text-style))
   (link  nil))
 
 (-> text--overwrite (string) string)
 (defun text--overwrite (line)
-  "Return LINE as a terminal would leave it after its carriage returns: each part written over the one before it."
+  "Return LINE as a terminal shows it after the carriage returns. Each part of LINE is written over the part before it."
   (let ((result (make-array 0 :element-type 'character :adjustable t :fill-pointer t))
         (column 0))
     (loop for character across line
@@ -32,12 +33,12 @@
 
 (-> text-clean (string) string)
 (defun text-clean (text)
-  "Return TEXT fit to be drawn: what a program wrote for a terminal, as the terminal would show it.
+  "Return TEXT as a terminal shows it.
 
-Escape sequences that color or move are dropped, a carriage return lets what
-follows overwrite the line, a tab advances to the next multiple of eight
-columns, and other control characters go. Text without any of these is
-returned as it is."
+Escape sequences for color and movement are removed. Text after a carriage
+return is written over the line. Tabs are expanded to the next multiple of
+eight columns. Other control characters are removed. TEXT is returned
+unchanged if it contains none of these."
   (if (not (find-if (lambda (character)
                       (and (< (char-code character) 32) (char/= character #\Newline)))
                     text))
@@ -50,7 +51,7 @@ returned as it is."
                    (kept   (make-string-output-stream))
                    (index  0)
                    (column 0))
-              ;; Escape sequences first, then tabs, then what remains of the control characters.
+              ;; Handle escape sequences first, then tabs, then the other control characters.
               (loop while (< index (length line))
                     do (let ((character (char line index)))
                          (cond
@@ -88,11 +89,11 @@ returned as it is."
 
 (-> make-span (string (or null text-style) &key (:link t)) span)
 (defun make-span (text style &key link)
-  "Return a span of TEXT in STYLE that opens LINK when clicked. Whatever TEXT holds that a terminal would have interpreted is resolved first, so nothing reaches the font system that it would draw over other lines."
+  "Return a span of TEXT in STYLE that opens LINK if the span is clicked. TEXT is cleaned by TEXT-CLEAN first."
   (%make-span (text-clean text) style link))
 
 (defstruct fragment
-  "A stretch of one span on one line, with where it starts, how wide it is, and where its text sits in the paragraph."
+  "A part of one span on one line. It has an X position, a width, the text, the span and the index of the text in the paragraph."
   (x     0   :type integer)
   (width 0   :type integer)
   (text  ""  :type string)
@@ -100,7 +101,7 @@ returned as it is."
   (start 0   :type integer))
 
 (defstruct text-line
-  "One laid-out line, with its top within the paragraph, its height and baseline, its fragments and its character range."
+  "A laid-out line of a paragraph. It has a top, a height, a baseline, a width, fragments and a character range."
   (y         0   :type integer)
   (height    0   :type integer)
   (baseline  0   :type integer)
@@ -114,45 +115,45 @@ returned as it is."
     :initarg       :spans
     :accessor      paragraph-spans
     :type          list
-    :documentation "The runs of the paragraph in reading order.")
+    :documentation "The spans of the paragraph in reading order.")
    (style
     :initarg       :style
     :reader        paragraph-style
     :type          text-style
-    :documentation "The base style, which sets the height of an empty line and of spans that name none.")
+    :documentation "The base style. It is used for spans that have no style and for the height of empty lines.")
    (align
     :initarg       :align
     :initform      ':left
     :reader        paragraph-align
     :type          (member :left :center :right)
-    :documentation "How lines sit within the paragraph's width.")
+    :documentation "The alignment of the lines within the width of the paragraph.")
    (wrap
     :initarg       :wrap
     :initform      ':words
     :reader        paragraph-wrap
     :type          (member :words :anywhere)
-    :documentation "Whether lines break between words, as prose does, or wherever the width runs out, as code does.")
+    :documentation "With :WORDS, lines are broken between words, as in prose. With :ANYWHERE, lines are broken where the width ends, as in code.")
    (hanging
     :initarg       :hanging
     :initform      0
     :reader        paragraph-hanging
     :type          integer
-    :documentation "How far lines after the first of each hard line are indented.")
+    :documentation "The indentation of the wrapped lines that follow the first line of each hard line.")
    (width
     :initform      -1
     :accessor      paragraph-width
     :type          integer
-    :documentation "The width the lines were last broken to, or -1 before any layout.")
+    :documentation "The width used for the last layout, or -1 before the first layout.")
    (lines
     :initform      nil
     :accessor      paragraph-lines
     :type          list
-    :documentation "The laid-out lines, top first.")
+    :documentation "The laid-out lines, from top to bottom.")
    (height
     :initform      0
     :accessor      paragraph-height
     :type          integer
-    :documentation "The height of the laid-out lines together.")
+    :documentation "The total height of the laid-out lines.")
    (extent
     :initform      0
     :accessor      paragraph-extent
@@ -162,17 +163,17 @@ returned as it is."
 
 (-> make-paragraph (list &key (:style text-style) (:align keyword) (:wrap keyword) (:hanging integer)) paragraph)
 (defun make-paragraph (spans &key (style (text-style ':body)) (align ':left) (wrap ':words) (hanging 0))
-  "Return a paragraph of SPANS set in STYLE where a span names no style of its own."
+  "Return a paragraph of SPANS. Spans without a style are set in STYLE."
   (make-instance 'paragraph :spans spans :style style :align align :wrap wrap :hanging hanging))
 
 (-> paragraph-text (paragraph) string)
 (defun paragraph-text (paragraph)
-  "Return PARAGRAPH's characters without their styles."
+  "Return the text of PARAGRAPH without the styles."
   (apply #'concatenate 'string (mapcar #'span-text (paragraph-spans paragraph))))
 
 (-> paragraph--span-style (paragraph span) text-style)
 (defun paragraph--span-style (paragraph span)
-  "Return the style SPAN is set in within PARAGRAPH."
+  "Return the style of SPAN within PARAGRAPH."
   (or (span-style span) (paragraph-style paragraph)))
 
 
@@ -180,9 +181,9 @@ returned as it is."
 
 (-> paragraph--tokens (paragraph) list)
 (defun paragraph--tokens (paragraph)
-  "Return PARAGRAPH's text as tokens (KIND TEXT SPAN START), KIND being :WORD, :SPACE or :BREAK.
+  "Return the text of PARAGRAPH as a list of tokens (KIND TEXT SPAN START). KIND is :WORD, :SPACE or :BREAK.
 
-When the paragraph wraps anywhere, every character is its own word."
+If the paragraph wraps :ANYWHERE, each character is a word."
   (let ((tokens   nil)
         (offset   0)
         (anywhere (eq (paragraph-wrap paragraph) ':anywhere)))
@@ -215,7 +216,7 @@ When the paragraph wraps anywhere, every character is its own word."
 
 (-> paragraph--split-word (string text-style integer) list)
 (defun paragraph--split-word (word style width)
-  "Return WORD cut into pieces that each fit WIDTH in STYLE, for a word longer than a whole line."
+  "Return WORD cut into pieces that fit WIDTH in STYLE."
   (let ((pieces nil)
         (start  0))
     (loop while (< start (length word))
@@ -229,7 +230,7 @@ When the paragraph wraps anywhere, every character is its own word."
 
 (-> paragraph-layout (paragraph integer) integer)
 (defun paragraph-layout (paragraph width)
-  "Break PARAGRAPH into lines no wider than WIDTH and return its height. Laying out to the same width again costs nothing."
+  "Break PARAGRAPH into lines that fit WIDTH and return the height of PARAGRAPH. If WIDTH is the width of the last layout, the last layout is kept."
   (unless (= width (paragraph-width paragraph))
     (let* ((base        (paragraph-style paragraph))
            (hanging     (paragraph-hanging paragraph))
@@ -243,7 +244,7 @@ When the paragraph wraps anywhere, every character is its own word."
                  (max 1 (- width (if continued-p hanging 0))))
 
                (add (text span start)
-                 "Extend the last fragment when it continues the same span, else begin a new one."
+                 "Extend the last fragment if TEXT continues the same span. Otherwise, start a new fragment."
                  (let* ((style    (paragraph--span-style paragraph span))
                         (previous (first fragments)))
                    (if (and previous
@@ -260,7 +261,7 @@ When the paragraph wraps anywhere, every character is its own word."
                    (setf position (+ start (length text)))))
 
                (finish (hard-p)
-                 "Close the line under way and begin the next."
+                 "Finish the current line and start the next line."
                  (let* ((ordered  (nreverse fragments))
                         (height   (reduce #'max ordered
                                           :key           (lambda (fragment)
@@ -354,14 +355,14 @@ When the paragraph wraps anywhere, every character is its own word."
 
 (-> paragraph--line-at (paragraph integer) (or null text-line))
 (defun paragraph--line-at (paragraph y)
-  "Return the line of PARAGRAPH containing the height Y, the first for a Y above and the last for one below."
+  "Return the line of PARAGRAPH at the height Y. If Y is above the paragraph, return the first line. If Y is below it, return the last line."
   (let ((lines (paragraph-lines paragraph)))
     (or (find-if (lambda (line) (< y (+ (text-line-y line) (text-line-height line)))) lines)
         (first (last lines)))))
 
 (-> paragraph-index-at (paragraph integer integer) integer)
 (defun paragraph-index-at (paragraph x y)
-  "Return the index of the character boundary of PARAGRAPH nearest the point X, Y, measured from its corner."
+  "Return the index of the character boundary of PARAGRAPH nearest to the point X, Y. The point is relative to the top-left corner of PARAGRAPH."
   (let ((line (paragraph--line-at paragraph y)))
     (if (null line)
         0
@@ -391,9 +392,9 @@ When the paragraph wraps anywhere, every character is its own word."
 (-> paragraph-paint (paragraph integer integer &key (:selection (or null cons)) (:top integer) (:bottom integer))
     null)
 (defun paragraph-paint (paragraph x y &key selection (top most-negative-fixnum) (bottom most-positive-fixnum))
-  "Draw PARAGRAPH's laid-out lines with its corner at X, Y, skipping lines outside TOP to BOTTOM.
+  "Draw the laid-out lines of PARAGRAPH. The top-left corner of PARAGRAPH is at X, Y. Lines outside the range from TOP to BOTTOM are skipped.
 
-SELECTION, a (START . END) pair of character indexes, is drawn inverted."
+SELECTION is a (START . END) pair of character indexes. The selected characters are drawn inverted."
   (dolist (line (paragraph-lines paragraph))
     (let ((line-top (+ y (text-line-y line))))
       (when (and (< line-top bottom) (> (+ line-top (text-line-height line)) top))
@@ -419,7 +420,10 @@ SELECTION, a (START . END) pair of character indexes, is drawn inverted."
 
 (-> spans (&rest t) list)
 (defun spans (&rest items)
-  "Return a list of spans from ITEMS: a string is a span in the paragraph's own style, a (TEXT STYLE) list one in STYLE, and a span stands."
+  "Return a list of spans made from ITEMS.
+
+Strings become spans in the style of the paragraph. (TEXT STYLE) lists
+become spans in STYLE. Spans are used as they are. NIL items are skipped."
   (loop for item in items
         when item
           collect (etypecase item

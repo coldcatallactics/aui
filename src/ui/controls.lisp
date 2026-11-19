@@ -2,10 +2,10 @@
 
 ;;;; -- Controls --
 
-;;; The few controls the interface draws itself: buttons, chips, badges and
-;;; list rows. Each draws on the stage being painted and declares its own
-;;; region. Hover inverts, and a primary control starts inverted, as Interlisp
-;;; Paper has it: background and text always turn together.
+;;; The controls drawn by AUI: buttons, chips, badges and window frames. They
+;;; are drawn on the stage that is being painted, and a region is declared for
+;;; each control. As in Interlisp Paper, controls are inverted under the
+;;; pointer. Primary controls are inverted until the pointer is over them.
 
 (-> paint-button
     (stage t string
@@ -17,12 +17,13 @@
 (defun paint-button (stage identifier label
                      &key (x 0) (y 0) (width 0) (height 0) action primary-p (enabled-p t) mark mark-size style
                           tooltip)
-  "Draw a button with LABEL in the box and declare its region as IDENTIFIER.
+  "Draw a button labelled LABEL in the box and declare the region IDENTIFIER for it.
 
-A primary button is filled; the pointer over a button swaps it. A button
-that is not ENABLED-P has a dashed frame and no action. MARK draws a mark
-MARK-SIZE units across before the label, or alone when LABEL is empty. Beside
-a label the mark sits on the middle of the label's letters, not of the box."
+A primary button is filled. If the pointer is over a button, the fill is
+swapped. If ENABLED-P is false, the button has a dashed frame and no action.
+If MARK is given, the mark is drawn MARK-SIZE units wide before the label, or
+alone if LABEL is empty. Next to a label, the mark is centered on the
+letters of the label."
   (let* ((style    (or style (text-style ':label-bold)))
          (hot-p    (and enabled-p (stage-hot-p stage identifier)))
          (filled-p (if primary-p (not hot-p) hot-p)))
@@ -64,26 +65,26 @@ a label the mark sits on the middle of the label's letters, not of the box."
   ((identifier
     :initarg       :identifier
     :reader        button-block-identifier
-    :documentation "Names the button's region.")
+    :documentation "The identifier used for the region of the button.")
    (label
     :initarg       :label
     :reader        button-block-label
     :type          string
-    :documentation "The words on the button.")
+    :documentation "The label of the button.")
    (action
     :initarg       :action
     :reader        button-block-action
     :type          function
-    :documentation "Called when the button is clicked."))
-  (:documentation "A button standing in the flow of a conversation, as wide as its words."))
+    :documentation "The function called if the button is clicked."))
+  (:documentation "A button in the flow of a conversation. The button is as wide as the label."))
 
 (defmethod block-layout ((block button-block) width)
-  "A button is one row high whatever the width."
+  "Return the fixed height of a button."
   (declare (ignore width))
   30)
 
 (defmethod block-paint ((block button-block) x y)
-  "Draw the button at the block's left edge, as wide as its label needs."
+  "Draw the button at the left edge of the block. The button is as wide as the label."
   (when *paint-stage*
     (let ((label (button-block-label block)))
       (paint-button *paint-stage* (button-block-identifier block) label
@@ -95,12 +96,12 @@ a label the mark sits on the middle of the label's letters, not of the box."
   nil)
 
 (defmethod block-leaves ((block button-block))
-  "A button holds no text to select."
+  "Return NIL, because a button has no selectable text."
   nil)
 
 (-> chip-width (string &key (:menu-p boolean)) integer)
 (defun chip-width (label &key menu-p)
-  "Return the width a chip showing LABEL takes."
+  "Return the width of a chip labelled LABEL."
   (+ 16 (text-width label (text-style ':meta)) (if menu-p 14 0)))
 
 (-> paint-chip
@@ -109,10 +110,10 @@ a label the mark sits on the middle of the label's letters, not of the box."
                 (:tooltip (or null string)) (:mark-color (or null list)))
     integer)
 (defun paint-chip (stage identifier label &key (x 0) (y 0) (height 24) action menu-p tooltip mark-color)
-  "Draw a chip, a small unframed label that inverts under the pointer, at X, Y and return its width.
+  "Draw a chip at X, Y and return the width of the chip. A chip is a small label without a frame. It is inverted under the pointer.
 
-MENU-P adds the small triangle that says the chip opens a menu. MARK-COLOR
-puts a dot of that color before the label."
+If MENU-P is true, a small triangle is drawn to show that the chip has a
+menu. If MARK-COLOR is given, a dot of that color is drawn before the label."
   (let* ((style (text-style ':meta))
          (dot   (if mark-color 12 0))
          (width (+ (chip-width label :menu-p menu-p) dot))
@@ -135,7 +136,7 @@ puts a dot of that color before the label."
 
 (-> paint-badge (string &key (:right integer) (:y integer) (:height integer)) integer)
 (defun paint-badge (text &key (right 0) (y 0) (height 18))
-  "Draw TEXT as a small inverted badge whose right edge is at RIGHT, and return its width."
+  "Draw TEXT as a small inverted badge and return the width of the badge. The right edge of the badge is at RIGHT."
   (let* ((style (text-style ':meta-bold))
          (width (+ 10 (text-width text style)))
          (box-h (min height 18))
@@ -146,9 +147,9 @@ puts a dot of that color before the label."
 
 (-> paint-window-frame (integer integer &key (:width integer) (:height integer) (:title (or null string))) integer)
 (defun paint-window-frame (x y &key (width 0) (height 0) title)
-  "Draw a window in the Interlisp manner: a paper box with a hairline, a dither shadow, and a black title bar when TITLE is given.
+  "Draw a window frame as in Interlisp. The frame consists of a paper box, a hairline around it and a dither shadow. If TITLE is given, a black title bar is drawn.
 
-Return the height the title bar took, zero without a title."
+Returns the height of the title bar, or zero if there is no title."
   (let ((bar (if title 28 0)))
     (paint-dither (+ x *shadow-offset*) (+ y height) :width width :height *shadow-offset*)
     (paint-dither (+ x width) (+ y *shadow-offset*) :width *shadow-offset* :height (- height *shadow-offset*))

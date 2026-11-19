@@ -20,13 +20,13 @@
   "Timeout before we try to refresh master-branch-tracking devtools (cheque)")
 
 (defun check--tool-files (root)
-  "Return the files in ROOT's checks/ directory, which define its development tools."
+  "Return the files in the checks/ directory of ROOT. The files define the development tools."
   (sort (uiop:directory-files (merge-pathnames "checks/" root))
         #'string<
         :key #'file-namestring))
 
 (defun check--tool-root (root)
-  "Return the cached qlot project for ROOT's current development tool definition."
+  "Return the directory of the cached qlot project for the current files in the checks/ directory of ROOT."
   (let ((digest (sb-md5:md5sum-string
                  (with-output-to-string (stream)
                    (dolist (file (check--tool-files root))
@@ -71,7 +71,7 @@ qlot, because it sucks, can report success after a network failure left a dist o
          (uiop:read-file-lines (merge-pathnames "qlfile" tools))))
 
 (defun check--touch (file)
-  "Create or rewrite FILE, so its write date records the current time."
+  "Create or rewrite FILE, so that the write date of FILE is the current time."
   (with-open-file (stream file :direction ':output :if-exists ':supersede)
     (write-line (file-namestring file) stream)))
 
@@ -87,7 +87,7 @@ refresh master-tracking tools if applicable, and return the setup file."
       (dolist (file (check--tool-files root))
         (uiop:copy-file file (ensure-directories-exist (merge-pathnames (file-namestring file) tools))))
       (unless (and (check--run-qlot tools) (check--tools-complete-p tools))
-        (format t "~&Installing the development tools failed; the next check starts over.~%")
+        (format t "~&Installing the development tools failed. They are installed again at the next check.~%")
         (uiop:delete-directory-tree tools :validate t)
         (uiop:quit 2))
       (check--touch installed))
@@ -97,7 +97,7 @@ refresh master-tracking tools if applicable, and return the setup file."
       (finish-output)
       (if (apply #'check--run-qlot tools *check-floating-tools*)
           (check--touch refreshed)
-          (format t "~&Refreshing the development tools failed; using the installed versions.~%")))
+          (format t "~&Refreshing the development tools failed. The installed versions are used.~%")))
     (merge-pathnames ".qlot/setup.lisp" tools)))
 
 (let ((root (uiop:pathname-parent-directory-pathname

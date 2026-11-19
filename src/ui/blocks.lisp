@@ -2,23 +2,24 @@
 
 ;;;; -- Blocks --
 
-;;; The pieces a document is stacked from: paragraphs, framed code, tables,
-;;; rows that open and close, boxes around other blocks, images and rules.
-;;; A block is laid out to a width, which fixes its height, and then painted
-;;; at a position. Blocks that hold text expose it as leaves, paragraphs with
-;;; their offsets, so the document can select across blocks.
+;;; The parts of a stacked document. There are blocks for paragraphs, framed
+;;; code, tables, rows that open and close, boxes around other blocks, images
+;;; and rules. A block is first laid out to a width. The height of the block
+;;; depends on the width. Then the block is painted at a position. The text of
+;;; a block is available as leaves, which are paragraphs and their offsets.
+;;; Leaves are used to select text across blocks.
 
 (defvar *paint-stage* nil
-  "The stage being painted, where blocks declare their pointer regions.")
+  "The stage that is being painted. Blocks declare their pointer regions on this stage.")
 
 (defvar *paint-top* most-negative-fixnum
-  "The top of what is visible; blocks skip what lies wholly above it.")
+  "The top of the visible area. Parts that lie above it are skipped.")
 
 (defvar *paint-bottom* most-positive-fixnum
-  "The bottom of what is visible; blocks skip what lies wholly below it.")
+  "The bottom of the visible area. Parts that lie below it are skipped.")
 
 (defvar *paint-selection* nil
-  "A table from paragraph to its selected (START . END) characters during a paint, or NIL.")
+  "A table of paragraphs associated with their selected (START . END) character ranges, or NIL.")
 
 (defclass flow-block ()
   ((margin-top
@@ -26,50 +27,50 @@
     :initform      0
     :accessor      block-margin-top
     :type          integer
-    :documentation "Space kept above the block.")
+    :documentation "The space above the block.")
    (margin-bottom
     :initarg       :margin-bottom
     :initform      0
     :accessor      block-margin-bottom
     :type          integer
-    :documentation "Space kept below the block.")
+    :documentation "The space below the block.")
    (height
     :initform      0
     :accessor      block-height
     :type          integer
-    :documentation "The block's height at the width it was last laid out to, without its margins.")
+    :documentation "The height of the block at the width of the last layout, without the margins.")
    (width
     :initform      0
     :accessor      block-width
     :type          integer
-    :documentation "The width the block was last laid out to."))
-  (:documentation "One piece of a stacked document."))
+    :documentation "The width of the last layout."))
+  (:documentation "A part of a stacked document."))
 
 (defgeneric block-layout (block width)
-  (:documentation "Lay BLOCK out to WIDTH, record its height, and return that height."))
+  (:documentation "Lay BLOCK out to WIDTH. Record the height of BLOCK and return it."))
 
 (defgeneric block-paint (block x y)
-  (:documentation "Draw BLOCK with its top-left corner at X, Y on the stage being painted."))
+  (:documentation "Draw BLOCK on the stage that is being painted. The top-left corner of BLOCK is at X, Y."))
 
 (defgeneric block-leaves (block)
-  (:documentation "Return BLOCK's selectable text as a list of (PARAGRAPH X Y), the offsets measured from the block's corner.")
+  (:documentation "Return the selectable text of BLOCK as a list of (PARAGRAPH X Y). The offsets are relative to the top-left corner of BLOCK.")
   (:method ((block flow-block))
-    "A block without text has no leaves."
+    "Return NIL for a block without text."
     nil))
 
 (defmethod block-layout :around ((block flow-block) width)
-  "Remember the width and the height every layout arrives at."
+  "Record the width and the height of the layout."
   (setf (block-width block)  width
         (block-height block) (call-next-method)))
 
 (-> block--selection (paragraph) (or null cons))
 (defun block--selection (paragraph)
-  "Return the selected range of PARAGRAPH in the paint under way, or NIL."
+  "Return the selected range of PARAGRAPH in the current paint, or NIL."
   (and *paint-selection* (gethash paragraph *paint-selection*)))
 
 (-> block--paint-paragraph (paragraph integer integer) null)
 (defun block--paint-paragraph (paragraph x y)
-  "Draw PARAGRAPH at X, Y with its selection, and declare a region for every link in it."
+  "Draw PARAGRAPH and the selection of PARAGRAPH at X, Y. Declare a region for each link in PARAGRAPH."
   (paragraph-paint paragraph x y
                    :selection (block--selection paragraph)
                    :top       *paint-top*
@@ -91,11 +92,11 @@
   nil)
 
 (defvar *link-handler* nil
-  "Called with a link's target when the link is clicked. The window sets it; without one a click on a link does nothing.")
+  "The function called with the target of a link if the link is clicked, or NIL. If it is NIL, clicks on links are ignored.")
 
 (-> open-link (string) null)
 (defun open-link (link)
-  "Open what LINK leads to, the way the window was told to."
+  "Open the target LINK by calling *LINK-HANDLER*."
   (when *link-handler*
     (funcall *link-handler* link))
   nil)
@@ -114,13 +115,13 @@
     :initform      0
     :reader        text-block-indent
     :type          integer
-    :documentation "How far the text is set in from the block's left edge.")
+    :documentation "The distance of the text from the left edge of the block.")
    (marker
     :initarg       :marker
     :initform      nil
     :reader        text-block-marker
-    :documentation "What hangs in the indent before the first line: a string, a mark keyword, or NIL."))
-  (:documentation "A paragraph, optionally indented behind a marker as a list item is."))
+    :documentation "The marker in the indent before the first line. It is a string, a mark keyword or NIL."))
+  (:documentation "A paragraph that can be indented after a marker, as in a list item."))
 
 (-> make-text-block (list &key (:style text-style) (:indent integer) (:marker t) (:align keyword)
                                (:margin-top integer) (:margin-bottom integer))
@@ -136,7 +137,7 @@
                  :margin-bottom margin-bottom))
 
 (defmethod block-layout ((block text-block) width)
-  "A text block is as tall as its lines."
+  "Lay out the paragraph inside the indent and return the height of the lines."
   (paragraph-layout (text-block-paragraph block) (max 1 (- width (text-block-indent block)))))
 
 (defmethod block-paint ((block text-block) x y)
@@ -160,39 +161,39 @@
     (block--paint-paragraph paragraph (+ x indent) y)))
 
 (defmethod block-leaves ((block text-block))
-  "The paragraph, set in by the indent."
+  "Return the paragraph, offset by the indent."
   (list (list (text-block-paragraph block) (text-block-indent block) 0)))
 
 
 ;;;; -- Code --
 
 (defparameter *code-padding* 12
-  "The space between a code frame and its text.")
+  "The space between the frame of a code block and the code.")
 
 (defclass code-block (flow-block)
   ((paragraph
     :initarg       :paragraph
     :reader        code-block-paragraph
     :type          paragraph
-    :documentation "The code, wrapping wherever the width runs out.")
+    :documentation "The code. Lines are broken where the width ends.")
    (label
     :initarg       :label
     :initform      nil
     :reader        code-block-label
     :type          (or null string)
-    :documentation "The words above the code, such as its language, or NIL.")
+    :documentation "The label above the code, such as the language, or NIL.")
    (identifier
     :initarg       :identifier
     :initform      (gensym "CODE")
     :reader        code-block-identifier
-    :documentation "Names the block's copy region."))
-  (:documentation "Fixed-pitch text in a hairline frame with a copy action."))
+    :documentation "The identifier used for the copy region of the block."))
+  (:documentation "Fixed-pitch text in a hairline frame. A copy action is drawn under the frame."))
 
 (-> make-code-block (string &key (:label (or null string)) (:spans (or null list)) (:margin-top integer)
                                  (:margin-bottom integer))
     code-block)
 (defun make-code-block (text &key label spans (margin-top 0) (margin-bottom 0))
-  "Return a code block of TEXT, or of the already styled SPANS, under LABEL."
+  "Return a code block of TEXT under LABEL. If styled SPANS are given, they are used instead of TEXT."
   (make-instance 'code-block
                  :paragraph     (make-paragraph (or spans (list (make-span text nil)))
                                                 :style   (text-style ':code)
@@ -204,25 +205,25 @@
 
 (-> code-block--header-height (code-block) integer)
 (defun code-block--header-height (block)
-  "Return the height of BLOCK's header row, zero when it has no label."
+  "Return the height of the header row of BLOCK, or zero if BLOCK has no label."
   (if (code-block-label block)
       (+ 6 (text-style-line-height (text-style ':meta)))
       0))
 
 (-> code-block--copy-height () integer)
 (defun code-block--copy-height ()
-  "Return the height of the row beneath a code frame that holds its copy action."
+  "Return the height of the row under a code frame that contains the copy action."
   (+ 2 (text-style-line-height (text-style ':meta))))
 
 (defmethod block-layout ((block code-block) width)
-  "The frame holds the label, when there is one, and the wrapped code; the copy action sits beneath it."
+  "Lay out the code inside the frame. The frame contains the label (if there is one) and the code. The copy action is under the frame."
   (+ (* 2 *code-padding*)
      (code-block--header-height block)
      (paragraph-layout (code-block-paragraph block) (max 1 (- width (* 2 *code-padding*))))
      (code-block--copy-height)))
 
 (defmethod block-paint ((block code-block) x y)
-  "Draw the frame, the label, the code, and the copy action under the frame's right corner."
+  "Draw the frame, the label, the code and the copy action. The copy action is under the right corner of the frame."
   (let* ((width   (block-width block))
          (meta    (text-style ':meta))
          (header  (code-block--header-height block))
@@ -257,7 +258,7 @@
                             (+ x *code-padding*) (+ y *code-padding* header))))
 
 (defmethod block-leaves ((block code-block))
-  "The code, inside the frame's padding and below its label."
+  "Return the code, offset by the padding of the frame and by the label."
   (list (list (code-block-paragraph block)
               *code-padding*
               (+ *code-padding* (code-block--header-height block)))))
@@ -270,7 +271,7 @@
     :initarg       :rows
     :reader        table-block-rows
     :type          list
-    :documentation "The rows, each a list of cell paragraphs; the first row is the header.")
+    :documentation "The rows. Each row is a list of cell paragraphs. The first row is the header.")
    (columns
     :initform      nil
     :accessor      table-block--columns
@@ -281,16 +282,16 @@
     :accessor      table-block--row-heights
     :type          list
     :documentation "The laid-out row heights."))
-  (:documentation "A grid of cells with hairlines between them."))
+  (:documentation "A grid of cells that are separated by hairlines."))
 
 (defparameter *cell-padding-x* 10
-  "Horizontal space between a table cell's edge and its text.")
+  "The horizontal space between the edge of a table cell and the text.")
 
 (defparameter *cell-padding-y* 5
-  "Vertical space between a table cell's edge and its text.")
+  "The vertical space between the edge of a table cell and the text.")
 
 (defmethod block-layout ((block table-block) width)
-  "Give each column its natural width, shrinking all in proportion when the table is too wide."
+  "Give each column the natural width. If the table is too wide, all columns are shrunk in proportion."
   (let* ((rows    (table-block-rows block))
          (count   (reduce #'max rows :key #'length :initial-value 0))
          (natural (loop for column from 0 below count
@@ -316,7 +317,7 @@
     (+ 1 (reduce #'+ heights) (length heights))))
 
 (defmethod block-paint ((block table-block) x y)
-  "Draw every cell's text and the grid."
+  "Draw the text of all cells and the grid."
   (let* ((columns (table-block--columns block))
          (padding (* 2 *cell-padding-x*))
          (width   (+ 1 (reduce #'+ columns) (* (length columns) (1+ padding))))
@@ -338,7 +339,7 @@
         (paint-line line-x y :x2 line-x :y2 row-y)))))
 
 (defmethod block-leaves ((block table-block))
-  "Every cell, at its place in the grid."
+  "Return all cells at their places in the grid."
   (let ((leaves  nil)
         (padding (* 2 *cell-padding-x*))
         (row-y   0))
@@ -361,16 +362,16 @@
     :initform      nil
     :reader        rule-block-label
     :type          (or null string)
-    :documentation "Words centered on the rule, or NIL for a bare one."))
-  (:documentation "A band of dither across the column, with words in its middle when it marks something."))
+    :documentation "The label centered on the rule, or NIL for a rule without a label."))
+  (:documentation "A band of dither across the column. A label can be centered on the band."))
 
 (defmethod block-layout ((block rule-block) width)
-  "A rule is one small line high."
+  "Return the height of one line in the meta style."
   (declare (ignore width))
   (text-style-line-height (text-style ':meta)))
 
 (defmethod block-paint ((block rule-block) x y)
-  "Draw the dither band and the label, in bold, on a strip of paper."
+  "Draw the dither band. Draw the label in bold on a strip of the ground."
   (let* ((style  (text-style ':meta-bold))
          (height (block-height block))
          (width  (block-width block))
@@ -390,52 +391,52 @@
   ((identifier
     :initarg       :identifier
     :reader        row-block-identifier
-    :documentation "Names the row's region.")
+    :documentation "The identifier used for the region of the row.")
    (mark
     :initarg       :mark
     :initform      nil
     :accessor      row-block-mark
-    :documentation "The mark before the title: a mark keyword, :SPINNER, or NIL.")
+    :documentation "The mark before the title. It is a mark keyword, :SPINNER or NIL.")
    (mark-color
     :initarg       :mark-color
     :initform      nil
     :accessor      row-block-mark-color
     :type          (or null list)
-    :documentation "The mark's color, the ground's ink when NIL.")
+    :documentation "The color of the mark. If it is NIL, the ink of the ground is used.")
    (title
     :initarg       :title
     :reader        row-block-title
     :type          list
-    :documentation "The spans of the row's one line.")
+    :documentation "The spans of the single line of the row.")
    (trailing
     :initarg       :trailing
     :initform      nil
     :reader        row-block-trailing
     :type          (or null string)
-    :documentation "Small text at the row's right edge, such as a duration.")
+    :documentation "Small text at the right edge of the row, such as a duration.")
    (action
     :initarg       :action
     :initform      nil
     :reader        row-block-action
     :type          (or null function)
-    :documentation "Called when the row is clicked.")
+    :documentation "The function called if the row is clicked.")
    (style
     :initarg       :style
     :reader        row-block-style
     :type          text-style
-    :documentation "The style of the title where a span names none."))
-  (:documentation "One line that summarizes something and responds to a click, as a tool call does."))
+    :documentation "The style of the title for spans without a style."))
+  (:documentation "A single line that summarizes something and responds to clicks, such as a tool call."))
 
 (defparameter *row-mark-size* 14
-  "The side of the mark at the start of a row.")
+  "The side length of the mark at the start of a row.")
 
 (defmethod block-layout ((block row-block) width)
-  "A row is one line of its style high."
+  "Return the height of one line in the style of the row."
   (declare (ignore width))
   (+ 4 (text-style-line-height (row-block-style block))))
 
 (defmethod block-paint ((block row-block) x y)
-  "Draw the mark, the title cut to fit, and the trailing text; invert the row under the pointer."
+  "Draw the mark, the title and the trailing text. The title is cut to fit. The row is inverted if the pointer is over it."
   (let* ((stage    *paint-stage*)
          (style    (row-block-style block))
          (meta     (text-style ':meta))
@@ -487,67 +488,67 @@
     :initarg       :children
     :accessor      box-block-children
     :type          list
-    :documentation "The blocks inside the box, top first.")
+    :documentation "The blocks inside the box, from top to bottom.")
    (padding-x
     :initarg       :padding-x
     :initform      14
     :reader        box-block-padding-x
     :type          integer
-    :documentation "Space between the box's sides and its children.")
+    :documentation "The space between the sides of the box and the children.")
    (padding-y
     :initarg       :padding-y
     :initform      10
     :reader        box-block-padding-y
     :type          integer
-    :documentation "Space between the box's top and bottom and its children.")
+    :documentation "The space between the top and bottom of the box and the children.")
    (frame-p
     :initarg       :frame-p
     :initform      t
     :reader        box-block-frame-p
     :type          boolean
-    :documentation "Whether a hairline is drawn around the box.")
+    :documentation "True if a hairline is drawn around the box.")
    (fill
     :initarg       :fill
     :initform      ':none
     :reader        box-block-fill
     :type          (member :none :ink :quiet)
-    :documentation "What fills the box: nothing, ink with its content inverted, or light dither.")
+    :documentation "The fill of the box. :NONE is no fill, :INK is ink with inverted content, and :QUIET is light dither.")
    (shadow-p
     :initarg       :shadow-p
     :initform      nil
     :reader        box-block-shadow-p
     :type          boolean
-    :documentation "Whether a dither band sits below and right of the box, as under a window.")
+    :documentation "True if a dither shadow is drawn below and to the right of the box.")
    (align
     :initarg       :align
     :initform      ':stretch
     :reader        box-block-align
     :type          (member :stretch :left :right)
-    :documentation "Whether the box takes the whole width or hugs its content at one side.")
+    :documentation "With :STRETCH, the box fills the whole width. With :LEFT or :RIGHT, the box is shrunk to the content at that side.")
    (fraction
     :initarg       :fraction
     :initform      1
     :reader        box-block-fraction
     :type          real
-    :documentation "The most of the available width a hugging box may take.")
+    :documentation "The largest fraction of the available width for a box that is shrunk to the content.")
    (offset
     :initform      0
     :accessor      box-block--offset
     :type          integer
-    :documentation "Where the laid-out box starts within the available width.")
+    :documentation "The start of the laid-out box within the available width.")
    (inner-width
     :initform      0
     :accessor      box-block--inner-width
     :type          integer
-    :documentation "The width the children were laid out to."))
-  (:documentation "A frame, a fill or just padding around other blocks."))
+    :documentation "The width used for the layout of the children."))
+  (:documentation "A frame, a fill or padding around other blocks."))
 
 (defparameter *shadow-offset* 8
-  "How far a box's dither shadow sits below and right of it.")
+  "The offset of the dither shadow of a box, below and to the right of the box.")
 
 (-> box-block--stack-height (list) integer)
 (defun box-block--stack-height (children)
-  "Return the height of CHILDREN stacked with their margins, adjoining margins collapsed to the larger."
+  "Return the height of CHILDREN stacked with their margins. Of two adjoining margins, only the larger one is used."
   (let ((height   0)
         (previous 0))
     (loop for child in children
@@ -558,7 +559,7 @@
     height))
 
 (defmethod block-layout ((block box-block) width)
-  "Lay the children out inside the padding; a hugging box shrinks to its widest line of text."
+  "Lay the children out inside the padding. A box with :LEFT or :RIGHT alignment is shrunk to the widest line of text."
   (let* ((children  (box-block-children block))
          (padding   (* 2 (box-block-padding-x block)))
          (shadow    (if (box-block-shadow-p block) *shadow-offset* 0))
@@ -584,7 +585,7 @@
 
 (-> box-block--child-positions (box-block) list)
 (defun box-block--child-positions (block)
-  "Return (CHILD X Y) for each of BLOCK's children, measured from the block's corner."
+  "Return a list of (CHILD X Y) for the children of BLOCK. The positions are relative to the top-left corner of BLOCK."
   (let ((positions nil)
         (child-x   (+ (box-block--offset block) (box-block-padding-x block)))
         (child-y   (box-block-padding-y block))
@@ -598,7 +599,7 @@
     (nreverse positions)))
 
 (defmethod block-paint ((block box-block) x y)
-  "Draw the shadow, the fill and frame, then the children on the right ground."
+  "Draw the shadow, the fill and the frame. Then draw the children on the correct ground."
   (let* ((shadow (if (box-block-shadow-p block) *shadow-offset* 0))
          (box-x  (+ x (box-block--offset block)))
          (box-w  (+ (box-block--inner-width block) (* 2 (box-block-padding-x block))))
@@ -624,7 +625,7 @@
       (paint-frame box-x y :width box-w :height box-h))))
 
 (defmethod block-leaves ((block box-block))
-  "The leaves of every child, moved to its place in the box."
+  "Return the leaves of all children, offset by the positions of the children in the box."
   (loop for (child child-x child-y) in (box-block--child-positions block)
         append (loop for (paragraph leaf-x leaf-y) in (block-leaves child)
                      collect (list paragraph (+ child-x leaf-x) (+ child-y leaf-y)))))
@@ -633,17 +634,17 @@
 ;;;; -- Image --
 
 (defparameter *image-limit* 24
-  "How many loaded pictures are kept; the one drawn longest ago is given back first.")
+  "The number of loaded images that are kept. The least recently used image is released first.")
 
 (defvar *images* nil
-  "The loaded pictures, the one used last first, each as (NAMESTRING . HANDLE), the handle NIL for a file that cannot be read.")
+  "A list of the loaded images as (NAMESTRING . HANDLE) pairs. The most recently used image is first. The handle is NIL for a file that cannot be read.")
 
 (-> image-handle (string) t)
 (defun image-handle (pathname)
-  "Return the loaded picture of the file PATHNAME, or NIL when it cannot be read.
+  "Return the loaded image of the file PATHNAME, or NIL if the file cannot be read.
 
-A picture is loaded once however many blocks show it, and given back when
-more than the limit are loaded, so a long conversation holds few."
+Each image is loaded once. If more than *IMAGE-LIMIT* images are loaded, the
+least recently used images are released."
   (let ((known (assoc pathname *images* :test #'string=)))
     (if known
         (setf *images* (cons known (delete known *images* :test #'eq)))
@@ -656,7 +657,7 @@ more than the limit are loaded, so a long conversation holds few."
 
 (-> images--release (list) null)
 (defun images--release (images)
-  "Give the pictures in IMAGES back."
+  "Release the images in IMAGES."
   (loop for (nil . handle) in images
         when handle
           do (lightfast:release-image handle))
@@ -664,7 +665,7 @@ more than the limit are loaded, so a long conversation holds few."
 
 (-> images-forget () null)
 (defun images-forget ()
-  "Give every loaded picture back, as when the window leaves the conversation that showed them."
+  "Release all loaded images."
   (images--release (shiftf *images* nil)))
 
 (defclass image-block (flow-block)
@@ -677,14 +678,14 @@ more than the limit are loaded, so a long conversation holds few."
     :initform      nil
     :accessor      image-block--extent
     :type          (or null cons)
-    :documentation "The (WIDTH . HEIGHT) the image is drawn at, or NIL when the file cannot be read."))
-  (:documentation "A picture, scaled down to fit the column."))
+    :documentation "The (WIDTH . HEIGHT) of the drawn image, or NIL if the file cannot be read."))
+  (:documentation "An image, scaled down to fit the column."))
 
 (defparameter *image-maximum-height* 320
-  "The tallest an inline picture is drawn.")
+  "The maximum height of an inline image.")
 
 (defmethod block-layout ((block image-block) width)
-  "Scale the picture to fit the width and the height limit, keeping its shape."
+  "Scale the image to fit the width and the maximum height. The aspect ratio is kept."
   (let ((image (image-handle (image-block-pathname block))))
     (if (null image)
         (progn
@@ -698,7 +699,7 @@ more than the limit are loaded, so a long conversation holds few."
             (+ drawn-height 2))))))
 
 (defmethod block-paint ((block image-block) x y)
-  "Draw the picture in a hairline frame, or the file's name when it cannot be shown."
+  "Draw the image in a hairline frame. If the image cannot be shown, draw the file name."
   (let* ((extent (image-block--extent block))
          (image  (and extent (image-handle (image-block-pathname block)))))
     (if image

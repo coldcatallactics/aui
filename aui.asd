@@ -1,12 +1,11 @@
 ;;;; -- AUI Systems --
 
-;;; The toolkit is what draws: the faces, the stage, paragraphs, blocks and
-;;; controls, with the preferences a window keeps. It names nothing of
-;;; Autolith, so a program that only needs a window loads it alone. AUI is
-;;; the client of Autolith built on it, and unslop is a second program on it.
+;;; The toolkit contains the faces, the stage, paragraphs, blocks, controls
+;;; and the preferences of a window. It does not use Autolith. AUI and
+;;; unslop are two programs built on the toolkit.
 
 (asdf:defsystem #:aui/toolkit
-  :description "What AUI draws its windows with: faces, a stage, paragraphs, blocks and controls on Lightfast."
+  :description "The toolkit used to draw the windows of AUI, built on Lightfast."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:lightfast
@@ -87,11 +86,11 @@
      (:file "main"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
-;;; Unslop is a second program on the toolkit: a window for the words of a
-;;; Common Lisp checkout. It loads nothing of Autolith.
+;;; Unslop is a second program built on the toolkit. It shows the words of a
+;;; Common Lisp checkout. It does not use Autolith.
 
 (asdf:defsystem #:aui/unslop
-  :description "A window for editing the comments, strings and docstrings of a Common Lisp checkout."
+  :description "A program for editing the comments, strings and docstrings of a Common Lisp checkout."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:aui/toolkit
@@ -114,7 +113,7 @@
        (:file "unslop")))))))
 
 (asdf:defsystem #:aui/test-support
-  :description "The suite every AUI test belongs to and the function that runs it."
+  :description "The AUI test suite and the function used to run it."
   :depends-on  (#:aui/toolkit
                 #:fiveam)
   :serial      t
@@ -125,7 +124,7 @@
     ((:file "suite")))))
 
 (asdf:defsystem #:aui/unslop/tests
-  :description "Tests for unslop, run without a display."
+  :description "Tests for unslop"
   :depends-on  (#:aui/unslop
                 #:aui/test-support)
   :serial      t

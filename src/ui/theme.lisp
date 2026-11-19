@@ -2,37 +2,38 @@
 
 ;;;; -- Theme --
 
-;;; The visual vocabulary: one paper ground, black ink, a serif for what is
-;;; said and a typewriter face for what the interface says about it. After
-;;; Interlisp Paper and the Autolith site: inversion instead of grey, dither
-;;; as the only in-between tone, hairlines, no rounded corners. A few accent
-;;; inks say what a thing is, as the terminal's colors do: green for what is
-;;; alive or went well, red for what failed, amber for tools and warnings,
-;;; blue for code, links and the step in hand, plum for the words that define.
+;;; The colors and faces of AUI. The look follows Interlisp Paper and the
+;;; Autolith site. There is one paper ground and black ink. Content is set in
+;;; a serif, and the interface is set in a typewriter face. Selection is shown
+;;; by inversion, and dither is the only tone between paper and ink. Lines are
+;;; hairlines, and corners are square. Accent inks are used for kinds of
+;;; things, as in the terminal: green for what is alive or went well, red for
+;;; what failed, amber for tools and warnings, blue for code, links and the
+;;; step in hand, and plum for defining words in code.
 
 (defparameter *paper* '(255 254 250)
-  "The one ground color.")
+  "The color of the ground.")
 
 (defparameter *ink* '(0 0 0)
-  "The one foreground color.")
+  "The color of the foreground.")
 
 (defparameter *green* '(21 121 95)
-  "The brand green as it reads on paper: what is working, live or accepted.")
+  "The brand green on paper. It is used for what is working, live or accepted.")
 
 (defparameter *green-light* '(63 182 139)
-  "The brand green as it reads on ink.")
+  "The brand green on ink.")
 
 (defparameter *red* '(138 28 28)
-  "The mark of failure and of the destructive choice.")
+  "The ink used for failures and for destructive choices.")
 
 (defparameter *amber* '(140 84 0)
-  "The ink of tools and of what asks for attention without having failed.")
+  "The ink used for tools and for warnings.")
 
 (defparameter *blue* '(22 72 148)
-  "The ink of code among prose, of links and of the step in hand.")
+  "The ink used for code among prose, for links and for the step in hand.")
 
 (defparameter *plum* '(112 38 118)
-  "The ink of the words that define, in code.")
+  "The ink used for defining words in code.")
 
 (defparameter *accents-on-ink*
   '(((21 121 95) . (63 182 139))
@@ -40,15 +41,15 @@
     ((140 84 0) . (244 196 96))
     ((22 72 148) . (150 196 252))
     ((112 38 118) . (226 168 232)))
-  "Each accent ink as it reads on an inverted ground.")
+  "A list of all accent inks associated with their lighter versions for an inverted ground.")
 
 (defparameter *serif-families*
   '("Times New Roman MT Std" "Times New Roman" "Tinos" "Liberation Serif" "Nimbus Roman" "DejaVu Serif")
-  "The content voice, in order of preference.")
+  "The serif families used for content, in order of preference.")
 
 (defparameter *mono-families*
   '("CMU Typewriter Text" "Courier Prime" "Courier New" "Menlo" "DejaVu Sans Mono")
-  "The interface voice and the face of code, in order of preference.")
+  "The typewriter families used for the interface and for code, in order of preference.")
 
 (defparameter *type-scale*
   '(:display   (:serif-bold 40 44)
@@ -66,27 +67,27 @@
     :label-bold (:mono-bold 14 20)
     :meta      (:mono 13 18)
     :meta-bold (:mono-bold 13 18))
-  "Each named text role as its face, its size and the height of its line, in FLTK units.")
+  "A property list of all text roles associated with their face, size and line height in FLTK units.")
 
 (defvar *fonts* nil
-  "The loaded font numbers as a property list keyed by face, set by THEME-INSTALL.")
+  "A property list of all faces associated with their loaded font numbers.")
 
 (define-condition theme-error (error)
   ((message
     :initarg       :message
     :reader        theme-error-message
     :type          string
-    :documentation "What about the theme could not be used."))
+    :documentation "The description of the problem with the theme."))
   (:report (lambda (condition stream)
              (write-string (theme-error-message condition) stream)))
-  (:documentation "The theme was asked for something it does not have."))
+  (:documentation "The condition signalled if a face or a text role is missing from the theme."))
 
 (-> theme--family-installed-p (string list) boolean)
 (defun theme--family-installed-p (family installed)
-  "Return T when the INSTALLED face names include FAMILY itself or one of its styles.
+  "Return T if the INSTALLED face names contain FAMILY or a style of FAMILY.
 
-Font systems disagree on what the regular face is called: the family alone,
-or the family followed by a style word."
+On some font systems, the name of the regular face is the family alone. On
+others, it is the family followed by a style word."
   (let ((prefix (format nil "~A " family)))
     (and (find-if (lambda (name)
                     (or (string-equal family name)
@@ -98,13 +99,13 @@ or the family followed by a style word."
 
 (-> theme--family (list list) string)
 (defun theme--family (candidates installed)
-  "Return the first of CANDIDATES among the INSTALLED face names, or the first candidate when none is."
+  "Return the first family of CANDIDATES that is in the INSTALLED face names. If none are installed, return the first candidate."
   (or (find-if (lambda (family) (theme--family-installed-p family installed)) candidates)
       (first candidates)))
 
 (-> theme--face-name (string keyword list) string)
 (defun theme--face-name (family style installed)
-  "Return the name the font system gives STYLE of FAMILY, among the INSTALLED faces when it is listed."
+  "Return the name of the face of FAMILY in STYLE. A name from the INSTALLED faces is preferred."
   (let ((names (ecase style
                  (:regular
                   (list family (format nil "~A Regular" family)))
@@ -121,15 +122,11 @@ or the family followed by a style word."
         (first names))))
 
 (defparameter *bundled-mono-family* "CMU Typewriter Text"
-  "The family of the typewriter face AUI ships with.")
+  "The family of the typewriter face that is bundled with AUI.")
 
 (-> theme--register-bundled-fonts () boolean)
 (defun theme--register-bundled-fonts ()
-  "Make the typefaces AUI ships with available to this process, and return whether the font system took them all.
-
-The typewriter face is then the same on every machine. A face that cannot
-be registered is left to the system's own copy or to the next family in the
-list."
+  "Register the fonts bundled with AUI for this process. Returns T if all fonts were registered."
   (let ((files (uiop:directory-files (asdf:system-relative-pathname :aui "assets/fonts/") "*.ttf")))
     (and files
          (handler-case (values (lightfast:register-font-files (mapcar #'uiop:native-namestring files)))
@@ -139,18 +136,16 @@ list."
 
 (-> theme-install () null)
 (defun theme-install ()
-  "Load the faces and make every widget created afterwards flat, on paper, in ink.
-
-Call once on the interface thread before any window exists."
+  "Load the faces. Make all widgets created afterwards flat, with a paper ground and ink."
   (let* ((bundled-p (theme--register-bundled-fonts))
          (installed (lightfast:system-font-names))
          (serif     (theme--family *serif-families* installed))
-         ;; A face just registered is there whatever the system's list calls it.
+         ;; A registered face is available by the family name, whatever the system list contains.
          (mono      (if bundled-p
                         *bundled-mono-family*
                         (theme--family *mono-families* installed))))
-    ;; FLTK's Cairo driver draws a face with a line gap above its baseline;
-    ;; the corrected copies sit where every other face does.
+    ;; The Cairo driver of FLTK draws these faces with a line gap above the
+    ;; baseline. The corrected copies are drawn at the same height as other faces.
     (lightfast:correct-font-baselines (list serif mono))
     (flet ((face (family style)
              (lightfast:load-font (theme--face-name family style installed))))
@@ -177,13 +172,13 @@ Call once on the interface thread before any window exists."
 (defun theme-font (face)
   "Return the font number loaded for FACE, such as :SERIF-BOLD or :MONO."
   (or (getf *fonts* face)
-      (error 'theme-error :message (format nil "Face ~S is not loaded; call THEME-INSTALL first." face))))
+      (error 'theme-error :message (format nil "Face ~S is not loaded. Call THEME-INSTALL first." face))))
 
 
 ;;;; -- Text Styles --
 
 (defstruct (text-style (:constructor %make-text-style))
-  "How a run of text is set, as its face and size, the height of its line, and its marks."
+  "The face, size, line height, color and marks of a run of text."
   (face        ':serif :type keyword)
   (size        19      :type integer)
   (line-height 29      :type integer)
@@ -195,13 +190,13 @@ Call once on the interface thread before any window exists."
                              (:strike-p boolean))
     text-style)
 (defun text-style (role &key face color underline-p strike-p)
-  "Return the style of the text ROLE from the type scale, with FACE, COLOR and marks overriding its own.
+  "Return the style of the text role ROLE from the type scale. FACE, COLOR,
+UNDERLINE-P and STRIKE-P replace the values of the role.
 
-A NIL color means the ink of wherever the text is drawn, so the same style
-reads on paper and inverts on ink."
+A NIL COLOR means the foreground color of the place where the text is drawn."
   (let ((entry (getf *type-scale* role)))
     (unless entry
-      (error 'theme-error :message (format nil "No text role ~S in the type scale." role)))
+      (error 'theme-error :message (format nil "The type scale does not contain the text role ~S." role)))
     (destructuring-bind (role-face size line-height) entry
       (%make-text-style :face        (or face role-face)
                         :size        size
@@ -212,7 +207,7 @@ reads on paper and inverts on ink."
 
 (-> face-variant (keyword &key (:bold-p boolean) (:italic-p boolean)) keyword)
 (defun face-variant (face &key bold-p italic-p)
-  "Return the face of FACE's family that is bold when BOLD-P and italic when ITALIC-P."
+  "Return the face in the family of FACE that is bold if BOLD-P is true and italic if ITALIC-P is true."
   (let ((mono-p (member face '(:mono :mono-bold :mono-italic :mono-bold-italic))))
     (cond
       ((and bold-p italic-p)
@@ -228,20 +223,20 @@ reads on paper and inverts on ink."
 ;;;; -- Measurement --
 
 (defparameter *text-width-limit* 20000
-  "How many measured strings one face and size keeps before it forgets them all and measures afresh.")
+  "The number of widths cached for one face and size. The cache is cleared if the number is reached.")
 
 (defvar *text-widths* (make-hash-table :test #'equal)
-  "The measured width of each string by face and size, so wrapping a paragraph measures each word once.")
+  "A table of the cached widths of strings, keyed by face and size.")
 
 (defvar *face-metrics* (make-hash-table :test #'equal)
-  "The (HEIGHT . DESCENT) of each face and size.")
+  "A table of the (HEIGHT . DESCENT) of faces, keyed by face and size.")
 
 (-> text-measure (string text-style) integer)
 (defun text-measure (text style)
-  "Return the advance width of TEXT set in STYLE, measured now and not remembered.
+  "Measure the advance width of TEXT in STYLE and return it.
 
-It is for text that is measured once, such as a line as it grows or a label
-cut to fit; `text-width' is for the words that come again and again."
+The width is measured each time. Use `text-width' for words that are
+measured often, because it caches the widths."
   (if (zerop (length text))
       0
       (values (lightfast:measure-text text
@@ -250,7 +245,7 @@ cut to fit; `text-width' is for the words that come again and again."
 
 (-> text-width (string text-style) integer)
 (defun text-width (text style)
-  "Return the advance width of TEXT set in STYLE, in FLTK units, remembering it for the next time."
+  "Return the advance width of TEXT in STYLE in FLTK units. The width is cached."
   (if (zerop (length text))
       0
       (let* ((key   (cons (text-style-face style) (text-style-size style)))
@@ -264,7 +259,7 @@ cut to fit; `text-width' is for the words that come again and again."
 
 (-> text-metrics (text-style) (values integer integer))
 (defun text-metrics (style)
-  "Return the ascent and descent of STYLE's face at its size, as two values."
+  "Return the ascent and the descent of the face of STYLE at the size of STYLE, as two values."
   (let* ((key     (cons (text-style-face style) (text-style-size style)))
          (metrics (or (gethash key *face-metrics*)
                       (setf (gethash key *face-metrics*)
@@ -278,6 +273,6 @@ cut to fit; `text-width' is for the words that come again and again."
 
 (-> text-baseline (text-style) integer)
 (defun text-baseline (style)
-  "Return how far below the top of its line STYLE's baseline sits, the face centered in the line's height."
+  "Return the distance from the top of the line to the baseline of STYLE. The face is centered in the line height."
   (multiple-value-bind (ascent descent) (text-metrics style)
     (+ (floor (- (text-style-line-height style) (+ ascent descent)) 2) ascent)))

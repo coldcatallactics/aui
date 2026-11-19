@@ -2,15 +2,15 @@
 
 ;;;; -- Stage --
 
-;;; The window's one drawing surface. Everything AUI shows is drawn here by
-;;; its own code; FLTK contributes only the few native fields a person types
-;;; into, laid on top. While it draws, a pane declares the regions that
-;;; respond to the pointer; the stage keeps them from one drawing to the
-;;; next, finds the region under the pointer, and tells it about clicks,
-;;; drags and the wheel. Nothing is retained but that list.
+;;; The single drawing surface of a window. Everything in the window is drawn
+;;; here by AUI. The only FLTK widgets are the text fields that a person types
+;;; into. They lie on top of the stage. Panes declare the regions that respond
+;;; to the pointer while they draw. Only the regions of the last drawing are
+;;; kept. Clicks, drags and wheel steps are passed to the region under the
+;;; pointer.
 
 (defstruct region
-  "A rectangle of the stage that responds to the pointer, declared while drawing."
+  "A rectangle of the stage that responds to the pointer."
   (identifier nil)
   (x          0   :type integer)
   (y          0   :type integer)
@@ -27,7 +27,7 @@
   ((window
     :initarg       :window
     :reader        stage-window
-    :documentation "The window the stage fills.")
+    :documentation "The window filled by the stage.")
    (canvas
     :initform      nil
     :accessor      stage-canvas
@@ -36,39 +36,39 @@
     :initform      0
     :accessor      stage-width
     :type          integer
-    :documentation "The stage's current width in FLTK units.")
+    :documentation "The current width of the stage in FLTK units.")
    (height
     :initform      0
     :accessor      stage-height
     :type          integer
-    :documentation "The stage's current height in FLTK units.")
+    :documentation "The current height of the stage in FLTK units.")
    (painter
     :initarg       :painter
     :accessor      stage-painter
     :type          function
-    :documentation "Called with the stage to draw everything and declare its regions.")
+    :documentation "The function that draws the stage and declares the regions. It is called with the stage.")
    (key-handler
     :initarg       :key-handler
     :initform      nil
     :accessor      stage-key-handler
     :type          (or null function)
-    :documentation "Called with a key event when the stage has the keyboard; returns true when it used the key.")
+    :documentation "The function called with a key event if the stage has the keyboard focus. It returns true if the key was handled.")
    (drop-handler
     :initarg       :drop-handler
     :initform      nil
     :accessor      stage-drop-handler
     :type          (or null function)
-    :documentation "Called with what was dropped on the stage: the dragged text, or file names one to a line.")
+    :documentation "The function called with the text dropped on the stage. The text is the dragged text or file names, one on each line.")
    (regions
     :initform      nil
     :accessor      stage--regions
     :type          list
-    :documentation "The regions declared by the last drawing, topmost first.")
+    :documentation "The regions declared during the last drawing. The topmost region is first.")
    (drawing
     :initform      nil
     :accessor      stage--drawing
     :type          list
-    :documentation "The regions being declared by the drawing under way.")
+    :documentation "The regions declared so far during the current drawing.")
    (hot
     :initform      nil
     :accessor      stage-hot
@@ -76,57 +76,54 @@
    (active
     :initform      nil
     :accessor      stage-active
-    :documentation "The identifier of the region the pointer was pressed in, until release.")
+    :documentation "The identifier of the region where a pointer button was pressed, until the button is released.")
    (pointer-x
     :initform      -1
     :accessor      stage-pointer-x
     :type          integer
-    :documentation "The pointer's last known X, or -1 when it is outside.")
+    :documentation "The last known X of the pointer, or -1 if the pointer is outside the stage.")
    (pointer-y
     :initform      -1
     :accessor      stage-pointer-y
     :type          integer
-    :documentation "The pointer's last known Y, or -1 when it is outside.")
+    :documentation "The last known Y of the pointer, or -1 if the pointer is outside the stage.")
    (cursor
     :initform      ':default
     :accessor      stage--cursor
     :type          keyword
-    :documentation "The cursor shape last set.")
+    :documentation "The cursor shape that was set last.")
    (dirty-p
     :initform      t
     :accessor      stage-dirty-p
     :type          boolean
-    :documentation "Whether a redraw was asked for and not yet handed to FLTK.")
+    :documentation "True if a redraw was requested and is not yet passed to FLTK.")
    (natives
     :initform      nil
     :accessor      stage-natives
     :type          list
-    :documentation "The native widgets lying over the canvas, redrawn after it so its paint never covers them.")
+    :documentation "The native widgets that lie over the canvas. They are redrawn after the canvas, so that the canvas does not cover them.")
    (animating-p
     :initform      nil
     :accessor      stage-animating-p
     :type          boolean
-    :documentation "Whether the last drawing showed something that moves, so the stage keeps a clock running.")
+    :documentation "True if the last drawing contained something that moves.")
    (phase
     :initform      0
     :accessor      stage-phase
     :type          integer
-    :documentation "A counter that advances while something moves; marks derive their frame from it."))
-  (:documentation "The window's custom-drawn surface and its pointer and keyboard dispatch."))
+    :documentation "A counter that advances while something moves. The frame of animated marks is computed from this counter."))
+  (:documentation "The drawing surface of a window. Pointer and key events on the stage are passed to their handlers."))
 
 
 ;;;; -- Guarding --
 
 (defvar *stage-failure-function* nil
-  "Called with a report string when a drawing or input handler signals an error, or NIL to only log it.")
+  "The function called with a report string if a drawing or input handler signals an error. If it is NIL, the error is only logged.")
 
 (defmacro with-stage-guard ((what) &body body)
-  "Run BODY and return its values; when it fails, report WHAT failed and return NIL instead of unwinding into FLTK.
+  "Run BODY and return the values of BODY. If BODY signals a serious condition, report that WHAT failed and return NIL.
 
-A handler runs inside one of FLTK's callbacks, where a Lisp error, or a
-stack or heap run out, has nowhere to go but through foreign frames. The
-window stays up, the failure goes to standard error, and the interface is
-told so that it can say so."
+The report is written to standard error and passed to *STAGE-FAILURE-FUNCTION*."
   (let ((condition (gensym "CONDITION")))
     `(handler-case (progn ,@body)
        (serious-condition (,condition)
@@ -140,11 +137,11 @@ told so that it can say so."
 ;;;; -- Clipping --
 
 (defvar *clip* nil
-  "The box (X Y WIDTH HEIGHT) that what is drawn now is cut to, or NIL when nothing cuts it.")
+  "The box (X Y WIDTH HEIGHT) used to clip the current drawing, or NIL if there is no clip.")
 
 (-> clip--within (list (or null list)) list)
 (defun clip--within (box clip)
-  "Return the part of BOX, an (X Y WIDTH HEIGHT) list, that lies within CLIP, a box or NIL for everywhere."
+  "Return the part of BOX that lies within CLIP. BOX is an (X Y WIDTH HEIGHT) list. CLIP is a box of the same form, or NIL for no clip."
   (if (null clip)
       box
       (destructuring-bind (x y width height) box
@@ -157,10 +154,11 @@ told so that it can say so."
                   (max 0 (- (min (+ y height) (+ clip-y clip-height)) top))))))))
 
 (defmacro with-clip ((x y width height) &body body)
-  "Run BODY with what it draws cut to the box X, Y, WIDTH, HEIGHT.
+  "Run BODY and clip the drawing of BODY to the box X, Y, WIDTH, HEIGHT.
 
-The regions BODY declares are cut to the box as well, so nothing that is
-hidden answers the pointer. The four forms are evaluated once, in order."
+The regions declared by BODY are clipped to the box too, so that hidden
+regions do not respond to the pointer. The four forms are evaluated once, in
+order."
   `(let ((*clip* (clip--within (list ,x ,y ,width ,height) *clip*)))
      (lightfast:with-clip ((first *clip*) (second *clip*) (third *clip*) (fourth *clip*))
        ,@body)))
@@ -176,15 +174,16 @@ hidden answers the pointer. The four forms are evaluated once, in order."
     boolean)
 (defun stage-region (stage identifier
                      &key (x 0) (y 0) (width 0) (height 0) action menu wheel drag (cursor ':default) tooltip)
-  "Declare that the box responds to the pointer as IDENTIFIER, and return whether the pointer is over it now.
+  "Declare the box as the region IDENTIFIER of STAGE. Returns T if the pointer is over the region.
 
-ACTION is called with no arguments on a click; MENU on a secondary click;
-WHEEL with the vertical and horizontal steps; DRAG with a keyword, :START,
-:MOVE or :END, and the pointer's position. Regions declared later lie above
-earlier ones. A region with an ACTION shows the hand unless CURSOR says
-otherwise."
+Regions respond to the pointer. ACTION is called with no arguments on a
+click. MENU is called with no arguments on a secondary click. WHEEL is
+called with the vertical and the horizontal steps. DRAG is called with
+:START, :MOVE or :END and with the position of the pointer. Regions
+declared later lie above earlier regions. If a region has an ACTION and
+CURSOR is :DEFAULT, the cursor is the hand."
   (destructuring-bind (x y width height) (clip--within (list x y width height) *clip*)
-    ;; A region wholly outside what is drawn is not there to be pointed at.
+    ;; Regions that lie outside the clip are left out.
     (when (or (null *clip*) (and (plusp width) (plusp height)))
       (push (make-region :identifier identifier :x x :y y :width width :height height
                          :action action :menu menu :wheel wheel :drag drag
@@ -195,12 +194,12 @@ otherwise."
 
 (-> stage-hot-p (stage t) boolean)
 (defun stage-hot-p (stage identifier)
-  "Return T when the pointer is over the region IDENTIFIER."
+  "Return T if the pointer is over the region IDENTIFIER."
   (and (stage-hot stage) (equal identifier (stage-hot stage)) t))
 
 (-> stage-pressed-p (stage t) boolean)
 (defun stage-pressed-p (stage identifier)
-  "Return T while the pointer is held down in the region IDENTIFIER."
+  "Return T if a pointer button is held down in the region IDENTIFIER."
   (and (stage-active stage) (equal identifier (stage-active stage)) t))
 
 (-> stage--region-at (stage integer integer &key (:test (or null function))) (or null region))
@@ -216,7 +215,7 @@ otherwise."
 
 (-> stage--find-region (stage t) (or null region))
 (defun stage--find-region (stage identifier)
-  "Return the region declared as IDENTIFIER by the last drawing, or NIL."
+  "Return the region IDENTIFIER declared during the last drawing, or NIL."
   (find identifier (stage--regions stage) :key #'region-identifier :test #'equal))
 
 
@@ -224,13 +223,13 @@ otherwise."
 
 (-> stage-redraw (stage) null)
 (defun stage-redraw (stage)
-  "Ask for the stage to be drawn again before the interface next waits."
+  "Request a redraw of the stage."
   (setf (stage-dirty-p stage) t)
   nil)
 
 (-> stage-flush (stage) null)
 (defun stage-flush (stage)
-  "Hand a pending redraw to FLTK, with the native widgets after the canvas."
+  "Pass a pending redraw to FLTK. The native widgets are redrawn after the canvas."
   (when (and (stage-dirty-p stage) (stage-canvas stage))
     (setf (stage-dirty-p stage) nil)
     (lightfast:redraw (stage-canvas stage))
@@ -240,7 +239,7 @@ otherwise."
 
 (-> stage--paint (stage) null)
 (defun stage--paint (stage)
-  "Draw the stage: paper, then everything the painter draws, collecting its regions."
+  "Draw the stage. Fill it with paper, call the painter and keep the regions declared by the painter."
   (setf (stage--drawing stage)   nil
         (stage-animating-p stage) nil)
   (let ((*on-ink-p* nil))
@@ -248,7 +247,7 @@ otherwise."
     (funcall (stage-painter stage) stage))
   (setf (stage--regions stage) (stage--drawing stage)
         (stage--drawing stage) nil)
-  ;; The pointer has not moved, but what lies under it may have.
+  ;; The pointer has not moved. However, the region under it can be different.
   (stage--track stage (stage-pointer-x stage) (stage-pointer-y stage) :redraw-p nil)
   nil)
 
@@ -290,7 +289,7 @@ otherwise."
 
 (-> stage--pointer (stage keyword string) null)
 (defun stage--pointer (stage kind value)
-  "Handle the pointer event KIND, whose VALUE holds position, button, wheel steps and modifier state."
+  "Handle the pointer event KIND. VALUE contains the position, the button, the wheel steps and the modifier state."
   (destructuring-bind (&optional (x -1) (y -1) (button 0) (dx 0) (dy 0) &rest state) (stage--numbers value)
     (declare (ignore state))
     (ecase kind
@@ -336,14 +335,14 @@ otherwise."
   nil)
 
 (defstruct key-event
-  "One key press, as FLTK's key code, the modifier state bits and the text the key types."
+  "A key press, which consists of the FLTK key code, the modifier state bits and the typed text."
   (code  0  :type integer)
   (state 0  :type integer)
   (text  "" :type string))
 
 (-> parse-key-event (string) key-event)
 (defun parse-key-event (value)
-  "Return the key event the callback VALUE describes: a key code, a modifier state and the typed text."
+  "Return the key event described by the callback VALUE. VALUE contains a key code, a modifier state and the typed text."
   (let* ((first-space  (position #\Space value))
          (second-space (and first-space (position #\Space value :start (1+ first-space)))))
     (make-key-event :code  (or (parse-integer value :end first-space :junk-allowed t) 0)
@@ -357,11 +356,11 @@ otherwise."
   '(:escape #xff1b :enter #xff0d :keypad-enter #xff8d :tab #xff09 :backspace #xff08 :delete #xffff
     :up #xff52 :down #xff54 :left #xff51 :right #xff53 :home #xff50 :end #xff57
     :page-up #xff55 :page-down #xff56)
-  "FLTK's codes for the keys the interface names.")
+  "A property list of named keys associated with their FLTK key codes.")
 
 (-> key-event-key (key-event) (or keyword character null))
 (defun key-event-key (event)
-  "Return EVENT's key as a keyword for a named key, the lowercase character for a letter, digit or sign, or NIL."
+  "Return the key of EVENT. Named keys are returned as keywords. Letters, digits and signs are returned as lowercase characters. For other keys, NIL is returned."
   (let ((code (key-event-code event)))
     (or (loop for (name value) on *key-codes* by (partial #'nthcdr 2)
               when (= value code)
@@ -370,28 +369,28 @@ otherwise."
 
 (-> key-event-shift-p (key-event) boolean)
 (defun key-event-shift-p (event)
-  "Return T when Shift was held."
+  "Return T if Shift was held."
   (logtest lightfast:+modifier-shift+ (key-event-state event)))
 
 (-> key-event-control-p (key-event) boolean)
 (defun key-event-control-p (event)
-  "Return T when Control was held."
+  "Return T if Control was held."
   (logtest lightfast:+modifier-control+ (key-event-state event)))
 
 (-> key-event-alt-p (key-event) boolean)
 (defun key-event-alt-p (event)
-  "Return T when Alt, or Option on a Mac, was held."
+  "Return T if Alt (Option on a Mac) was held."
   (logtest lightfast:+modifier-alt+ (key-event-state event)))
 
 (-> key-event-command-p (key-event) boolean)
 (defun key-event-command-p (event)
-  "Return T when the platform's command modifier was held: Command on a Mac, Control elsewhere."
+  "Return T if the command modifier of the platform was held. It is Command on a Mac and Control on other platforms."
   (logtest lightfast:+modifier-command+ (key-event-state event)))
 
 (-> make-stage
     (t &key (:painter function) (:key-handler (or null function)) (:drop-handler (or null function))) stage)
 (defun make-stage (window &key painter key-handler drop-handler)
-  "Fill WINDOW with a stage drawn by PAINTER, sending keys to KEY-HANDLER and drops to DROP-HANDLER, and return it."
+  "Fill WINDOW with a stage drawn by PAINTER and return the stage. Keys are passed to KEY-HANDLER, and drops are passed to DROP-HANDLER."
   (let* ((stage  (make-instance 'stage :window window :painter painter :key-handler key-handler
                                        :drop-handler drop-handler))
          (canvas (lightfast:make-canvas
@@ -402,7 +401,7 @@ otherwise."
                   :height   (lightfast:widget-height window)
                   :callback (lambda (widget event value)
                               (declare (ignore widget event value))
-                              ;; A drawing that failed asks for no other, which would fail the same way.
+                              ;; A failed drawing does not request another drawing.
                               (unless (with-stage-guard ("Drawing")
                                         (stage--paint stage)
                                         t)
@@ -444,7 +443,7 @@ otherwise."
 
 (-> stage-resize (stage integer integer) null)
 (defun stage-resize (stage width height)
-  "Give the stage and its canvas the size WIDTH by HEIGHT."
+  "Set the size of the stage and of the canvas to WIDTH by HEIGHT."
   (setf (stage-width stage)  width
         (stage-height stage) height)
   (lightfast:resize-widget (stage-canvas stage) :x 0 :y 0 :width width :height height)

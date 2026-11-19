@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Drive real turns offscreen: send, queue, approve a command, stop, steer, run
-# a command and reopen the channel, against a world server of its own and a
-# model that is a script. No account, no network, nothing of the person's
-# world. Needs a display to measure text with. Set AUI_EXERCISE_SHOTS to a
-# directory to keep pictures of it, and AUI_EXERCISE_KEEP to one that receives
-# the world's state when the exercise fails.
+# Drive real turns offscreen against a separate world server and a scripted
+# model: send, queue, approve a command, stop, steer, run a command and reopen
+# the channel. The exercise needs no account and no network, and it does not
+# use the world of the person. A display is needed to measure text.
+#
+# Set AUI_EXERCISE_SHOTS to a directory to keep pictures of the exercise. Set
+# AUI_EXERCISE_KEEP to a directory to keep the state of the world if the
+# exercise fails.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -12,21 +14,23 @@ root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$root/script/lightfast.sh"
 aui_build_bridge
 
-# Autolith's SBCL is found through the person's data directory; find it before
-# the exercise is given directories of its own.
+# The SBCL of Autolith is found through the data directory of the person. Find
+# it before the exercise gets its own directories.
 # shellcheck source=autolith.sh
 source "$root/script/autolith.sh"
 if [[ -n "$autolith_sbcl" ]]; then
   export AUTOLITH_SBCL=$autolith_sbcl
 fi
 
-# A short path, because a world server listens on a socket beneath it, and a
-# physical one, because Autolith resolves the directories it is given.
+# The path is short, because the socket of the world server is placed beneath
+# it. The path is physical, because the directories given to Autolith are
+# resolved.
 world=$(mktemp -d /tmp/aui-live.XXXXXX)
 world=$(CDPATH= cd -P "$world" && pwd)
 status=0
 cleanup() {
-  # The exercise stops its server itself; one that died first left it running.
+  # The exercise stops the server itself. If the exercise died first, the server
+  # is still running.
   if [[ $status -ne 0 && -r "$world/autolith-program" ]]; then
     IFS= read -r program < "$world/autolith-program" || program=
     if [[ -n "$program" && -x "$program" ]]; then

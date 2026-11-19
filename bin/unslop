@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Start unslop. The saved image is built on first use and again whenever its
-# sources or Lightfast's bridge are newer.
+# Start unslop. The saved image is built on the first start. It is built again
+# if the sources of unslop or of the Lightfast bridge are newer than the image.
 
 set -euo pipefail
 path=${BASH_SOURCE[0]}
@@ -21,10 +21,10 @@ elif [[ -n $(find "$root/src/unslop" "$root/src/ui" "$root/src/model/preferences
   stale=true
 fi
 if [[ $stale == true ]]; then
-  echo "Building unslop; this takes a moment." >&2
+  echo "Building unslop. This takes a moment." >&2
   if ! "$root/script/build-unslop" >&2; then
     if [[ -x "$image" ]]; then
-      echo "The build failed; starting the last image that built." >&2
+      echo "The build failed. Starting the last image that was built." >&2
     else
       exit 1
     fi

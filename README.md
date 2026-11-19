@@ -1,8 +1,8 @@
 # AUI
 
-A native window for [Autolith](https://github.com/lambda-symbolics/autolith),
-on Linux, macOS and NetBSD. You see the same channels as in Autolith's
-terminal and can do the same things with them.
+AUI is a native window for [Autolith](https://github.com/lambda-symbolics/autolith).
+It runs on Linux, macOS and NetBSD. In AUI, you see the same channels as in the
+Autolith terminal, and you can do the same things with them.
 
 ![A conversation in AUI](assets/pictures/conversation.png)
 
@@ -10,41 +10,36 @@ terminal and can do the same things with them.
 
 You need Autolith, FLTK 1.4 and a C++17 compiler.
 
-| system | FLTK |
+| System | FLTK |
 |---|---|
 | macOS | `brew install fltk` |
 | Arch | `pacman -S fltk` |
 | NetBSD | from pkgsrc: `x11/fltk`, `devel/gmake`, `shells/bash`, `devel/pkgconf` |
 
 ```sh
-curl -fsSL https://sh.lambda-symbolics.com/autolith | sh   # Autolith, if you do not have it
-autolith auth                                              # sign in to a model provider, once
+curl -fsSL https://sh.lambda-symbolics.com/autolith | sh   # install Autolith if you do not have it
+autolith auth                                              # sign in to a model provider (once)
 
 git clone https://github.com/lambda-symbolics/lightfast.git
 git clone https://github.com/lambda-symbolics/aui.git
 cd aui && script/install
 ```
 
-`aui` is then in `~/.local/bin`, and on macOS Autolith is in `~/Applications`.
-After you update AUI or Autolith, run `aui` as before. That start takes a
-minute, because the program is built again.
+After the install, `aui` and `unslop` are in `~/.local/bin`. On macOS, the Autolith
+application is in `~/Applications`. After you update AUI or Autolith, run `aui`
+as before. The first start after an update takes a minute, because the program
+is built again.
 
 ## Run
 
 ```sh
-aui                     # the latest channel for this directory, or a new one
+aui                     # open the latest channel for this directory, or a new one
 aui open                # pick a channel
-aui open ID             # a specific channel
-aui -C ~/work/project   # as if started in that directory
+aui open ID             # open the channel with this ID
+aui -C ~/work/project   # start as if in that directory
 ```
 
-`aui` takes the options and sub-commands of `autolith`.
-
-## Unslop
-
-`unslop DIRECTORY` shows the comments, strings and docstrings of a Common Lisp
-checkout, file by file, for rewriting. What you type is saved when you stop
-typing. Nothing is committed.
+You can give `aui` the same options and sub-commands as `autolith`.
 
 ## Keys
 
@@ -73,10 +68,10 @@ file. Your text is saved when you stop typing. You commit the changes yourself.
 ## Develop
 
 ```sh
-script/check            # tests and source rules
-script/exercise         # the demonstration, driven offscreen
-script/exercise-live    # real turns against a scripted model; needs no account
+script/check            # run the tests and the source checks
+script/exercise         # drive the demonstration offscreen
+script/exercise-live    # drive real turns against a scripted model (no account needed)
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 
-The rules for changes are in [AGENTS.md](AGENTS.md).
+Read [AGENTS.md](AGENTS.md) before you change AUI.

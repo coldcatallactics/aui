@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Run SBCL with AUI's dependencies set up: script/lisp [SBCL toplevel options].
+# Run SBCL with the dependencies of AUI set up: script/lisp [SBCL toplevel options].
 #
-# AUI loads Autolith, so it runs on the SBCL Autolith runs on: AUTOLITH_SBCL
-# when set, else the one a release brings, else the one Autolith's bootstrap
-# recorded, else sbcl. script/autolith.sh finds the Autolith and its SBCL.
-# AUI_HEAP names the most the heap may grow to, 4GB unless set: compiling
-# Autolith takes a large one.
+# AUI loads Autolith, so AUI runs on the same SBCL as Autolith. This is the
+# first of these:
+#   - AUTOLITH_SBCL, if it is set
+#   - the SBCL in the Autolith release
+#   - the SBCL recorded by the Autolith bootstrap
+#   - sbcl on the path
+# The Autolith and the SBCL of Autolith are found by script/autolith.sh.
+#
+# AUI_HEAP is the maximum heap size. The default is 4GB, because a large heap is
+# needed to compile Autolith.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -14,13 +19,14 @@ root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$root/script/autolith.sh"
 sbcl=$autolith_sbcl
 if [[ -z "$sbcl" ]]; then
-  sbcl=$(command -v sbcl) || { echo "AUI needs SBCL; install Autolith first." >&2; exit 64; }
+  sbcl=$(command -v sbcl) || { echo "AUI needs SBCL. Install Autolith first." >&2; exit 64; }
 fi
 if [[ -n "$autolith_source" ]]; then
   export AUI_AUTOLITH_ROOT=$autolith_source
 fi
 
-# Warnings from the libraries' own definitions are theirs to report.
+# Muffle warnings from the definitions in the libraries. Those warnings are for
+# the authors of the libraries.
 exec "$sbcl" --noinform --dynamic-space-size "${AUI_HEAP:-4GB}" --non-interactive \
   --eval '(handler-bind ((warning (function muffle-warning))) (load "'"$root"'/script/setup.lisp"))' \
   "$@"

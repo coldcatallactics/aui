@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Build AUI: Lightfast's native bridge, then the saved image build/aui that
-# bin/aui starts. Run it again after updating AUI, Lightfast or Autolith.
-# Autolith is the release or the checkout that script/autolith.sh finds.
+# Build the native bridge of Lightfast, and then build the saved image of AUI
+# in build/aui. Run this script again after you update AUI, Lightfast or
+# Autolith. The build uses the Autolith release or checkout found by
+# script/autolith.sh.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -12,18 +13,18 @@ aui_require_lightfast
 mkdir -p "$root/build"
 # shellcheck source=autolith.sh
 source "$root/script/autolith.sh"
-# The mark of a build that did not finish, naming the Autolith it was tried
-# against; bin/aui reads it so that it does not try the same sources again on
-# every start.
+# The file build/failed is a mark of a build that did not finish. It contains
+# the Autolith that the build was tried against. It is read by bin/aui, so that
+# the same sources are not tried again on every start.
 printf '%s\n' "$autolith_identity" > "$root/build/failed"
 aui_build_bridge
-# The image is saved beside the one in use and moved over it only once it
-# exists, so a build that fails leaves the last good image in place.
+# The new image is saved beside the image in use. It is only moved over the old
+# image after it was saved. If the build fails, the last good image is kept.
 rm -f "$root/build/aui.new"
 # Everything is compiled first, in a large heap. The image is then saved from
-# a process with a small one, because an image keeps the size of the heap it
-# was saved with, and the tables SBCL keeps for a heap it will never fill
-# would cost a window some fifteen megabytes.
+# a process with a small heap. An image has the heap size of the process that
+# saved it. SBCL keeps tables for the whole heap, and the tables of a large heap
+# would cost each window about fifteen megabytes.
 "$root/script/lisp" \
   --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
   >"$root/build/build.log" 2>&1 || { tail -40 "$root/build/build.log" >&2; exit 1; }
@@ -37,7 +38,8 @@ if [[ ! -x "$root/build/aui.new" ]]; then
   exit 1
 fi
 mv -f "$root/build/aui.new" "$root/build/aui"
-# Which Autolith the image holds; bin/aui builds again when another is installed.
+# Record the Autolith in the image. If another Autolith is installed, the image
+# is built again by bin/aui.
 printf '%s\n' "$autolith_identity" > "$root/build/autolith"
 rm -f "$root/build/failed"
 echo "Built $root/build/aui"

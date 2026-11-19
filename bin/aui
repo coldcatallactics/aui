@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Start AUI. The saved image is built on first use and again whenever AUI's
-# sources or Lightfast's bridge are newer, or the Autolith on the path is not
-# the one it was built against.
+# Start AUI. The saved image is built on the first start. It is built again if
+# the sources of AUI or of the Lightfast bridge are newer than the image, or if
+# the image was built against another Autolith than the one on the path.
 
 set -euo pipefail
 path=${BASH_SOURCE[0]}
@@ -14,7 +14,7 @@ root=$(CDPATH= cd -P "$(dirname "$path")/.." && pwd)
 image=$root/build/aui
 lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 
-# A build that failed is not tried again until something changes after it.
+# A failed build is only tried again if something changes after the failure.
 failed=$root/build/failed
 reference=$image
 tried=
@@ -29,10 +29,10 @@ if [[ ! -x "$image" ]]; then
 elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print 2>/dev/null | head -n 1) ]]; then
   stale=true
 elif [[ -z ${AUI_AUTOLITH_ROOT:-} ]]; then
-  # An Autolith updated since the build speaks a newer protocol than the image
-  # holds. An updated release is a new directory with old files in it, so the
-  # image is compared with the Autolith on the path by name and version, not
-  # by age.
+  # If Autolith was updated after the build, the protocol in the image can be
+  # older. An updated release is a new directory that contains old files. For
+  # this reason, the image is compared with the Autolith on the path by name and
+  # version, and not by age.
   # shellcheck source=../script/autolith.sh
   source "$root/script/autolith.sh"
   built=
@@ -44,10 +44,10 @@ elif [[ -z ${AUI_AUTOLITH_ROOT:-} ]]; then
   fi
 fi
 if [[ $stale == true ]]; then
-  echo "Building AUI; this takes a minute the first time." >&2
+  echo "Building AUI. The first build takes a minute." >&2
   if ! "$root/script/build" >&2; then
     if [[ -x "$image" ]]; then
-      echo "The build failed; starting the last image that built." >&2
+      echo "The build failed. Starting the last image that was built." >&2
     else
       exit 1
     fi

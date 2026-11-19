@@ -5,20 +5,20 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push makes an older run's answer moot.
+# The result of an older run is not needed after a newer push.
 concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # The Autolith release AUI is checked against. AUI loads Autolith's own
-  # client code, so the two move together.
+  # The Autolith release that AUI is checked against. AUI loads the client code
+  # of Autolith, so the two are updated together.
   AUTOLITH_REF: v0.67.55
 
 jobs:
-  # Autolith installed from its release, as its installer leaves it, and AUI
-  # built from source against it: what a person who does not develop Autolith
-  # has.
+  # Autolith is installed from a release by the Autolith installer, and AUI is
+  # built from source against it. People who do not develop Autolith have this
+  # setup.
   macos-release:
     name: macOS arm64, Autolith from a release
     runs-on: macos-15
@@ -40,8 +40,8 @@ jobs:
           brew install fltk
           fltk-config --version
 
-      # Autolith's own installer, given the release to install and told to
-      # fetch it from where the release is published.
+      # Run the Autolith installer with the release to install. The release is
+      # downloaded from the place where it is published.
       - name: Install the Autolith release
         env:
           AUTOLITH_RELEASE_BASE_URL: https://github.com/lambda-symbolics/autolith/releases/download
@@ -124,8 +124,9 @@ jobs:
           sbcl --version
           fltk-config --version
 
-      # Nothing is cached between runs: compiled files restored from an
-      # earlier run bind Autolith's TLS library to the wrong OpenSSL symbols.
+      # Nothing is cached between runs. If compiled files are restored from an
+      # earlier run, the TLS library of Autolith is bound to the wrong OpenSSL
+      # symbols.
       - name: Install Quicklisp
         run: |
           curl --fail --location --retry 3 --output quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp

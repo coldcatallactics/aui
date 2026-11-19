@@ -1,122 +1,176 @@
-# Repository Guidelines
+# Repository guidelines
 
-AUI follows the conventions of Autolith's `AGENTS.md`: one package `#:aui`,
-`:use` only `#:cl`, Serapeum's `->` for function types, documentation on every
-definition, kebab-case names with entity prefixes and double-hyphen internals,
-keyword arguments past three positional parameters, quoted keyword data, typed
-conditions instead of error strings, no TODOs or stubs, no em dashes, and tiny
-imperative title-only commits without attribution trailers, pushed after each
-one. Read that file in the Autolith checkout before changing anything here.
-cheque enforces the mechanical part; `script/check` must pass before a commit.
+AUI follows the conventions in the `AGENTS.md` file of Autolith. Read that file
+in the Autolith checkout before you change anything here. In short:
+
+- Use one package, `#:aui`, which only uses `#:cl`.
+- Declare function types with the `->` of Serapeum.
+- Document every definition.
+- Use kebab-case names with entity prefixes. Internal names contain a double
+  hyphen.
+- Use keyword arguments after three positional parameters.
+- Quote keyword data.
+- Signal typed conditions instead of error strings.
+- Do not leave TODOs or stubs.
+- Do not use em dashes.
+- Make tiny commits with an imperative title, no body and no attribution
+  trailers. Push after each commit.
+
+The mechanical part of these rules is checked by cheque. `script/check` must
+pass before a commit.
 
 ## What AUI is
 
-A client of Autolith's world server, as Autolith's terminal is. It loads the
-`autolith` system and uses its client code directly: `world-client-open`,
-`channel-subscription`, `world-sidebar`, the conversation log reader, and
-Autolith's own command-line option objects. Do not reimplement anything
-Autolith's client side already does, and do not edit the Autolith checkout:
-ask for what is missing.
+AUI is a client of the Autolith world server, like the Autolith terminal. It
+loads the `autolith` system and uses the client code of Autolith directly:
+`world-client-open`, `channel-subscription`, `world-sidebar`, the conversation
+log reader and the command-line option objects of Autolith. Do not reimplement
+anything that the client side of Autolith already does. Do not edit the
+Autolith checkout. Ask for what is missing instead.
 
 ## Layout
 
-- `src/model/`: the transcript, the event queue and the Markdown reader. Pure;
-  no display, no Autolith.
-- `src/client/`: everything that names an Autolith definition. The world, a
-  channel session, history reading, the projection of records and live events
-  onto the transcript, and the command line.
-- `src/ui/`: the toolkit over Lightfast. Theme, painting, the stage with its
-  pointer regions, paragraphs and blocks, controls.
-- `src/view/`: the window. How entries are typeset, the document, the
-  channel list, the composer, completion, the activity list, the console's
-  parts, the overlays with their catalogs, sheets and panels, and the
-  workbench that holds the window's state.
-- `src/unslop/`: a second program on the toolkit, the `unslop` command. It
-  shows the comments, strings and docstrings of a Common Lisp checkout for
-  rewriting and writes them back in place. It names nothing of Autolith and
-  nothing in `src/client/` or `src/view/`, and those name nothing of it. Its
-  one rule is in `proof.lisp`: an edit may change words and never code.
-- `tests/`: FiveAM, same package, no display, server or credentials.
-- `script/setup.lisp`: finds Autolith's source and its dependency set; every
-  script and the source checks load it first. `script/autolith.sh` finds the
-  same Autolith for the shell scripts, with the SBCL it runs on.
+- `src/model/`: the transcript, the event queue and the Markdown reader. This
+  code is pure. It does not use a display or Autolith.
+- `src/client/`: all code that refers to an Autolith definition. This is the
+  world, a channel session, history reading, the projection of records and
+  live events onto the transcript, and the command line.
+- `src/ui/`: the toolkit over Lightfast. This is the theme, painting, the stage
+  with pointer regions, paragraphs and blocks, and controls.
+- `src/view/`: the window. This is the typesetting of entries, the document,
+  the channel list, the composer, completion, the activity list, the parts of
+  the console, the overlays with their catalogs, sheets and panels, and the
+  workbench, which holds the state of the window.
+- `src/unslop/`: a second program on the toolkit, the `unslop` command. It is
+  used to rewrite the comments, strings and docstrings of a Common Lisp
+  checkout in place. The code in `src/unslop/` does not refer to Autolith,
+  `src/client/` or `src/view/`. The code in those places does not refer to
+  unslop. The rule of unslop is in `proof.lisp`: edits can change words, and
+  they cannot change code.
+- `tests/`: FiveAM tests in the same package. They do not need a display, a
+  server or credentials.
+- `script/setup.lisp`: code used to find the Autolith source and the
+  dependencies of Autolith. It is loaded first by every script and by the
+  source checks. `script/autolith.sh` is used by the shell scripts to find the
+  same Autolith and the SBCL that Autolith runs on.
 
 ## Checks
 
 ```sh
-script/check                    # everything
-script/check --suite records    # one suite, no source checks
-script/check --fix              # repair layout findings
-script/exercise                 # drive the demonstration offscreen; needs a display
-script/exercise-live            # drive real turns against a scripted model in a world of its own
+script/check                    # run all checks
+script/check --suite records    # run one suite without the source checks
+script/check --fix              # repair layout problems
+script/exercise                 # drive the demonstration offscreen (needs a display)
+script/exercise-live            # drive real turns against a scripted model in a separate world
 script/exercise-unslop          # drive unslop offscreen against a throwaway checkout
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 
-A change to what the client sends or how live events are shown gets
-`script/exercise-live`, which needs no account and touches nobody's world.
-A visual change gets a picture: `--shot` with `--size` draws offscreen at that
-size without showing a window, so it works under a tiling compositor and on a
-build machine. Develop against a pinned Autolith checkout named by
-`AUI_AUTOLITH_ROOT` when the installed one is being edited, and against a
-world of your own (`XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME` pointed
-elsewhere) rather than the person's.
+If you change what the client sends or how live events are shown, run
+`script/exercise-live`. It runs in a separate world and needs no account.
 
-The systems in `aui.asd`: `aui/toolkit` is `src/ui/` with the preferences and
-loads without Autolith; `aui` is the client on it; `aui/unslop` is unslop on
-it. A change to the toolkit is a change to both programs, so it gets
+If you make a visual change, take a picture. With `--shot` and `--size`, the
+window is drawn offscreen at that size and is not shown. This works under a
+tiling compositor and on a build machine.
+
+If the installed Autolith is being edited, develop against a pinned Autolith
+checkout. Set `AUI_AUTOLITH_ROOT` to that checkout. Develop in a world of your
+own instead of the world of the person: point `XDG_DATA_HOME`,
+`XDG_STATE_HOME` and `XDG_CONFIG_HOME` elsewhere.
+
+The file `aui.asd` defines three systems:
+
+- `aui/toolkit` is `src/ui/` with the preferences. It can be loaded without
+  Autolith.
+- `aui` is the client, built on the toolkit.
+- `aui/unslop` is unslop, built on the toolkit.
+
+A change to the toolkit changes both programs. After such a change, run
 `script/exercise` and `script/exercise-unslop`.
 
-## Boundaries
+## Threads and Autolith
 
-The interface thread alone touches widgets, the transcript and the workbench.
-Client threads post immutable `ui-event`s to the queue and wake it. Every
-handler that FLTK calls runs under `with-stage-guard`, so an error is reported
-in the window instead of unwinding through foreign frames.
+Only use widgets, the transcript and the workbench on the interface thread.
+Client threads post immutable `ui-event`s to the queue and then wake the queue.
+Run every handler called by FLTK under `with-stage-guard`. An error in a
+handler is then reported in the window. It does not unwind through foreign
+frames.
 
-Autolith is installed from a release or from source, and AUI builds against
-either. What is known of a release's layout is in `script/autolith.sh`,
-`script/setup.lisp` and `src/client/installation.lisp`, nowhere else. AUI
-starts nothing of Autolith by a path of its own: a world server and every
-command without a window go through the installed `autolith` command, which
-prepares what Autolith needs to run.
+Autolith can be installed from a release or from source. AUI can be built
+against both. Facts about the layout of a release are only in
+`script/autolith.sh`, `script/setup.lisp` and `src/client/installation.lisp`.
+Start the world server and all commands without a window through the installed
+`autolith` command, because that command prepares what Autolith needs to run.
+Do not start any part of Autolith by a path of your own.
 
-Everything visible is drawn by AUI on one stage; FLTK widgets appear only
-where a person types. Lightfast stays general purpose: what AUI needs from
-FLTK goes into Lightfast as a reusable operation, never as application
-behavior.
+## Drawing
 
-The look is Interlisp Paper's with the Autolith site's liberties: one paper
-ground, ink, inversion for selection and hover, dither for shadows and
-de-emphasis, hairlines, no rounded corners, no grey, sentence case. A few
-accent inks say what a thing is, as the terminal's colors do: green for what
-is alive or went well, red for what failed, amber for tools and warnings, blue
-for code among prose, links and the step in hand, plum for defining words in
-code. They are tokens in `src/ui/theme.lisp` and turn lighter on an inverted
-ground by themselves; do not invent others.
+Everything visible is drawn by AUI on one stage. FLTK widgets are only used
+where a person types. Lightfast is a general-purpose library. If AUI needs
+something from FLTK, add it to Lightfast as a reusable operation. Do not add
+application behavior to Lightfast.
 
-Labels, tooltips, notices and the README say what a person does or state a
-plain fact. A key, a window or a list is never the subject of a verb: "Stop
-(Esc)", not "Esc stops". Short sentences, plain words.
+The look is the look of Interlisp Paper, with the liberties taken by the
+Autolith website:
 
-What the window says in its own voice reads as Autolith's terminal writes it:
-a mark first, the ink of its kind, a small first letter and no closing period.
-That is a notice among the entries, the line above the composer that says what
-did not work, and the status line. A notice entry draws its mark from its
-tone, and `(setf workbench-notice)` brings any report into this shape, so
-give both plain lowercase words. Titles, headings, buttons and menus keep
-sentence case.
+- one paper ground and ink
+- inversion for selection and hover
+- dither for shadows and de-emphasis
+- hairlines
+- no rounded corners and no grey
+- sentence case
+
+A few accent inks are used to show what a thing is, as in the Autolith
+terminal:
+
+- green for what is alive or went well
+- red for what failed
+- amber for tools and warnings
+- blue for code among prose, for links and for the current step
+- plum for defining words in code
+
+The inks are tokens in `src/ui/theme.lisp`. On an inverted ground, they are
+made lighter automatically. Do not invent other inks.
+
+## Words in the window
+
+In labels, tooltips, notices and the README, write what a person does, or write
+a plain fact. Do not make a key, a window or a list the subject of a verb.
+Write "Stop (Esc)", not "Esc stops". Use short sentences and plain words.
+
+Some text is in the voice of the window itself. These are the notices among the
+entries, the line above the composer where errors are shown, and the status
+line. Write this text as the Autolith terminal writes it:
+
+- Start with a lowercase letter.
+- Do not end with a period.
+- Do not write the mark in front of a notice. The mark and the ink of the
+  notice are added by the code that draws it. A notice entry gets the mark from
+  the tone of the notice. Any report is put into this form by
+  `(setf workbench-notice)`. Give both of them plain lowercase words.
+
+Keep sentence case in titles, headings, buttons and menus. Keep ALL-CAPS
+labels in capitals.
+
+## Overlays and layout
 
 Menus, pickers, prompts and panels are overlays drawn on the stage
-(`src/view/overlay.lisp`), never FLTK's own popups or dialogs, which do not
-share the faces. A file chooser is the one exception. A wide window sets the
-console (title, activity, the channel's goal and the channels beneath it, and
-the plan, files and messages read from the conversation by
-`src/view/digest.lisp`) beside the conversation; a narrow one stacks title
-and activity around it. The composer, what waits above it and the status line stay under
-the conversation in both, and the channel list takes the whole of a window
-too narrow to hold it beside the conversation. All of it comes from
-`window--layout`, so a pane is added there once and appears in every layout. An overlay opened from another is drawn over
-it, each dimming the one beneath. What the window itself remembers between
-runs, such as the console's width, goes through `preference` in
-`src/model/preferences.lisp`; Autolith's settings stay Autolith's.
+(`src/view/overlay.lisp`). Do not use the popups or dialogs of FLTK, because
+they do not use the same faces. The file chooser is the one exception.
+
+In a wide window, the console is beside the conversation. The console contains
+the title, the activity, the goal of the channel and the channels beneath it,
+and the plan, files and messages read from the conversation by
+`src/view/digest.lisp`. In a narrow window, the title and the activity are
+placed around the conversation. In both layouts, the composer, what waits above
+the composer and the status line are under the conversation. If the window is
+too narrow for the channel list beside the conversation, the channel list fills
+the whole window. All layouts come from `window--layout`. Add a new pane there
+once, and it appears in every layout.
+
+An overlay opened from another overlay is drawn over it. The overlay beneath
+it is dimmed.
+
+Save the state of the window between runs, such as the width of the console,
+through `preference` in `src/model/preferences.lisp`. Keep the settings of
+Autolith in Autolith.

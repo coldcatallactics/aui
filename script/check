@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Run AUI's checks: the test suites, then the source rules and the warning compile.
+# Run the checks of AUI: the test suites, then the source rules and a compile
+# that looks for warnings.
 #
-#   script/check                    everything
-#   script/check --suite transcript one suite, without the source checks
-#   script/check --source           only the source rules and the warning compile
-#   script/check --fix              repair what the source rules can repair
+#   script/check                    run everything
+#   script/check --suite transcript run one suite without the source checks
+#   script/check --source           only run the source rules and the compile
+#   script/check --fix              repair the problems that can be repaired
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -29,7 +30,7 @@ if [[ $tests == true ]]; then
     --eval "(uiop:quit (if (aui:run-tests :suite (intern (string-upcase \"$suite\") :aui)) 0 1))"
 fi
 if [[ $source_checks == true ]]; then
-  # The source checker is a development tool with dependencies of its own, so
-  # it runs in a plain SBCL apart from AUI's.
+  # The source checker is a development tool, and it has its own dependencies.
+  # For this reason, it is run in a plain SBCL, separate from the SBCL of AUI.
   sbcl --script "$root/script/check-source.lisp" ${source_arguments[@]+"${source_arguments[@]}"}
 fi

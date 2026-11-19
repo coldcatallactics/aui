@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drive the demonstration offscreen: click, scroll, select and type, and check
-# what each did. Needs a display to measure text with.
+# the result of each action. A display is needed to measure text.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

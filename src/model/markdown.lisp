@@ -2,36 +2,38 @@
 
 ;;;; -- Markdown --
 
-;;; A small, deterministic reading of the Markdown that agents write, into a
-;;; list of block nodes whose text is a list of inline nodes. Pure functions:
-;;; no fonts, no widgets. The prose view gives the nodes their typography.
+;;; A small, deterministic reader for the Markdown written by agents. The
+;;; result is a list of block nodes. The text of each block is a list of inline
+;;; nodes. These are pure functions without fonts or widgets. The typography
+;;; of the nodes is chosen by the prose view.
 ;;;
-;;; A block node is one of
+;;; A block node is one of the following lists.
 ;;;   (:heading LEVEL INLINES)
 ;;;   (:paragraph INLINES)
 ;;;   (:item DEPTH MARKER INLINES)   MARKER is "•", a number such as "2.", or :DONE / :OPEN for a task
 ;;;   (:quote INLINES)
 ;;;   (:code LANGUAGE TEXT)
-;;;   (:table HEADER-CELLS ROWS)     each cell a list of inline nodes
+;;;   (:table HEADER-CELLS ROWS)     each cell is a list of inline nodes
 ;;;   (:rule)
-;;; and an inline node is (TEXT . PROPERTIES) with the properties :BOLD,
-;;; :ITALIC, :CODE, :STRIKE and :LINK.
+;;; An inline node is (TEXT . PROPERTIES). The properties are :BOLD, :ITALIC,
+;;; :CODE, :STRIKE and :LINK.
 
 (-> markdown--blank-p (string) boolean)
 (defun markdown--blank-p (line)
-  "Return T when LINE holds nothing but spaces and tabs."
+  "Return T if LINE only contains spaces and tabs."
   (every (lambda (character) (member character '(#\Space #\Tab))) line))
 
 (-> markdown--indent (string) integer)
 (defun markdown--indent (line)
-  "Return how many columns LINE is indented, a tab counting as four."
+  "Return the indentation of LINE in columns. A tab counts as four columns."
   (loop for character across line
         while (member character '(#\Space #\Tab))
         sum (if (char= character #\Tab) 4 1)))
 
 (-> markdown--fence (string) (or null string))
 (defun markdown--fence (line)
-  "Return what follows the fence when LINE opens or closes a fenced code block, else NIL."
+  "Return the text after the fence if LINE opens or closes a fenced code block.
+Otherwise, return NIL."
   (let ((trimmed (string-left-trim " " line)))
     (when (and (>= (length trimmed) 3)
                (or (string= "```" trimmed :end2 3) (string= "~~~" trimmed :end2 3)))
@@ -39,7 +41,7 @@
 
 (-> markdown--heading (string) (values (or null integer) string))
 (defun markdown--heading (line)
-  "Return LINE's heading level and its text, or NIL when LINE is not a heading."
+  "Return the heading level and the text of LINE. Return NIL if LINE is not a heading."
   (let ((hashes (or (position #\# line :test #'char/=) (length line))))
     (if (and (<= 1 hashes 6) (< hashes (length line)) (char= (char line hashes) #\Space))
         (values hashes (string-trim " #" (subseq line hashes)))
@@ -47,7 +49,8 @@
 
 (-> markdown--rule-p (string) boolean)
 (defun markdown--rule-p (line)
-  "Return T when LINE is a horizontal rule: three or more of one of - * _ and nothing else."
+  "Return T if LINE is a horizontal rule.
+These lines consist of three or more of one of the characters - * _, and spaces."
   (let ((trimmed (remove #\Space line)))
     (and (>= (length trimmed) 3)
          (member (char trimmed 0) '(#\- #\* #\_))
@@ -56,7 +59,8 @@
 
 (-> markdown--item (string) (values (or null string keyword) integer string))
 (defun markdown--item (line)
-  "Return a list item LINE's marker, its nesting depth and its text; the marker is NIL when LINE is no item."
+  "Return the marker, the nesting depth and the text of the list item LINE.
+The marker is NIL if LINE is not a list item."
   (let* ((indent (markdown--indent line))
          (body   (string-left-trim '(#\Space #\Tab) line))
          (depth  (floor indent 2)))
@@ -97,7 +101,8 @@
 
 (-> markdown--table-row-p (string) boolean)
 (defun markdown--table-row-p (line)
-  "Return T when LINE looks like a table row: it starts with a bar and has another."
+  "Return T if LINE looks like a table row.
+Table rows start with a bar and contain a second bar."
   (let ((trimmed (string-trim " " line)))
     (and (> (length trimmed) 2)
          (char= (char trimmed 0) #\|)
@@ -106,7 +111,7 @@
 
 (-> markdown--table-separator-p (string) boolean)
 (defun markdown--table-separator-p (line)
-  "Return T when LINE is the row of dashes under a table's header."
+  "Return T if LINE is the row of dashes under the header of a table."
   (and (markdown--table-row-p line)
        (every (lambda (character) (find character "|-: ")) line)
        (find #\- line)
@@ -117,7 +122,8 @@
 
 (-> markdown--url-end (string integer) integer)
 (defun markdown--url-end (text start)
-  "Return where the bare URL beginning at START in TEXT ends, leaving closing punctuation outside it."
+  "Return the end of the bare URL that starts at START in TEXT.
+Closing punctuation is not part of the URL."
   (let ((end (or (position-if (lambda (character)
                                 (member character '(#\Space #\Newline #\Tab #\< #\> #\" #\`)))
                               text :start start)
@@ -128,11 +134,11 @@
 
 (-> markdown-inline (string) list)
 (defun markdown-inline (text)
-  "Return TEXT's inline nodes: (TEXT . PROPERTIES) for each run.
+  "Return the inline nodes of TEXT. Each run of text is a node (TEXT . PROPERTIES).
 
-Handles `code`, **bold**, *italic*, _italic_, ***both***, ~~struck~~,
-[label](url), ![alt](url) and bare http links. Markers without a partner
-stay as text."
+The recognized forms are `code`, **bold**, *italic*, _italic_, ***both***,
+~~struck~~, [label](url), ![alt](url) and bare http links. Markers without a
+partner are kept as text."
   (let ((nodes  nil)
         (plain  (make-string-output-stream))
         (index  0)
@@ -148,13 +154,14 @@ stay as text."
                  (push (cons run properties) nodes)))
 
              (nested (run &rest properties)
-               "Emit RUN's own inline nodes with PROPERTIES added to each."
+               "Emit the inline nodes of RUN and add PROPERTIES to each node."
                (flush)
                (dolist (node (markdown-inline run))
                  (push (cons (first node) (append properties (rest node))) nodes)))
 
              (delimited (marker)
-               "Return the text between MARKER here and its next occurrence, advancing past both, or NIL."
+               "Return the text between MARKER at the index and the next occurrence of MARKER, or NIL.
+Move the index past both markers."
                (let* ((start (+ index (length marker)))
                       (close (search marker text :start2 start)))
                  (when (and close (> close start)
@@ -225,7 +232,7 @@ stay as text."
                       (if url-end
                           (let ((label (subseq text (1+ open) close))
                                 (url   (subseq text (+ close 2) url-end)))
-                            ;; A label is text like any other: its own marks are read.
+                            ;; The marks inside a label are read as in other text.
                             (if (plusp (length label))
                                 (nested label :link url)
                                 (emit url :link url))
@@ -249,7 +256,7 @@ stay as text."
 
 (-> markdown-lines (string) list)
 (defun markdown-lines (text)
-  "Return TEXT's lines, keeping empty ones, with any carriage returns removed."
+  "Return the lines of TEXT, including empty lines. Carriage returns are removed."
   (let ((lines nil)
         (start 0))
     (loop
@@ -262,10 +269,11 @@ stay as text."
 
 (-> markdown-settled-end (string &key (:start integer)) integer)
 (defun markdown-settled-end (text &key (start 0))
-  "Return the position after the last blank line of TEXT at or after START that lies outside a fenced block, or START when there is none.
+  "Return the position after the last blank line of TEXT at or after START, outside of fenced blocks.
+Return START if there is no such line.
 
-START is itself such a position. What stands before the result reads the
-same whatever is written after it, so text that grows is read from there."
+START must also be such a position. The text before the result is read in the
+same way, whatever text is added after it."
   (let ((settled  start)
         (fenced-p nil)
         (position start))
@@ -283,12 +291,11 @@ same whatever is written after it, so text that grows is read from there."
 
 (-> markdown-blocks (string &key (:breaks-p boolean)) list)
 (defun markdown-blocks (text &key breaks-p)
-  "Return TEXT's block nodes in order.
+  "Return the block nodes of TEXT in order.
 
-A fenced code block still open at the end of TEXT, as while an answer is
-streaming, is returned as a code block of what has arrived. BREAKS-P keeps
-the line breaks inside a paragraph, as a person who typed them meant them;
-without it they are spaces, as Markdown has it."
+If a fenced code block is open at the end of TEXT, the block is returned as a
+code block of the text so far. If BREAKS-P is true, line breaks inside a
+paragraph are kept. Otherwise, they become spaces, as in Markdown."
   (let ((lines     (markdown-lines text))
         (blocks    nil)
         (paragraph nil))
@@ -334,7 +341,7 @@ without it they are spaces, as Markdown has it."
                           (push (list ':table header (nreverse rows)) blocks)))
                        (marker
                         (flush)
-                        ;; Lines indented under an item continue its text.
+                        ;; Lines indented under an item are part of the text of the item.
                         (let ((parts (list item)))
                           (loop while (and lines
                                            (not (markdown--blank-p (first lines)))

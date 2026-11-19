@@ -2,29 +2,32 @@
 
 ;;;; -- History --
 
-;;; Read the newest part of a channel's durable history without reading all of
-;;; it. A long-lived conversation runs to hundreds of megabytes; the interface
-;;; shows its last few hundred records and fetches earlier pages on request,
-;;; as the terminal does with (history). Records are parsed by Autolith's own
-;;; log reader; this file only decides where in a segment to start it.
+;;; Read the newest part of the durable history of a channel without reading
+;;; all of it. Long conversations can be hundreds of megabytes. Only the last
+;;; few hundred records are shown at first. Earlier pages are read on request,
+;;; as with (history) in the terminal. Records are parsed by the log reader of
+;;; Autolith. The code below only chooses the position in a segment at which
+;;; the reader starts.
 
 (defparameter *history-page-records* 400
-  "How many durable records one page of history holds at most.")
+  "The maximum number of durable records in one page of history.")
 
 (defparameter *history-tail-octets* (* 2 1024 1024)
-  "How much of a segment's end one page reads at first; the window doubles while it holds too few records.")
+  "The number of octets at the end of a segment that are read first for one page.
+The window is doubled while it contains too few records.")
 
 (defparameter *history-minimum-records* 60
-  "How many records a window should hold before it is taken as a page; a window with fewer is widened.")
+  "The number of records that a window needs to become a page.
+Windows with fewer records are widened.")
 
 (defparameter *history-scan-octets* (* 512 1024)
-  "How far past a window's start a record boundary is looked for.")
+  "The distance in octets after the start of a window in which a record boundary is searched for.")
 
 (defparameter *history-maximum-octets* (* 16 1024 1024)
-  "The widest window one page is allowed to read, however few records it holds.")
+  "The maximum width of a window in octets, even if the window contains few records.")
 
 (defstruct history-cursor
-  "Where the next earlier page of history ends, as the SEGMENT file and the octet OFFSET within it."
+  "The end of the next earlier page of history, as the SEGMENT file and the octet OFFSET in that file."
   (segment nil :type (or null pathname))
   (offset  0   :type integer))
 
@@ -36,7 +39,7 @@
 
 (-> history--line-starts (pathname integer integer) list)
 (defun history--line-starts (pathname from to)
-  "Return the octet positions between FROM and TO in PATHNAME where a line opens a keyword-headed form, in order."
+  "Return the octet positions between FROM and TO in PATHNAME at which a line starts with a form headed by a keyword."
   (with-open-file (stream pathname :element-type '(unsigned-byte 8))
     (let* ((end    (min to (file-length stream)))
            (buffer (make-array (max 0 (- end from)) :element-type '(unsigned-byte 8)))
@@ -52,12 +55,12 @@
 
 (-> history--read-from (pathname integer &key (:end (or null integer))) (values list boolean list))
 (defun history--read-from (pathname position &key end)
-  "Return the records of PATHNAME from octet POSITION on, whether they read as a well-formed run, and the octet position each one's form starts at.
+  "Return the records of PATHNAME from the octet POSITION on, T if the records form a well-formed run, and the start positions of the records.
 
-Reading stops at the first form that starts at or after END, so a page
-before one already shown does not read what follows it. A run is well formed
-when every form has a record's shape and the sequence numbers never fall,
-which a start inside a string or a record's middle soon fails."
+Reading stops at the first form that starts at or after END. A run is well
+formed if all forms have the shape of a record and the sequence numbers do not
+decrease. These conditions usually fail soon after a start inside a string or
+inside a record."
   (let ((records nil)
         (starts  nil)
         (last    0)
@@ -92,9 +95,11 @@ which a start inside a string or a record's middle soon fails."
 
 (-> history--window (pathname integer integer) (values list integer list))
 (defun history--window (pathname offset octets)
-  "Return the records in about the OCTETS of the segment PATHNAME that end at OFFSET, the octet position they start at, and the position of each.
+  "Return the records in a window of about OCTETS octets that ends at OFFSET in the segment PATHNAME.
+Also return the start position of the window and the start positions of the records.
 
-The position is zero when the window reaches the segment's beginning."
+The start position of the window is zero if the window reaches the beginning
+of the segment."
   (let ((start (max 0 (- offset octets))))
     (if (zerop start)
         (multiple-value-bind (records sound-p starts) (history--read-from pathname 0 :end offset)
@@ -108,10 +113,11 @@ The position is zero when the window reaches the segment's beginning."
 
 (-> history--cut (list) list)
 (defun history--cut (page)
-  "Return the newest part of PAGE, a list of (START . RECORD) oldest first, that makes one page of history.
+  "Return the newest part of PAGE that fits in one page of history.
+PAGE is a list of (START . RECORD), oldest first.
 
-A form that holds several records is never divided, so the page before this
-one ends where this one starts."
+Records from one form are not split between pages. The page before this page
+ends where this page starts."
   (let ((tail (nthcdr (max 0 (- (length page) *history-page-records*)) page)))
     (loop for rest on page
           until (or (eq rest tail)
@@ -120,10 +126,11 @@ one ends where this one starts."
 
 (-> history--wide-window (pathname integer &key (:wanted-p function) (:need integer)) (values list integer))
 (defun history--wide-window (segment offset &key wanted-p need)
-  "Return the records WANTED-P keeps of a window of SEGMENT that ends at OFFSET, each as (START . RECORD), and where the window starts.
+  "Return the records of a window of SEGMENT that ends at OFFSET, and the start position of the window.
+The records are a list of (START . RECORD). Only records accepted by WANTED-P are returned.
 
-The window is widened until it holds NEED of them, reaches the segment's
-beginning, or is as wide as a window gets."
+The window is widened until it contains NEED records, reaches the beginning of
+the segment, or reaches the maximum width."
   (loop for octets = *history-tail-octets* then (* octets 2)
         do (multiple-value-bind (records start starts) (history--window segment offset octets)
              (let ((kept (loop for record in records
@@ -139,7 +146,8 @@ beginning, or is as wide as a window gets."
     (list &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer)))
     (values list boolean (or null history-cursor)))
 (defun history--page (segments &key cursor before through)
-  "Return a page of the records in the log SEGMENTS, newest segment first, as `history-read-page' does."
+  "Return a page of the records in the log SEGMENTS in the same form as `history-read-page'.
+SEGMENTS are ordered newest first."
   (let ((page nil)
         (next (or cursor
                   (and segments
@@ -175,15 +183,19 @@ beginning, or is as wide as a window gets."
     (t string &key (:cursor (or null history-cursor)) (:before (or null integer)) (:through (or null integer)))
     (values list boolean (or null history-cursor)))
 (defun history-read-page (configuration identifier &key cursor before through)
-  "Return a page of channel IDENTIFIER's durable records, oldest first, whether older ones remain, and the cursor for the page before it.
+  "Return a page of the durable records of the channel IDENTIFIER, oldest first.
+Also return T if older records exist, and the cursor for the page before this page.
 
-Without CURSOR the page is the newest; with the cursor a call returned, it is
-the one before that call's. BEFORE keeps only records whose sequence is below
-it and THROUGH only those at or below it, the boundary a live attachment takes
-over from. A page is the newest records of one bounded window of the log, and
-the cursor is where its first record starts, so a conversation of any length
-opens in the time its last page takes and no record is read twice or missed.
-A conversation with no durable history yet yields no records."
+Without CURSOR, the page is the newest page. With a cursor returned by an
+earlier call, the page is the page before the page of that call. If BEFORE is
+given, only records with a sequence number below BEFORE are returned. If
+THROUGH is given, only records with a sequence number at or below THROUGH are
+returned.
+
+A page contains the newest records of one bounded window of the log. The
+cursor is at the start of the first record of the page. For this reason, long
+conversations open as fast as short ones, and no record is read twice or
+missed. If the conversation has no durable history yet, return no records."
   (let ((conversation (handler-case (autolith::conversation-replay-load configuration identifier)
                         (error ()
                           nil))))
@@ -195,7 +207,8 @@ A conversation with no durable history yet yields no records."
 
 (-> history-image-root (t string) (or null pathname))
 (defun history-image-root (configuration identifier)
-  "Return the directory holding channel IDENTIFIER's image artifacts, or NIL when it has no durable history."
+  "Return the directory that contains the image artifacts of the channel IDENTIFIER.
+Return NIL if the channel has no durable history."
   (handler-case
       (autolith::conversation-image-artifact-root
        (autolith::conversation-replay-load configuration identifier))
@@ -204,10 +217,12 @@ A conversation with no durable history yet yields no records."
 
 (-> history-goal-record (t string) list)
 (defun history-goal-record (configuration identifier)
-  "Return the goal record that stood when the newest part of channel IDENTIFIER's history was begun, or NIL when there was none or the channel has no durable history yet.
+  "Return the goal record that was current at the start of the newest part of the history of the channel IDENTIFIER.
+Return NIL if there was no goal or if the channel has no durable history yet.
 
-Autolith writes it at the head of each part of a conversation's log, so the
-goal of a long conversation is known without reading the whole of it."
+Autolith writes this record at the head of each part of the log of a
+conversation. For this reason, the goal of a long conversation is known
+without reading the whole log."
   (handler-case
       (let ((record (autolith::conversation-latest-goal-record
                      (autolith::conversation-replay-load configuration identifier))))
@@ -218,14 +233,14 @@ goal of a long conversation is known without reading the whole of it."
 
 ;;;; -- What Waits --
 
-;;; A channel keeps a snapshot of the messages it has not taken up yet: what
-;;; steers the running turn and what follows it. A window that attaches to a
-;;; channel others have written to reads that snapshot, so it shows what
-;;; waits there whoever sent it.
+;;; Each channel has a snapshot of the waiting messages. Some of these messages
+;;; steer the running turn, and others follow it. The snapshot contains the
+;;; waiting messages from all senders.
 
 (-> history-pending-pathname (t string) (or null pathname))
 (defun history-pending-pathname (configuration identifier)
-  "Return the file in which channel IDENTIFIER keeps the messages it has not taken up, or NIL when the channel has no history yet."
+  "Return the snapshot file of the waiting messages of the channel IDENTIFIER.
+Return NIL if the channel has no history yet."
   (handler-case
       (autolith::configuration-pending-inputs-path
        configuration
@@ -235,7 +250,7 @@ goal of a long conversation is known without reading the whole of it."
 
 (-> history--input-text (t) (or null string))
 (defun history--input-text (input)
-  "Return the text of the waiting INPUT, or NIL when it is not a message."
+  "Return the text of the waiting INPUT, or NIL if INPUT is not a message."
   (cond
     ((typep input '(or string autolith::user-message-input))
      (autolith::user-message-input-text input))
@@ -246,7 +261,9 @@ goal of a long conversation is known without reading the whole of it."
 
 (-> history-pending-inputs (pathname string) list)
 (defun history-pending-inputs (pathname identifier)
-  "Return the messages channel IDENTIFIER has not taken up, read from its snapshot at PATHNAME, each as (TEXT STEER-P): those that steer the running turn first, then those that follow it, oldest first."
+  "Return the waiting messages of the channel IDENTIFIER, read from the snapshot at PATHNAME.
+Each message is a list (TEXT STEER-P). The messages that steer the running turn come
+first. The messages that follow the turn come after them. Both groups are oldest first."
   (handler-case
       (let* ((form  (and (probe-file pathname) (autolith::read-portable-form pathname)))
              (state (and form (autolith::input-state-from-form form identifier))))

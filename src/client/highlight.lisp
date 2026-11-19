@@ -2,30 +2,31 @@
 
 ;;;; -- Highlighting --
 
-;;; Source is colored by the highlighter Autolith's terminal uses, so a form,
-;;; a command or an edit reads here as it does there. What comes back is plain
-;;; data, roles and text; which ink a role takes is the theme's to say.
+;;; Source is colored by the highlighter of the Autolith terminal, so forms,
+;;; commands and edits look the same as in the terminal. The result is plain
+;;; data of roles and text. The ink of each role is chosen by the theme.
 
 (defvar *highlight-library-sought-p* nil
-  "Whether this process has looked for the highlighter's native library in a release yet.")
+  "True if this process has already looked for the native highlighter library of a release.")
 
 (-> highlight--seek-library () null)
 (defun highlight--seek-library ()
-  "Look once for the native library a release brings, before the highlighter looks for one to build."
+  "Look for the native highlighter library of a release. Do nothing after the first call."
   (unless *highlight-library-sought-p*
     (setf *highlight-library-sought-p* t)
     (installation-adopt))
   nil)
 
 (defparameter *lisp-languages* '("lisp" "common-lisp" "cl" "elisp" "emacs-lisp" "scheme" "clojure")
-  "The names a code fence gives the languages written in parentheses.")
+  "The code fence names of the languages written in parentheses.")
 
 (defparameter *lisp-file-types* '("lisp" "asd" "cl" "el" "scm" "clj" "sexp")
-  "The types of the files written in parentheses.")
+  "The file types of the languages written in parentheses.")
 
 (-> highlight--lisp-p ((or null string) (or null string)) boolean)
 (defun highlight--lisp-p (language pathname)
-  "Return T when LANGUAGE, or else the type of the file PATHNAME names, is one written in parentheses."
+  "Return T if LANGUAGE is written in parentheses.
+If LANGUAGE is NIL, use the file type of PATHNAME instead."
   (and (if language
            (member language *lisp-languages* :test #'string-equal)
            (and pathname
@@ -34,11 +35,12 @@
 
 (-> highlight--nest (list string) list)
 (defun highlight--nest (parts source)
-  "Return PARTS, the (ROLE . TEXT) of the Lisp SOURCE, with each parenthesis apart under the role of its nesting depth.
+  "Return PARTS with each parenthesis split off under the role of the nesting depth.
+PARTS is a list of (ROLE . TEXT) for the Lisp SOURCE.
 
-The depths are the ones Autolith's terminal colors, :SYNTAX-PARENTHESIS-1 to
-:SYNTAX-PARENTHESIS-6 and around again. PARTS that do not spell SOURCE
-character for character are returned as they are."
+The roles of the depths are :SYNTAX-PARENTHESIS-1 to :SYNTAX-PARENTHESIS-6.
+The roles repeat for deeper levels. If PARTS do not match SOURCE character for
+character, return PARTS unchanged."
   (let ((roles (autolith::syntax--lisp-parenthesis-roles source)))
     (if (/= (length roles) (reduce #'+ parts :key (lambda (part) (length (rest part)))))
         parts
@@ -59,13 +61,14 @@ character for character are returned as they are."
 
 (-> source-highlight (string &key (:language (or null string)) (:pathname (or null string))) list)
 (defun source-highlight (source &key language pathname)
-  "Return SOURCE as a list of (ROLE . TEXT) in order, or NIL when no language is known for it.
+  "Return SOURCE as a list of (ROLE . TEXT), or NIL if the language of SOURCE is unknown.
 
-LANGUAGE names the language as a code fence would, such as lisp or bash;
-PATHNAME lets a file's name choose it instead. The roles are :PLAIN and the
-terminal's syntax roles, :SYNTAX-KEYWORD, :SYNTAX-FUNCTION, :SYNTAX-STRING,
-:SYNTAX-NUMBER, :SYNTAX-COMMENT and the rest. In Lisp each parenthesis has
-the role of its nesting depth, so the two of a pair read alike."
+LANGUAGE is the name of the language in a code fence, such as lisp or bash.
+Otherwise, the language is chosen from the file name PATHNAME. The roles are
+:PLAIN and the syntax roles of the terminal, such as :SYNTAX-KEYWORD,
+:SYNTAX-FUNCTION, :SYNTAX-STRING, :SYNTAX-NUMBER and :SYNTAX-COMMENT. In Lisp,
+each parenthesis has the role of the nesting depth, so both parentheses of a
+pair have the same color."
   (highlight--seek-library)
   (handler-case
       (let* ((found (and language
@@ -83,12 +86,13 @@ the role of its nesting depth, so the two of a pair read alike."
 
 (-> edit-highlight (string string &key (:pathname (or null string)) (:limit integer)) list)
 (defun edit-highlight (old new &key pathname (limit 60))
-  "Return the rows of the edit that replaced OLD with NEW, each a list of (ROLE . TEXT), or NIL when it cannot be shown so.
+  "Return the rows of the edit that replaced OLD with NEW, or NIL if the edit cannot be rendered.
+Each row is a list of (ROLE . TEXT).
 
-Each row opens with a gutter, :CONTEXT-GUTTER, :REMOVED-GUTTER or
-:ADDED-GUTTER, that numbers the line and says what happened to it; the rest
-of the row is the line's source, colored for the language PATHNAME's name
-implies. At most LIMIT rows of the change are returned."
+Each row starts with a gutter of the role :CONTEXT-GUTTER, :REMOVED-GUTTER or
+:ADDED-GUTTER. The gutter contains the line number and the kind of change. The
+rest of the row is the source of the line, colored for the language of the
+file PATHNAME. At most LIMIT rows of the change are returned."
   (highlight--seek-library)
   (handler-case
       (autolith::render-diff :removed-content (and (plusp (length old)) old)

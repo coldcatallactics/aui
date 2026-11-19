@@ -2,75 +2,79 @@
 
 ;;;; -- Record Projection --
 
-;;; Turn what a channel says into transcript entries. Durable conversation
-;;; records become entries when history is read; the structured client
-;;; protocol's live events append to and update them while a turn runs. The
-;;; two never show the same thing twice: a live turn is drawn from its text,
-;;; reasoning and status events, and of its records only those the events do
-;;; not carry are taken.
+;;; The conversion of channel records and events into transcript entries.
+;;; Durable conversation records become entries when history is read. Live
+;;; events of the structured client protocol add and update entries during a
+;;; turn. A live turn is shown from the text, reasoning and status events
+;;; of the turn. Only the records without matching events are added, so
+;;; nothing is shown twice.
 
 (defclass projector ()
   ((transcript
     :initarg       :transcript
     :reader        projector-transcript
     :type          transcript
-    :documentation "The transcript the projection writes to.")
+    :documentation "The transcript to which the entries are written.")
    (image-root
     :initarg       :image-root
     :initform      nil
     :accessor      projector-image-root
     :type          (or null pathname)
-    :documentation "The directory holding the conversation's image artifacts, or NIL.")
+    :documentation "The directory that contains the image artifacts of the conversation, or NIL.")
    (boundary
     :initform      0
     :accessor      projector-boundary
     :type          integer
-    :documentation "The last record sequence history covers; a live record at or below it was already shown.")
+    :documentation "The sequence number of the last record read from history.
+Live records at or below this number were already shown.")
    (catch-up-p
     :initform      nil
     :accessor      projector-catch-up-p
     :type          boolean
-    :documentation "Whether a provider request was already under way at attachment, so its records are taken instead of its events.")
+    :documentation "True if a provider request was already running at attachment.
+In that case, the records of the request are used instead of the events.")
    (answer
     :initform      nil
     :accessor      projector--answer
     :type          (or null assistant-entry)
-    :documentation "The answer now streaming, or NIL.")
+    :documentation "The answer that is streaming now, or NIL.")
    (reasoning
     :initform      nil
     :accessor      projector--reasoning
     :type          (or null reasoning-entry)
-    :documentation "The reasoning now streaming, or NIL.")
+    :documentation "The reasoning that is streaming now, or NIL.")
    (output
     :initform      nil
     :accessor      projector--output
     :type          (or null output-entry)
-    :documentation "The command output entry still open for more text, or NIL.")
+    :documentation "The open command output entry, to which more text can be added, or NIL.")
    (streamed
     :initform      0
     :accessor      projector--streamed
     :type          integer
-    :documentation "How many characters of the answer to the provider request under way have streamed, whatever entries they went to.")
+    :documentation "The number of characters streamed for the answer to the current provider request.
+The count includes all entries of the answer.")
    (unsettled
     :initform      nil
     :accessor      projector--unsettled
     :type          list
-    :documentation "The tool results on the page of history read last whose calls stand on the page before it.")
+    :documentation "The tool results of the last history page for which the calls are on another page.")
    (invocation
     :initform      nil
     :accessor      projector-invocation
     :type          (or null string)
-    :documentation "The command the person just sent, which the output that follows is labelled with, or NIL.")
+    :documentation "The command that the person just sent, or NIL.
+The output that follows is labelled with this command.")
    (channel
     :initform      nil
     :accessor      projector-channel
     :type          (or null string)
-    :documentation "The identifier of the channel whose records these are, once known."))
-  (:documentation "The state that turns one channel's records and events into its transcript."))
+    :documentation "The identifier of the channel of the records, or NIL before it is known."))
+  (:documentation "The state used to convert the records and events of one channel into a transcript."))
 
 (-> make-projector (transcript &key (:image-root (or null pathname))) projector)
 (defun make-projector (transcript &key image-root)
-  "Return a projector writing to TRANSCRIPT, resolving image artifacts below IMAGE-ROOT."
+  "Return a projector that writes to TRANSCRIPT. Image artifacts are looked up below IMAGE-ROOT."
   (make-instance 'projector :transcript transcript :image-root image-root))
 
 
@@ -80,8 +84,9 @@
 (defun json->data (value)
   "Return the decoded JSON VALUE as plain Lisp data.
 
-An object becomes an association list of string keys in their written order,
-an array a list, false :FALSE and null :NULL; strings, numbers and T stand."
+Objects become association lists of string keys in the written order.
+Arrays become lists, and false becomes :FALSE. Null is :NULL. Strings,
+numbers and T are returned as they are."
   (cond
     ((autolith::json-object-p value)
      (loop for key being the hash-keys of value using (hash-value member)
@@ -97,10 +102,11 @@ an array a list, false :FALSE and null :NULL; strings, numbers and T stand."
 
 (-> json-arguments (t) list)
 (defun json-arguments (source)
-  "Return the association list of the tool arguments SOURCE: a JSON object, or its text.
+  "Return the tool arguments SOURCE as an association list.
+SOURCE is a JSON object or the text of one.
 
-Anything that does not decode to one object yields a single \"arguments\" member
-holding the text, so a malformed call still shows what was asked."
+If SOURCE does not decode to an object, return a list with one \"arguments\"
+member that contains the text."
   (handler-case
       (let ((decoded (if (stringp source)
                          (if (plusp (length source))
@@ -118,28 +124,29 @@ holding the text, so a malformed call still shows what was asked."
 
 (-> record-sequence (list) (or null integer))
 (defun record-sequence (record)
-  "Return RECORD's durable sequence number, or NIL when it has none."
+  "Return the durable sequence number of RECORD, or NIL if RECORD has none."
   (let ((sequence (getf (rest record) :seq)))
     (and (integerp sequence) sequence)))
 
 (-> record--time (list) (or null integer))
 (defun record--time (record)
-  "Return RECORD's universal time, or NIL when it carries none in that form."
+  "Return the universal time of RECORD, or NIL if RECORD has no time in that form."
   (let ((time (getf (rest record) :time)))
     (and (integerp time) time)))
 
 (defparameter *compaction-label* "context compacted"
-  "What marks the place where the conversation's context was compacted.")
+  "The label of the marker at the place where the context of the conversation was compacted.")
 
 (defparameter *goal-statuses* '(:active :paused :complete :verified :blocked :exhausted :cancelled :failed)
-  "What a channel's goal can be said to be while the channel has one.")
+  "A list of the statuses that the goal of a channel can have.")
 
 (-> goal--create (t t &key (:kind t) (:created-at t)) list)
 (defun goal--create (objective status &key kind created-at)
-  "Return the goal with OBJECTIVE that is STATUS as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT, or NIL when the two do not state a goal.
+  "Return a goal as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT.
+Return NIL if OBJECTIVE and STATUS do not describe a goal.
 
-STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
-:MISSION when KIND says so and :GOAL otherwise."
+STATUS is one of `*goal-statuses*', as a keyword or as a string. :KIND is
+:MISSION if KIND is \"mission\" and :GOAL otherwise."
   (let ((status (and (or (stringp status) (symbolp status))
                      (find status *goal-statuses* :test #'string-equal))))
     (and status
@@ -154,7 +161,8 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
 
 (-> record-goal (list) list)
 (defun record-goal (record)
-  "Return the goal the durable goal RECORD states, or NIL when it records that the channel's goal was cleared."
+  "Return the goal stated in the durable goal RECORD.
+Return NIL if RECORD is the record of a cleared goal."
   (let ((properties (rest record)))
     (goal--create (getf properties :objective) (getf properties :status)
                   :kind       (getf properties :kind)
@@ -162,14 +170,16 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
 
 (-> portable-goal (t) list)
 (defun portable-goal (object)
-  "Return the goal the portable OBJECT of a channel's state names, or NIL when it names none."
+  "Return the goal in the portable object OBJECT of the state of a channel.
+Return NIL if OBJECT contains no goal."
   (goal--create (portable-get object "objective") (portable-get object "status")
                 :kind       (portable-get object "kind")
                 :created-at (portable-get object "createdAt")))
 
 (-> records-newest-goal (list list) list)
 (defun records-newest-goal (records known)
-  "Return the newest goal record among RECORDS and KNOWN, a goal record or NIL: the one with the highest sequence."
+  "Return the goal record with the highest sequence number among RECORDS and KNOWN.
+KNOWN is a goal record or NIL."
   (dolist (record records known)
     (when (and (eq (first record) ':goal)
                (or (null known)
@@ -178,7 +188,7 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
 
 (-> record--image-pathnames (projector list) list)
 (defun record--image-pathnames (projector descriptors)
-  "Return the namestrings of the image artifacts DESCRIPTORS name that exist below PROJECTOR's image root."
+  "Return the namestrings of the image artifacts in DESCRIPTORS that exist below the image root of PROJECTOR."
   (let ((root (projector-image-root projector)))
     (when root
       (loop for descriptor in descriptors
@@ -189,7 +199,7 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
 
 (-> record--job-notice (list (or null integer)) notice-entry)
 (defun record--job-notice (completion time)
-  "Return the notice for a background job's COMPLETION, recorded at TIME."
+  "Return the notice for the COMPLETION of a background job, recorded at TIME."
   (let ((outcome (getf completion :outcome))
         (summary (getf completion :summary)))
     (make-instance 'notice-entry
@@ -212,10 +222,10 @@ STATUS is one of the goal statuses, as a keyword or spelled out. :KIND is
 
 (-> record--request-entry (list (or null integer) (or null string)) entry)
 (defun record--request-entry (request time channel)
-  "Return the entry for an operation REQUEST that started a turn: a channel message, or a notice naming the operation.
+  "Return the entry for the operation REQUEST that started a turn.
+The entry is a message, a mention notice or a notice with the name of the operation.
 
-A message keeps the channel its sender wrote from, unless that is CHANNEL,
-the one the request arrived in."
+Messages keep the channel from which the sender wrote, unless that channel is CHANNEL."
   (let ((message (getf request :message)))
     (cond
       ((and message (member (getf message :kind) '(:mention :subscription)))
@@ -240,7 +250,7 @@ the one the request arrived in."
 
 (-> record--continuation-text (string) string)
 (defun record--continuation-text (content)
-  "Return the words that stand for the automatic continuation prompt CONTENT."
+  "Return the notice text for the automatic continuation prompt CONTENT."
   (cond
     ((string= content autolith::*application-goal-continuation-prompt*)
      "goal continues")
@@ -251,7 +261,7 @@ the one the request arrived in."
 
 (-> record--message-entry (projector list) (or null entry))
 (defun record--message-entry (projector record)
-  "Return the entry for the user message RECORD, or NIL for a message with nothing to show."
+  "Return the entry for the user message RECORD. Return NIL if there is nothing to show."
   (let* ((properties (rest record))
          (content    (getf properties :content))
          (time       (record--time record)))
@@ -273,7 +283,8 @@ the one the request arrived in."
 
 (-> record--item-entry (list) (or null entry))
 (defun record--item-entry (record)
-  "Return the entry for the provider item RECORD: an answer, reasoning or a tool call, or NIL."
+  "Return the entry for the provider item RECORD, or NIL.
+The entry is an answer, reasoning, a tool call or a lookup of tool schemas."
   (let ((wire-json (getf (rest record) :wire-json))
         (time      (record--time record)))
     (handler-case
@@ -308,20 +319,20 @@ the one the request arrived in."
 
 (-> record--schemas-entry (list) (or null entry))
 (defun record--schemas-entry (record)
-  "Return the entry of RECORD when it is the provider item that reports a lookup of tool schemas, which no live event carries, else NIL."
+  "Return the entry of RECORD if RECORD is a provider item for a lookup of tool schemas.
+Otherwise, return NIL."
   (let ((wire-json (getf (rest record) :wire-json)))
     (and (eq (first record) ':provider-item)
          (stringp wire-json)
-         ;; Most items are something else; only one that names the type is decoded.
+         ;; Most items have other types. Only items that contain the type are decoded.
          (search "tool_search_output" wire-json)
          (let ((entry (record--item-entry record)))
            (and (typep entry 'schemas-entry) entry)))))
 
 (-> record--join-schemas (entry (or null entry)) boolean)
 (defun record--join-schemas (entry previous)
-  "Add the names of the schema lookup ENTRY to PREVIOUS when both are lookups, and return whether that was done.
-
-Lookups that follow one another read as one, as in the terminal."
+  "Add the names of the schema lookup ENTRY to PREVIOUS if both are lookups.
+Return T if the names were added."
   (when (and (typep entry 'schemas-entry) (typep previous 'schemas-entry))
     (setf (schemas-entry-names previous)
           (remove-duplicates (append (schemas-entry-names previous) (schemas-entry-names entry))
@@ -331,19 +342,20 @@ Lookups that follow one another read as one, as in the terminal."
 
 (-> record--seconds (list) (or null real))
 (defun record--seconds (properties)
-  "Return the wall-clock seconds the tool result PROPERTIES report, or NIL."
+  "Return the wall-clock seconds in the tool result PROPERTIES, or NIL."
   (let ((microseconds (getf properties :real-microseconds)))
     (and (realp microseconds) (/ microseconds 1000000))))
 
 (-> tool-result-sections (string string) (values list (or null string)))
 (defun tool-result-sections (name output)
-  "Return what the result OUTPUT of the tool NAME shows a person, and the status line it opens with.
+  "Return the sections of the result OUTPUT of the tool NAME, and the status line of the result.
 
-The first value is a list of (LABEL . TEXT). A shell command's result is
-split by the reader Autolith's terminal uses: one section for each capture
-that holds lines, without the byte counts and log references kept for the
-model, then a section for anything it noted, such as a timeout. The second
-value is its exit line. Any other tool's result is one section and no status."
+The first value is a list of (LABEL . TEXT). Results of shell commands are
+split with the reader used by the Autolith terminal. Each capture that
+contains lines becomes a section, without the byte counts and log references
+for the model. The notes of the result, such as a timeout, become a last
+section. The second value is the exit line. Results of other tools are one
+section, and the second value is NIL."
   (let ((parts (and (string= name "shell.run")
                     (fboundp 'autolith::application--shell-result-parts)
                     (handler-case (autolith::application--shell-result-parts output)
@@ -366,7 +378,7 @@ value is its exit line. Any other tool's result is one section and no status."
 
 (-> tool-entry-settle (tool-entry &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
 (defun tool-entry-settle (entry &key success-p output seconds)
-  "Record in the tool call ENTRY how the call ended."
+  "Set the status, the output and the duration of the tool call ENTRY."
   (setf (tool-entry-status entry)  (if success-p ':completed ':failed)
         (tool-entry-output entry)  (and output (princ-to-string output))
         (tool-entry-seconds entry) seconds)
@@ -374,7 +386,7 @@ value is its exit line. Any other tool's result is one section and no status."
 
 (-> record--result (list) list)
 (defun record--result (properties)
-  "Return what the tool result PROPERTIES say of their call, as the arguments of `tool-entry-settle'."
+  "Return the outcome in the tool result PROPERTIES as the keyword arguments of `tool-entry-settle'."
   (list :success-p (and (member (getf properties :status) '(:ok :success)) t)
         :output    (getf properties :output)
         :seconds   (record--seconds properties)))
@@ -382,7 +394,7 @@ value is its exit line. Any other tool's result is one section and no status."
 (-> projector--settle-tool
     (projector (or null string) &rest t &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
 (defun projector--settle-tool (projector call-identifier &rest result &key success-p output seconds)
-  "Record the result of the tool call CALL-IDENTIFIER in PROJECTOR's transcript."
+  "Store the result of the tool call CALL-IDENTIFIER in the transcript of PROJECTOR."
   (declare (ignore success-p output seconds))
   (let* ((transcript (projector-transcript projector))
          (entry      (and call-identifier (transcript-find-tool transcript call-identifier))))
@@ -393,7 +405,7 @@ value is its exit line. Any other tool's result is one section and no status."
 
 (-> record--side-status-text (list) string)
 (defun record--side-status-text (record)
-  "Return the text of the side status RECORD's spans."
+  "Return the text of the spans in the side status RECORD."
   (with-output-to-string (stream)
     (dolist (span (getf (rest record) :spans))
       (let ((text (if (consp span) (autolith::terminal-span-text span) span)))
@@ -402,10 +414,10 @@ value is its exit line. Any other tool's result is one section and no status."
 
 (-> record->entry (projector list) (or null entry))
 (defun record->entry (projector record)
-  "Return the entry RECORD adds to a transcript, or NIL when it adds none.
+  "Return the transcript entry for RECORD, or NIL if RECORD has no entry.
 
-A tool result adds none: it settles the call's own entry in PROJECTOR's
-transcript instead."
+Tool results have no entry of their own. The result is stored in the entry
+of the call in the transcript of PROJECTOR."
   (case (first record)
     (:message
      (record--message-entry projector record))
@@ -423,12 +435,11 @@ transcript instead."
        (when (and (integerp count) (plusp count))
          (make-instance 'notice-entry
                         :time (record--time record)
-                        :text (format nil "yielded: ~D job~:P will wake the agent" count)))))
+                        :text (format nil "yielded: the agent waits for ~D job~:P" count)))))
     ((:summary :native-compaction)
      (make-instance 'marker-entry :time (record--time record) :label *compaction-label*))
     (:turn-aborted
-     ;; A turn someone stopped is not a failure, and its condition says nothing
-     ;; a person can read.
+     ;; A turn stopped by a person gets a quiet notice without the condition.
      (if (eq (getf (rest record) :reason) ':cancelled)
          (make-instance 'notice-entry
                         :time (record--time record)
@@ -444,11 +455,11 @@ transcript instead."
 
 (-> records->entries (projector list) list)
 (defun records->entries (projector records)
-  "Return the entries of RECORDS, oldest first, for a page of history.
+  "Return the entries of the history page RECORDS, oldest first.
 
-Tool results settle calls among the returned entries, which are not in the
-transcript yet. A result whose call stands on the page before this one waits
-in PROJECTOR for that page, which is read next."
+Tool results are stored in the call entries of the same page. Results for
+which the call is not on the page are kept in PROJECTOR. Results kept from
+the previous call are stored in the call entries of this page."
   (let ((entries   nil)
         (calls     (make-hash-table :test #'equal))
         (unsettled nil))
@@ -474,7 +485,7 @@ in PROJECTOR for that page, which is read next."
 
 (-> projector--close-stream (projector) null)
 (defun projector--close-stream (projector)
-  "Mark the streaming answer and reasoning of PROJECTOR finished and forget them."
+  "Mark the streaming answer and reasoning of PROJECTOR as finished, and clear them from PROJECTOR."
   (let ((transcript (projector-transcript projector))
         (answer     (projector--answer projector))
         (reasoning  (projector--reasoning projector)))
@@ -490,14 +501,15 @@ in PROJECTOR for that page, which is read next."
 
 (-> projector--append (projector entry) entry)
 (defun projector--append (projector entry)
-  "Append ENTRY to PROJECTOR's transcript, ending any open command output, and return it."
+  "Append ENTRY to the transcript of PROJECTOR and return ENTRY.
+Close the open command output, unless ENTRY is an output entry."
   (unless (typep entry 'output-entry)
     (setf (projector--output projector) nil))
   (transcript-append (projector-transcript projector) entry))
 
 (-> projector--text (projector string) null)
 (defun projector--text (projector delta)
-  "Append the streamed answer text DELTA."
+  "Append the streamed answer text DELTA to the answer of PROJECTOR."
   (when (plusp (length delta))
     (let ((answer (projector--answer projector)))
       (unless answer
@@ -517,7 +529,7 @@ in PROJECTOR for that page, which is read next."
 
 (-> projector--reasoning-text (projector string) null)
 (defun projector--reasoning-text (projector delta)
-  "Append the streamed reasoning text DELTA."
+  "Append the streamed reasoning text DELTA to the reasoning of PROJECTOR."
   (when (plusp (length delta))
     (let ((reasoning (projector--reasoning projector)))
       (unless reasoning
@@ -531,10 +543,9 @@ in PROJECTOR for that page, which is read next."
 
 (-> projector--persisted-answer (projector t) null)
 (defun projector--persisted-answer (projector text)
-  "Complete the streamed answer with the part of its persisted TEXT that did not stream.
+  "Complete the streamed answer with the part of the persisted TEXT that was not streamed.
 
-A provider that does not stream sends the whole of it here. One that streams
-sent all of it already, in one entry or in several when a notice came between."
+For providers that do not stream, this part is the whole text."
   (when (stringp text)
     (let ((streamed (projector--streamed projector)))
       (when (< streamed (length text))
@@ -545,9 +556,8 @@ sent all of it already, in one entry or in several when a notice came between."
 
 (-> projector--append-marker (projector string) null)
 (defun projector--append-marker (projector label)
-  "Mark PROJECTOR's transcript with LABEL unless its last entry is that mark already.
-
-A compaction is told twice while the window looks: by its status and by its record."
+  "Append a marker labelled LABEL to the transcript of PROJECTOR.
+Do nothing if the last entry is already that marker."
   (let* ((transcript (projector-transcript projector))
          (count      (transcript-length transcript))
          (last       (and (plusp count) (transcript-entry transcript (1- count)))))
@@ -558,7 +568,7 @@ A compaction is told twice while the window looks: by its status and by its reco
 
 (-> projector--status (projector t list) null)
 (defun projector--status (projector status details)
-  "Apply the provider and tool lifecycle STATUS with its DETAILS."
+  "Apply the provider or tool lifecycle STATUS and the DETAILS of the status to PROJECTOR."
   (case status
     (:provider-request-started
      (setf (projector-catch-up-p projector) nil
@@ -588,14 +598,15 @@ A compaction is told twice while the window looks: by its status and by its reco
   nil)
 
 (defparameter *notice-glyphs* '((#\∙ . :quiet) (#\! . :failure) (#\@ . :quiet) (#\◆ . :quiet) (#\↪ . :quiet))
-  "The glyphs Autolith opens a one-line notice with, and how each should read.")
+  "A list of the glyphs at the start of one-line notices from Autolith, associated with their tones.")
 
 (-> projector--notice-line (string) (values (or null string) (or null keyword)))
 (defun projector--notice-line (text)
-  "Return the words and tone of TEXT when it is one of Autolith's one-line notices, else NIL.
+  "Return the words and the tone of TEXT if TEXT is a one-line notice from Autolith.
+Otherwise, return NIL.
 
-Such a line opens with a glyph and a space; the glyph is the terminal's way
-of marking it and is dropped."
+These notices start with a glyph and a space. The words are returned without
+the glyph."
   (let ((tone (and (> (length text) 2)
                    (char= (char text 1) #\Space)
                    (null (position #\Newline text))
@@ -606,17 +617,18 @@ of marking it and is dropped."
 
 (-> projector--reasoning-summary (string) (or null string))
 (defun projector--reasoning-summary (text)
-  "Return the reasoning summary TEXT holds when it is the terminal's rendering of one, else NIL.
+  "Return the reasoning summary in TEXT if TEXT is a summary printed by the terminal.
+Otherwise, return NIL.
 
-The terminal prints a summary under a heading of its own, each line behind a
-bar; the heading and the bars are the terminal's and are dropped."
+These summaries are printed under a heading, with a bar in front of each
+line. The heading and the bars are removed."
   (let* ((lines (markdown-lines text))
          (head  (string-trim '(#\Space) (or (first lines) ""))))
     (and (> (length head) 2)
          (search "reasoning summary" head)
          (not (alphanumericp (char head 0)))
-         ;; The terminal wrapped the summary to its own width: rows that follow
-         ;; one another are one paragraph, an empty row parts two.
+         ;; The summary was wrapped to the width of the terminal. Consecutive
+         ;; rows form one paragraph, and an empty row separates two paragraphs.
          (let ((paragraphs nil)
                (words      nil))
            (dolist (line (rest lines))
@@ -633,12 +645,13 @@ bar; the heading and the bars are the terminal's and are dropped."
 
 (-> projector--letters (string) string)
 (defun projector--letters (text)
-  "Return the letters and digits of TEXT, lowercased, which is what two renderings of one summary share."
+  "Return the letters and digits of TEXT in lowercase.
+Two renderings of one summary have the same letters and digits."
   (string-downcase (remove-if-not #'alphanumericp text)))
 
 (-> projector--note-reasoning (projector string) null)
 (defun projector--note-reasoning (projector summary)
-  "Show the reasoning SUMMARY as a thought unless the thought just shown already says it."
+  "Append the reasoning SUMMARY as a thought, unless a recent thought already contains it."
   (let* ((transcript (projector-transcript projector))
          (entries    (transcript-entries transcript))
          (recent     (find-if (lambda (entry)
@@ -655,10 +668,11 @@ bar; the heading and the bars are the terminal's and are dropped."
 
 (-> projector--present (projector t) null)
 (defun projector--present (projector text)
-  "Show the command or Lisp output TEXT, joining what one command prints in several parts.
+  "Append the command or Lisp output TEXT to the transcript of PROJECTOR.
+The parts printed by one command are joined in one entry.
 
-Autolith echoes a local Lisp form as a line starting with an asterisk before
-its output; that line becomes the entry's invocation."
+Autolith echoes local Lisp forms on a line that starts with an asterisk,
+before the output. That line becomes the invocation of the entry."
   (when (stringp text)
     (let* ((trimmed (string-trim '(#\Newline) text))
            (echo-p  (and (> (length trimmed) 2)
@@ -668,10 +682,10 @@ its output; that line becomes the entry's invocation."
       (cond
         ((zerop (length (string-trim '(#\Newline #\Space) trimmed)))
          nil)
-        ;; The terminal's own rendering of a reasoning summary is a thought, shown once.
+        ;; A reasoning summary printed by the terminal is shown once, as a thought.
         ((projector--reasoning-summary trimmed)
          (projector--note-reasoning projector (projector--reasoning-summary trimmed)))
-        ;; A command prints what it has to say; the NIL it returns is noise after it.
+        ;; The NIL returned by a command is dropped after the output of the command.
         ((and open
               (plusp (length (output-entry-text open)))
               (string= (string-trim '(#\Space) trimmed) "⇒ NIL"))
@@ -681,14 +695,15 @@ its output; that line becomes the entry's invocation."
                (projector--output projector)
                (projector--append projector
                                   (make-instance 'output-entry :invocation (subseq trimmed 2)))))
-        ;; A notice is a line of its own, not part of a block, unless a command
-        ;; the person ran is printing: what that prints is its output.
+        ;; A notice line becomes a notice entry, unless a command run by the
+        ;; person is printing. In that case, the line is part of the output.
         ((and (or (null open) (null (output-entry-invocation open)))
               (projector--notice-line trimmed))
          (multiple-value-bind (words tone) (projector--notice-line trimmed)
            (projector--close-stream projector)
-           ;; A notice that lists calls after its statement, as the one about
-           ;; memories does, keeps the statement in its line and the calls behind it.
+           ;; Some notices, such as the notice about memories, list calls after
+           ;; the statement. The statement becomes the text, and the calls
+           ;; become the detail.
            (let ((calls (search " · (" words)))
              (projector--append
               projector
@@ -708,7 +723,8 @@ its output; that line becomes the entry's invocation."
                    (format nil "~A~%~A" (output-entry-text open) trimmed)
                    trimmed))
          (transcript-touch (projector-transcript projector) open))
-        ;; A slash command is not echoed; its output goes by what the person sent.
+        ;; Slash commands are not echoed. The output is labelled with the text sent
+        ;; by the person.
         (t
          (setf (projector--output projector)
                (projector--append projector
@@ -719,7 +735,8 @@ its output; that line becomes the entry's invocation."
 
 (-> projector--live-record (projector list) null)
 (defun projector--live-record (projector record)
-  "Take the live RECORD when history did not show it and the turn's events do not carry it."
+  "Append the entry of the live RECORD to the transcript of PROJECTOR.
+Do nothing if RECORD was read from history or if the events of the turn cover it."
   (let ((sequence (record-sequence record)))
     (when (or (null sequence) (> sequence (projector-boundary projector)))
       (let* ((entry      (if (or (projector-catch-up-p projector)
@@ -743,10 +760,9 @@ its output; that line becomes the entry's invocation."
 
 (-> projector-apply (projector list) null)
 (defun projector-apply (projector event)
-  "Apply one event of the structured client protocol to PROJECTOR's transcript.
+  "Apply EVENT of the structured client protocol to the transcript of PROJECTOR.
 
-Events that say nothing about the transcript, such as approvals and state,
-are left to the caller."
+Events unrelated to the transcript, such as approvals and state, are ignored."
   (let ((fields (rest event)))
     (case (first event)
       (:text
@@ -778,7 +794,7 @@ are left to the caller."
 
 (-> channel-display-name (t) string)
 (defun channel-display-name (identifier)
-  "Return the channel IDENTIFIER as people read it, with its visual hyphen."
+  "Return the display form of the channel IDENTIFIER. The display form contains the visual hyphen."
   (if (stringp identifier)
       (autolith::conversation-identifier-display identifier)
       "?"))

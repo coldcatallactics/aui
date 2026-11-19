@@ -2,18 +2,19 @@
 
 ;;;; -- Portable Values --
 
-;;; Autolith's structured client protocol carries JSON-shaped data as readable
-;;; forms: an object is (:OBJECT KEY VALUE ...), an array (:ARRAY VALUE ...),
-;;; false :FALSE and null :NULL. These read and build such forms.
+;;; The structured client protocol of Autolith sends JSON data as readable forms.
+;;; An object is (:OBJECT KEY VALUE ...), and an array is (:ARRAY VALUE ...).
+;;; False is :FALSE, and null is :NULL. The functions below read and build
+;;; these forms.
 
 (-> portable-object-p (t) boolean)
 (defun portable-object-p (value)
-  "Return T when VALUE is a portable object form."
+  "Return T if VALUE is a portable object form."
   (and (consp value) (eq (first value) ':object)))
 
 (-> portable-get (t string &optional t) t)
 (defun portable-get (object key &optional default)
-  "Return OBJECT's member KEY, or DEFAULT when OBJECT has none or holds null there."
+  "Return the member KEY of OBJECT. Return DEFAULT if OBJECT has no such member or if the member is null."
   (if (portable-object-p object)
       (loop for (name value) on (rest object) by (partial #'nthcdr 2)
             when (equal name key)
@@ -23,7 +24,7 @@
 
 (-> portable-member-p (t string) boolean)
 (defun portable-member-p (object key)
-  "Return T when the portable object OBJECT has a member KEY, whatever that member holds, null included."
+  "Return T if the portable object OBJECT has a member KEY, even if the member is null."
   (and (portable-object-p object)
        (loop for (name) on (rest object) by (partial #'nthcdr 2)
                thereis (equal name key))
@@ -31,19 +32,20 @@
 
 (-> portable-true-p (t) boolean)
 (defun portable-true-p (value)
-  "Return T when VALUE is a portable true: anything but false, null and NIL."
+  "Return T if VALUE is a portable true value. All values other than false, null and NIL are true."
   (not (member value '(nil :false :null))))
 
 (-> portable-items (t) list)
 (defun portable-items (array)
-  "Return the members of the portable array form ARRAY as a list, or NIL when it is not one."
+  "Return the members of the portable array ARRAY as a list. Return NIL if ARRAY is not a portable array."
   (if (and (consp array) (eq (first array) ':array))
       (rest array)
       nil))
 
 (-> portable-object (&rest t) list)
 (defun portable-object (&rest members)
-  "Return a portable object of MEMBERS, alternating string keys and values; a NIL value is sent as null."
+  "Return a portable object built from MEMBERS, which alternate between string keys and values.
+NIL values become null."
   (cons ':object
         (loop for (name value) on members by (partial #'nthcdr 2)
               collect name
@@ -51,5 +53,5 @@
 
 (-> portable-string (t) (or null string))
 (defun portable-string (value)
-  "Return VALUE when it is a nonempty string, else NIL."
+  "Return VALUE if it is a nonempty string. Otherwise, return NIL."
   (and (stringp value) (plusp (length value)) value))

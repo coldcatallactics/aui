@@ -2,18 +2,17 @@
 
 ;;;; -- Transcript Model --
 
-;;; A channel's history as an ordered sequence of entries, independent of how
-;;; it is drawn. The projection in src/client/records.lisp turns Autolith's
-;;; records and live events into the mutations below; the document view reads
-;;; the entries and redraws those whose revision moved. Only the interface
-;;; thread touches a transcript.
+;;; The history of a channel as an ordered sequence of entries. The records
+;;; and the live events of Autolith are converted into the mutations below in
+;;; src/client/records.lisp. Entries with a new revision are drawn again. A
+;;; transcript is only used on the interface thread.
 
 (deftype tool-status ()
-  "How far a tool call got."
+  "The progress of a tool call."
   '(member :pending :running :completed :failed))
 
 (deftype notice-tone ()
-  "How a notice should read: a quiet aside, a success, a warning or a failure."
+  "The tone of a notice: a quiet aside, a success, a warning or a failure."
   '(member :quiet :success :warning :failure))
 
 
@@ -25,25 +24,26 @@
     :initform      nil
     :accessor      entry-identifier
     :type          (or null string)
-    :documentation "The entry's identity within its transcript, assigned on insertion when NIL.")
+    :documentation "The identifier of the entry in the transcript.
+If it is NIL, an identifier is assigned on insertion.")
    (time
     :initarg       :time
     :initform      nil
     :reader        entry-time
     :type          (or null integer)
-    :documentation "The universal time Autolith recorded for the entry, or NIL.")
+    :documentation "The universal time recorded by Autolith for the entry, or NIL.")
    (revision
     :initform      0
     :accessor      entry-revision
     :type          integer
-    :documentation "Incremented on every change, so a view knows its layout of the entry is stale.")
+    :documentation "The revision of the entry. It is incremented on each change.")
    (expanded-p
     :initarg       :expanded-p
     :initform      nil
     :accessor      entry-expanded-p
     :type          boolean
-    :documentation "Whether the person opened the entry's detail."))
-  (:documentation "One unit of a channel's history."))
+    :documentation "True if the person opened the detail of the entry."))
+  (:documentation "One unit of the history of a channel."))
 
 (defclass user-entry (entry)
   ((text
@@ -51,26 +51,27 @@
     :initform      ""
     :reader        user-entry-text
     :type          string
-    :documentation "What was written.")
+    :documentation "The text of the message.")
    (images
     :initarg       :images
     :initform      nil
     :reader        user-entry-images
     :type          list
-    :documentation "Namestrings of the images sent with the message.")
+    :documentation "The namestrings of the images sent with the message.")
    (sender
     :initarg       :sender
     :initform      nil
     :reader        user-entry-sender
     :type          (or null string)
-    :documentation "The participant who wrote it when that is not the person, as for a message from another channel.")
+    :documentation "The participant who wrote the message, or NIL if the person wrote it.
+Messages from other channels have a sender.")
    (origin
     :initarg       :origin
     :initform      nil
     :reader        user-entry-origin
     :type          (or null string)
-    :documentation "The channel the message came from, shown with the sender, or NIL."))
-  (:documentation "A message to the channel's agent."))
+    :documentation "The channel from which the message came, or NIL."))
+  (:documentation "A message to the agent of the channel."))
 
 (defclass assistant-entry (entry)
   ((text
@@ -78,13 +79,13 @@
     :initform      ""
     :accessor      assistant-entry-text
     :type          string
-    :documentation "The agent's prose as Markdown, growing while it streams.")
+    :documentation "The prose of the agent as Markdown. The text grows while it streams.")
    (streaming-p
     :initarg       :streaming-p
     :initform      nil
     :accessor      assistant-entry-streaming-p
     :type          boolean
-    :documentation "Whether more of the text is still arriving."))
+    :documentation "True if more text is still arriving."))
   (:documentation "One contiguous answer from the agent."))
 
 (defclass reasoning-entry (entry)
@@ -93,14 +94,14 @@
     :initform      ""
     :accessor      reasoning-entry-text
     :type          string
-    :documentation "The visible reasoning summary, growing while it streams.")
+    :documentation "The visible reasoning summary. The text grows while it streams.")
    (streaming-p
     :initarg       :streaming-p
     :initform      nil
     :accessor      reasoning-entry-streaming-p
     :type          boolean
-    :documentation "Whether more of the reasoning is still arriving."))
-  (:documentation "A stretch of the agent's visible reasoning, closed by default."))
+    :documentation "True if more reasoning is still arriving."))
+  (:documentation "A part of the visible reasoning of the agent. It is closed by default."))
 
 (defclass tool-entry (entry)
   ((call-identifier
@@ -108,37 +109,38 @@
     :initform      nil
     :reader        tool-entry-call-identifier
     :type          (or null string)
-    :documentation "The provider's identity for the call, which its result names.")
+    :documentation "The identifier of the call from the provider.
+The result of the call contains the same identifier.")
    (name
     :initarg       :name
     :initform      "tool"
     :reader        tool-entry-name
     :type          string
-    :documentation "The tool's canonical name, such as shell.run.")
+    :documentation "The canonical name of the tool, such as shell.run.")
    (arguments
     :initarg       :arguments
     :initform      nil
     :accessor      tool-entry-arguments
     :type          list
-    :documentation "The call's arguments as an association list of name and value, in the order given.")
+    :documentation "The arguments of the call as an association list of names and values, in the given order.")
    (status
     :initarg       :status
     :initform      ':pending
     :accessor      tool-entry-status
     :type          tool-status
-    :documentation "How far the call got.")
+    :documentation "The progress of the call.")
    (output
     :initarg       :output
     :initform      nil
     :accessor      tool-entry-output
     :type          (or null string)
-    :documentation "What the tool returned, once it has.")
+    :documentation "The output of the tool, or NIL before the tool returned.")
    (seconds
     :initarg       :seconds
     :initform      nil
     :accessor      tool-entry-seconds
     :type          (or null real)
-    :documentation "How long the call took by the clock, once known."))
+    :documentation "The wall-clock duration of the call in seconds, or NIL before it is known."))
   (:documentation "One tool call and its result."))
 
 (defclass notice-entry (entry)
@@ -147,26 +149,26 @@
     :initform      ':quiet
     :reader        notice-entry-tone
     :type          notice-tone
-    :documentation "How the notice should read.")
+    :documentation "The tone of the notice.")
    (text
     :initarg       :text
     :initform      ""
     :reader        notice-entry-text
     :type          string
-    :documentation "The notice's one-line statement.")
+    :documentation "The one-line statement of the notice.")
    (detail
     :initarg       :detail
     :initform      nil
     :reader        notice-entry-detail
     :type          (or null string)
-    :documentation "Longer text shown beneath the statement, or NIL.")
+    :documentation "A longer text shown beneath the statement, or NIL.")
    (channel
     :initarg       :channel
     :initform      nil
     :reader        notice-entry-channel
     :type          (or null string)
-    :documentation "A channel the notice leads to when clicked, or NIL."))
-  (:documentation "Something Autolith says about the conversation rather than in it."))
+    :documentation "The channel that is opened by a click on the notice, or NIL."))
+  (:documentation "A statement from Autolith about the conversation."))
 
 (defclass output-entry (entry)
   ((text
@@ -174,14 +176,14 @@
     :initform      ""
     :accessor      output-entry-text
     :type          string
-    :documentation "The output as Autolith laid it out for a fixed-pitch face.")
+    :documentation "The output, laid out by Autolith for a fixed-pitch face.")
    (invocation
     :initarg       :invocation
     :initform      nil
     :accessor      output-entry-invocation
     :type          (or null string)
-    :documentation "The command or form whose output this is, when it is one."))
-  (:documentation "What a command or a local Lisp form printed."))
+    :documentation "The command or form that printed the output, or NIL."))
+  (:documentation "The output printed by a command or a local Lisp form."))
 
 (defclass schemas-entry (entry)
   ((names
@@ -189,8 +191,8 @@
     :initform      nil
     :accessor      schemas-entry-names
     :type          list
-    :documentation "The names of the groups of tools, in the order the agent first looked each up."))
-  (:documentation "The agent looked up how groups of its tools are called. Lookups that follow one another are one entry."))
+    :documentation "The names of the groups of tools, in the order of the first lookup of each group."))
+  (:documentation "A lookup of the schemas of groups of tools by the agent. Consecutive lookups are one entry."))
 
 (defclass marker-entry (entry)
   ((label
@@ -198,8 +200,8 @@
     :initform      ""
     :reader        marker-entry-label
     :type          string
-    :documentation "The words on the rule."))
-  (:documentation "A rule across the transcript, such as the point where context was compacted."))
+    :documentation "The text on the horizontal rule."))
+  (:documentation "A horizontal rule across the transcript, such as at the point where the context was compacted."))
 
 
 ;;;; -- Transcript --
@@ -214,12 +216,12 @@
     :initform      (make-hash-table :test #'equal)
     :reader        transcript--index
     :type          hash-table
-    :documentation "Each entry by its identifier.")
+    :documentation "A table of the entries by identifier.")
    (tools
     :initform      (make-hash-table :test #'equal)
     :reader        transcript--tools
     :type          hash-table
-    :documentation "Each tool entry by its call identifier.")
+    :documentation "A table of the tool entries by call identifier.")
    (counter
     :initform      0
     :accessor      transcript--counter
@@ -229,7 +231,8 @@
     :initform      0
     :accessor      transcript-revision
     :type          integer
-    :documentation "Incremented on every change to the sequence or to an entry."))
+    :documentation "The revision of the transcript.
+It is incremented on each change to the sequence or to an entry."))
   (:documentation "The ordered history of one channel."))
 
 (-> make-transcript () transcript)
@@ -239,34 +242,35 @@
 
 (-> transcript-length (transcript) integer)
 (defun transcript-length (transcript)
-  "Return how many entries TRANSCRIPT holds."
+  "Return the number of entries in TRANSCRIPT."
   (length (transcript-entries transcript)))
 
 (-> transcript-entry (transcript integer) entry)
 (defun transcript-entry (transcript position)
-  "Return TRANSCRIPT's entry at POSITION, counted from the oldest."
+  "Return the entry at POSITION in TRANSCRIPT. Position 0 is the oldest entry."
   (aref (transcript-entries transcript) position))
 
 (-> transcript-find (transcript string) (or null entry))
 (defun transcript-find (transcript identifier)
-  "Return TRANSCRIPT's entry named IDENTIFIER, or NIL."
+  "Return the entry of TRANSCRIPT with the identifier IDENTIFIER, or NIL."
   (values (gethash identifier (transcript--index transcript))))
 
 (-> transcript-find-tool (transcript string) (or null tool-entry))
 (defun transcript-find-tool (transcript call-identifier)
-  "Return TRANSCRIPT's tool entry for CALL-IDENTIFIER, or NIL."
+  "Return the tool entry of TRANSCRIPT for CALL-IDENTIFIER, or NIL."
   (values (gethash call-identifier (transcript--tools transcript))))
 
 (-> transcript-last (transcript) (or null entry))
 (defun transcript-last (transcript)
-  "Return TRANSCRIPT's newest entry, or NIL when it is empty."
+  "Return the newest entry of TRANSCRIPT, or NIL if TRANSCRIPT is empty."
   (let ((entries (transcript-entries transcript)))
     (when (plusp (length entries))
       (aref entries (1- (length entries))))))
 
 (-> transcript--register (transcript entry) entry)
 (defun transcript--register (transcript entry)
-  "Give ENTRY an identifier when it lacks one and index it in TRANSCRIPT."
+  "Give ENTRY an identifier if it has none, and add ENTRY to the tables of TRANSCRIPT.
+Return ENTRY."
   (unless (entry-identifier entry)
     (setf (entry-identifier entry)
           (format nil "entry-~D" (incf (transcript--counter transcript)))))
@@ -277,7 +281,7 @@
 
 (-> transcript-append (transcript entry) entry)
 (defun transcript-append (transcript entry)
-  "Add ENTRY as TRANSCRIPT's newest and return it."
+  "Add ENTRY as the newest entry of TRANSCRIPT and return ENTRY."
   (transcript--register transcript entry)
   (vector-push-extend entry (transcript-entries transcript))
   (incf (transcript-revision transcript))
@@ -285,9 +289,8 @@
 
 (-> transcript-prepend (transcript list) integer)
 (defun transcript-prepend (transcript entries)
-  "Put ENTRIES, oldest first, before everything TRANSCRIPT holds and return how many were added.
-
-This is how an earlier page of history arrives."
+  "Put ENTRIES, oldest first, before all entries of TRANSCRIPT.
+Return the number of added entries."
   (let* ((existing (coerce (transcript-entries transcript) 'list))
          (vector   (transcript-entries transcript)))
     (setf (fill-pointer vector) 0)
@@ -300,14 +303,15 @@ This is how an earlier page of history arrives."
 
 (-> transcript-touch (transcript entry) entry)
 (defun transcript-touch (transcript entry)
-  "Record that ENTRY changed, so views lay it out again, and return it."
+  "Mark ENTRY as changed and return ENTRY.
+The revisions of ENTRY and TRANSCRIPT are incremented."
   (incf (entry-revision entry))
   (incf (transcript-revision transcript))
   entry)
 
 (-> transcript-clear (transcript) transcript)
 (defun transcript-clear (transcript)
-  "Remove every entry from TRANSCRIPT and return it."
+  "Remove all entries from TRANSCRIPT and return TRANSCRIPT."
   (setf (fill-pointer (transcript-entries transcript)) 0)
   (clrhash (transcript--index transcript))
   (clrhash (transcript--tools transcript))
@@ -316,7 +320,7 @@ This is how an earlier page of history arrives."
 
 (-> transcript-plain-text (transcript) string)
 (defun transcript-plain-text (transcript)
-  "Return TRANSCRIPT's messages and answers as plain text, for copying a whole conversation."
+  "Return the messages and the answers of TRANSCRIPT as plain text."
   (with-output-to-string (stream)
     (loop for entry across (transcript-entries transcript)
           do (typecase entry

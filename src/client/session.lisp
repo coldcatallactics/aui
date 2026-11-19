@@ -3,95 +3,98 @@
 ;;;; -- Channel Session --
 
 ;;; One attachment of this client to one channel, as a structured client of
-;;; the world server: the same CHANNEL-SUBSCRIPTION Autolith's ACP sessions
-;;; and piped scripts use. The session opens the channel, reads the newest
-;;; page of its history, and from then on forwards the channel's events to
-;;; the interface queue. Every call here returns at once; work that waits on
-;;; the server runs on threads of the session's own, and its outcome arrives
-;;; as an event.
+;;; the world server. It uses the same CHANNEL-SUBSCRIPTION as the ACP
+;;; sessions and the piped scripts of Autolith. When a session starts, the
+;;; channel is opened, and the newest page of history is read. After that, the
+;;; events of the channel are forwarded to the interface queue. All calls here
+;;; return immediately. Work that waits on the server runs on threads of the
+;;; session, and the outcome is posted as an event.
 
 (defclass session-subscription (autolith::channel-subscription)
   ((session
     :initarg       :session
     :reader        session-subscription-session
-    :documentation "The session this subscription delivers to."))
+    :documentation "The session of this subscription."))
   (:default-initargs :name "aui")
-  (:documentation "AUI's structured client attachment to a channel."))
+  (:documentation "The structured client attachment of AUI to a channel."))
 
 (defclass session ()
   ((world
     :initarg       :world
     :reader        session-world
     :type          world
-    :documentation "The world the channel belongs to.")
+    :documentation "The world that contains the channel.")
    (queue
     :initarg       :queue
     :reader        session-queue
     :type          ui-queue
-    :documentation "Where the session posts its events.")
+    :documentation "The queue to which the events of the session are posted.")
    (generation
     :initarg       :generation
     :reader        session-generation
     :type          integer
-    :documentation "Stamped on every event, so the interface drops those of a session it already left.")
+    :documentation "The generation number stamped on all events of the session.
+Events of sessions that were already left are dropped.")
    (identifier
     :initarg       :identifier
     :initform      nil
     :accessor      session--identifier
     :type          (or null string)
-    :documentation "The channel's identifier, once the server named it; read and written under the lock.")
+    :documentation "The identifier of the channel, or NIL before the server sent it.
+It is read and written under the lock.")
    (subscription
     :initform      nil
     :accessor      session--subscription
-    :documentation "The channel subscription, once attached.")
+    :documentation "The channel subscription, or NIL before the attachment.")
    (lock
     :initform      (bordeaux-threads:make-lock "AUI session")
     :reader        session--lock
-    :documentation "Guards the request queue, the identifier, the subscription and the closed flag.")
+    :documentation "The lock that protects the request queue, the identifier, the subscription and the closed flag.")
    (condition
     :initform      (bordeaux-threads:make-condition-variable :name "AUI session")
     :reader        session--condition
-    :documentation "Wakes the ordered worker.")
+    :documentation "The condition variable used to wake the ordered worker.")
    (requests
     :initform      nil
     :accessor      session--requests
     :type          list
-    :documentation "Ordered work waiting for the worker, oldest first.")
+    :documentation "A list of the requests that wait for the worker, oldest first.")
    (worker
     :initform      nil
     :accessor      session--worker
-    :documentation "The thread that opens the channel and then sends ordered requests.")
+    :documentation "The thread that opens the channel and then runs the ordered requests.")
    (closed-p
     :initform      nil
     :accessor      session--closed-p
     :type          boolean
-    :documentation "Whether the session was closed or lost its channel; read and written under the lock.")
+    :documentation "True if the session was closed or if the channel was lost.
+It is read and written under the lock.")
    (history-floor
     :initform      nil
     :accessor      session--history-floor
     :type          (or null integer)
-    :documentation "The lowest record sequence already delivered as history, or NIL before the first page.")
+    :documentation "The lowest sequence number of the records delivered as history, or NIL before the first page.")
    (history-cursor
     :initform      nil
     :accessor      session--history-cursor
-    :documentation "Where the page of history before the earliest one delivered ends, or NIL before the first page."))
-  (:documentation "This client's attachment to one channel."))
+    :documentation "The end of the page of history before the earliest delivered page, or NIL before the first page."))
+  (:documentation "The attachment of this client to one channel."))
 
 (-> session-identifier (session) (or null string))
 (defun session-identifier (session)
-  "Return the identifier of SESSION's channel, or NIL before the server named it."
+  "Return the identifier of the channel of SESSION, or NIL before the server sent it."
   (bordeaux-threads:with-lock-held ((session--lock session))
     (session--identifier session)))
 
 (-> session-closed-p (session) boolean)
 (defun session-closed-p (session)
-  "Return T once SESSION was closed or lost its channel."
+  "Return T if SESSION was closed or if the channel was lost."
   (bordeaux-threads:with-lock-held ((session--lock session))
     (session--closed-p session)))
 
 (-> session--mark-closed (session) boolean)
 (defun session--mark-closed (session)
-  "Close SESSION to further work, wake its worker, and return whether it was open until now."
+  "Close SESSION to further work and wake the worker. Return T if SESSION was open before this call."
   (bordeaux-threads:with-lock-held ((session--lock session))
     (unless (session--closed-p session)
       (setf (session--closed-p session) t)
@@ -100,7 +103,7 @@
 
 (-> session--post (session symbol &rest t) ui-event)
 (defun session--post (session class &rest initargs)
-  "Post an event of CLASS for SESSION's channel to the interface."
+  "Post an event of CLASS for the channel of SESSION to the interface queue."
   (ui-queue-push (session-queue session)
                  (apply #'make-instance class
                         :channel    (session-identifier session)
@@ -108,11 +111,11 @@
                         initargs)))
 
 (defmethod autolith::channel-subscription-present-event ((subscription session-subscription) event)
-  "Forward the channel's EVENT to the interface queue in the order it arrived."
+  "Forward EVENT of the channel to the interface queue in the order of arrival."
   (session--post (session-subscription-session subscription) 'channel-event :payload event))
 
 (defmethod autolith::channel-subscription-forget ((subscription session-subscription) &key wire-p)
-  "Tell the interface when the channel went away on its own rather than because the session left it."
+  "Post a closed attachment event if the channel was lost while the session was open."
   (declare (ignore wire-p))
   (let ((session (session-subscription-session subscription)))
     (when (session--mark-closed session)
@@ -123,7 +126,7 @@
 
 (defmethod autolith::channel-subscription-prepare-attachment
     ((subscription session-subscription) greeting &key replay-p)
-  "Post the attachment and the newest page of history before any event that arrived since the greeting."
+  "Post the attachment for GREETING and the newest page of history."
   (declare (ignore replay-p))
   (session--deliver-attachment (session-subscription-session subscription) greeting)
   nil)
@@ -133,7 +136,7 @@
 
 (-> session--deliver-history (session &key (:through (or null integer))) null)
 (defun session--deliver-history (session &key through)
-  "Read the page of history below what SESSION already delivered and post it."
+  "Read the page of history before the history already delivered by SESSION, and post the page."
   (multiple-value-bind (records more-p cursor)
       (history-read-page (world-configuration (session-world session))
                          (session-identifier session)
@@ -149,7 +152,8 @@
 
 (-> session--deliver-attachment (session list) null)
 (defun session--deliver-attachment (session greeting)
-  "Post that SESSION is attached, with what the server's GREETING says of the channel, and then its newest history."
+  "Post an attachment event for SESSION with the state of the channel from the GREETING of the server.
+Then post the newest page of history."
   (let ((configuration (world-configuration (session-world session)))
         (identifier    (session-identifier session))
         (boundary      (getf (rest greeting) :record-sequence)))
@@ -164,7 +168,7 @@
 
 (-> session--release (session-subscription) null)
 (defun session--release (subscription)
-  "Give SUBSCRIPTION's connection back, whatever became of it."
+  "Close the connection of SUBSCRIPTION. Errors are ignored."
   (handler-case (autolith::channel-subscription-close subscription)
     (error ()
       nil))
@@ -174,11 +178,10 @@
 (defun session--attach (session identifier)
   "Attach SESSION to the opened channel IDENTIFIER.
 
-The subscription never claims to have started the channel, so leaving it
-leaves it running, as a terminal that detaches does: an agent at work goes on
-while the person looks at another channel, and the server unloads the channel
-once it has idled. A session closed while it attached gives its connection
-back, since the close found none to give back."
+The subscription does not claim to have started the channel. For this
+reason, the work in the channel goes on after the session leaves it, as with
+a terminal that detaches. If SESSION is closed during the attachment, the
+connection is released here."
   (let ((subscription (make-instance 'session-subscription
                                      :session       session
                                      :identifier    identifier
@@ -201,7 +204,8 @@ back, since the close found none to give back."
                                       (:new-p boolean) (:images list) (:launch list))
     null)
 (defun session--open-served (session &key channel directory new-p images launch)
-  "Open the channel in the world server that runs and attach to it, reporting each step."
+  "Open the channel in the running world server and attach SESSION to it.
+Post an event for each step of the opening."
   (let ((world (session-world session)))
     (session--attach
      session
@@ -220,9 +224,10 @@ back, since the close found none to give back."
                                     :immutable-p     (world-immutable-p world)
                                     :launch          launch
                                     :images          images
-                                    ;; A window shows its own progress, so the
-                                    ;; channel skips the terminal's boot screen
-                                    ;; and first-run tour, which wait for a key.
+                                    ;; Progress is shown in the window. This
+                                    ;; skips the boot screen and the first-run
+                                    ;; tour of the terminal, because they wait
+                                    ;; for a key.
                                     :switch-p        t))))
   nil)
 
@@ -230,11 +235,12 @@ back, since the close found none to give back."
                                (:images list) (:launch list))
     null)
 (defun session--open (session &key channel directory new-p images launch)
-  "Start the world server when none runs, open the channel in it, attach to it and deliver its newest history, reporting each step and a failure of any."
+  "Start the world server if no server runs. Open the channel, attach SESSION to it and
+deliver the newest history. Post an event for each step and for a failure."
   (let ((world (session-world session)))
     (handler-case
         (progn
-          ;; The command prepares what a server needs before it starts one.
+          ;; The autolith command prepares the image and the helpers of the server.
           (unless (world-served-p world)
             (session--post session 'attachment-event
                            :state  ':opening
@@ -255,7 +261,7 @@ back, since the close found none to give back."
 
 (-> session--work (session) null)
 (defun session--work (session)
-  "Run SESSION's ordered requests until it closes."
+  "Run the ordered requests of SESSION until SESSION is closed."
   (loop
     (let ((request (bordeaux-threads:with-lock-held ((session--lock session))
                      (loop while (and (null (session--requests session))
@@ -270,7 +276,7 @@ back, since the close found none to give back."
 
 (-> session--enqueue (session function) null)
 (defun session--enqueue (session function)
-  "Add FUNCTION to SESSION's ordered work."
+  "Add FUNCTION to the ordered requests of SESSION."
   (bordeaux-threads:with-lock-held ((session--lock session))
     (setf (session--requests session) (append (session--requests session) (list function)))
     (bordeaux-threads:condition-notify (session--condition session)))
@@ -281,12 +287,16 @@ back, since the close found none to give back."
                          (:new-p boolean) (:images list))
     session)
 (defun session-open (world queue &key (generation 0) channel directory new-p images)
-  "Start attaching to CHANNEL, or to the latest or a NEW-P channel for DIRECTORY, and return the session at once.
+  "Start to attach to CHANNEL and return the session immediately.
+If CHANNEL is NIL, attach to the latest channel for DIRECTORY, or to a new
+channel if NEW-P is true.
 
-ATTACHMENT-EVENTs report the opening, then the attachment with the channel's
-status, or the failure; a HISTORY-EVENT follows a successful attachment."
+ATTACHMENT-EVENTs are posted for the opening, and then for the attachment or
+for the failure. The attachment event contains the status of the channel. A
+HISTORY-EVENT is posted after a successful attachment."
   (let ((session (make-instance 'session :world world :queue queue :generation generation :identifier channel))
-        ;; What the command line stated goes to the first channel opened, and is spent here on the caller's thread.
+        ;; The launch options from the command line only apply to the first channel
+        ;; that is opened.
         (launch  (shiftf (world-launch world) nil)))
     (session--enqueue session
                       (lambda ()
@@ -302,13 +312,13 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 
 (-> session-close (session) null)
 (defun session-close (session)
-  "Leave the channel: stop delivering events and release the connection. The channel keeps running."
+  "Leave the channel without stopping it. Stop the delivery of events and release the connection."
   (session--mark-closed session)
   (let ((subscription (bordeaux-threads:with-lock-held ((session--lock session))
                         (session--subscription session))))
     (when subscription
-      ;; Closing joins the reader thread, which may be delivering; do it off
-      ;; the interface thread so a slow server cannot freeze the window.
+      ;; The close waits for the reader thread. This can take long if the
+      ;; server is slow, so the close runs on a separate thread.
       (bordeaux-threads:make-thread (lambda () (session--release subscription))
                                     :name "AUI session close")))
   nil)
@@ -318,7 +328,8 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 
 (-> session--call (session keyword list) list)
 (defun session--call (session command arguments)
-  "Send COMMAND with ARGUMENTS on SESSION's connection and return the reply's fields."
+  "Send COMMAND with ARGUMENTS on the connection of SESSION. Return the fields of the reply.
+Signal a CLIENT-ERROR if the channel is not attached."
   (let ((subscription (bordeaux-threads:with-lock-held ((session--lock session))
                         (and (not (session--closed-p session))
                              (session--subscription session)))))
@@ -328,7 +339,8 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 
 (-> session--report (session t function) null)
 (defun session--report (session request function)
-  "Call FUNCTION and post its outcome for REQUEST: its portable value, or the failure's report."
+  "Call FUNCTION and post a result event for REQUEST.
+The event contains the values of FUNCTION or the report of the failure."
   (handler-case
       (multiple-value-bind (outcome value report) (funcall function)
         (session--post session 'result-event
@@ -342,7 +354,8 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 
 (-> session--spawn (session t function) null)
 (defun session--spawn (session request function)
-  "Run FUNCTION for REQUEST on a thread of its own, so a request that waits never holds up another."
+  "Run FUNCTION for REQUEST on a new thread and post the outcome.
+Requests that wait do not delay other requests."
   (bordeaux-threads:make-thread (lambda () (session--report session request function))
                                 :name "AUI request")
   nil)
@@ -350,11 +363,12 @@ status, or the failure; a HISTORY-EVENT follows a successful attachment."
 (-> session-submit
     (session string &key (:images list) (:steer-p boolean) (:identifier (or null string)) (:request t)) null)
 (defun session-submit (session text &key images steer-p identifier (request ':submit))
-  "Submit TEXT with IMAGES to the channel, as a steer of the running turn when STEER-P.
+  "Submit TEXT and IMAGES to the channel of SESSION.
+If STEER-P is true, the submission steers the running turn.
 
-Prose becomes a message to the agent; a Lisp form or a slash command runs as
-the terminal would run it. Submissions keep the order they were made in.
-IDENTIFIER names the submission in the channel's events about it."
+Prose becomes a message to the agent. Lisp forms and slash commands are run
+as in the terminal. Submissions are sent in the order in which they were made.
+IDENTIFIER is the identifier of the submission in the events of the channel."
   (session--enqueue
    session
    (lambda ()
@@ -375,7 +389,7 @@ IDENTIFIER names the submission in the channel's events about it."
 
 (-> session-cancel (session) null)
 (defun session-cancel (session)
-  "Cancel the channel's running turn."
+  "Cancel the running turn of the channel."
   (session--spawn session ':cancel
                   (lambda ()
                     (values ':ok (session--call session ':cancel nil))))
@@ -391,7 +405,8 @@ IDENTIFIER names the submission in the channel's events about it."
 
 (-> session-set-mode (session keyword) null)
 (defun session-set-mode (session mode)
-  "Select the channel's permission MODE: :ASK, :AUTO, :SANDBOXED or :FULL-ACCESS."
+  "Set the permission mode of the channel to MODE.
+MODE is :ASK, :AUTO, :SANDBOXED or :FULL-ACCESS."
   (session--spawn session ':mode
                   (lambda ()
                     (values ':ok (session--call session ':mode (list :value mode)))))
@@ -401,7 +416,7 @@ IDENTIFIER names the submission in the channel's events about it."
 (defun session-operation (session method &key (params (portable-object)) (request method))
   "Run the client operation METHOD, such as _autolith/settings, with the portable object PARAMS.
 
-The RESULT-EVENT carries REQUEST and the operation's typed outcome."
+Post a RESULT-EVENT that contains REQUEST and the typed outcome of the operation."
   (session--spawn
    session request
    (lambda ()
@@ -415,10 +430,10 @@ The RESULT-EVENT carries REQUEST and the operation's typed outcome."
 
 (-> session-load-earlier (session) null)
 (defun session-load-earlier (session)
-  "Deliver the page of history before the earliest one delivered so far.
+  "Deliver the page of history before the earliest delivered page.
 
-A page that cannot be read is delivered empty with more still to come, so
-the person can ask for it again."
+If the page cannot be read, deliver an empty page and mark more pages as
+available. The person can then ask for the page again."
   (session--enqueue session
                     (lambda ()
                       (handler-case (session--deliver-history session)

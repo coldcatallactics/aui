@@ -2,14 +2,13 @@
 
 ;;;; -- Workspace Records --
 
-;;; What Autolith keeps about a workspace beside its conversations: the agenda
-;;; and the memories. The terminal shows them in views of its own. The window
-;;; reads the same stores through Autolith's own readers, as it does history,
-;;; and draws them itself.
+;;; The records of a workspace in Autolith other than the conversations: the
+;;; agenda and the memories. They are read with the readers of Autolith, as
+;;; history is, and drawn by AUI.
 
 (-> workspace--configuration (string) t)
 (defun workspace--configuration (directory)
-  "Return a configuration that reads what Autolith keeps for the workspace at DIRECTORY."
+  "Return an immutable Autolith configuration for the workspace at DIRECTORY."
   (autolith::configuration-create
    :immutable-p                 t
    :defer-provider-validation-p t
@@ -21,9 +20,10 @@
 (defun workspace-agenda (directory)
   "Return the agenda of the workspace at DIRECTORY, oldest item first.
 
-Each item is a property list of :ID, :STATUS, one of :TODO, :DOING, :BLOCKED,
-:DONE and :NOTE, :TEXT, and :MEMORIES, the identifiers of the memories
-attached to it. Signal a CLIENT-ERROR when the agenda cannot be read."
+Each item is a property list of :ID, :STATUS, :TEXT and :MEMORIES. The status
+is one of :TODO, :DOING, :BLOCKED, :DONE and :NOTE. The memories are the
+identifiers of the memories attached to the item. Signal a CLIENT-ERROR if the
+agenda cannot be read."
   (handler-case
       (let* ((configuration (workspace--configuration directory))
              (record        (autolith::agenda-current configuration (autolith::agenda-load configuration))))
@@ -38,13 +38,14 @@ attached to it. Signal a CLIENT-ERROR when the agenda cannot be read."
 
 (-> workspace-memories (string &key (:query (or null string))) list)
 (defun workspace-memories (directory &key query)
-  "Return the memories that bear on the workspace at DIRECTORY, stale ones first, as the terminal lists them.
+  "Return the memories that apply to the workspace at DIRECTORY, stale memories first.
 
-QUERY narrows them with the ranking recall uses. Each memory is a property
-list of :ID, the short identifier people type, :TITLE, :CONTENT, :STATUS, one
-of :CURRENT, :STALE and :UNVERIFIED, :SUMMARY, why it is not current, :SCOPE,
-:PROVENANCE and :DATE. Signal a CLIENT-ERROR when the memories cannot be
-read."
+If QUERY is given, only the memories found by a recall search for QUERY are
+returned. Each memory is a property list of :ID, :TITLE, :CONTENT, :STATUS,
+:SUMMARY, :SCOPE, :PROVENANCE and :DATE. The :ID is the short identifier that
+people type. The status is one of :CURRENT, :STALE and :UNVERIFIED. The
+summary is the reason why the memory is not current. Signal a CLIENT-ERROR if
+the memories cannot be read."
   (handler-case
       (let* ((configuration (workspace--configuration directory))
              (memories      (if (and query (plusp (length query)))

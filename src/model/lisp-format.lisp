@@ -2,17 +2,17 @@
 
 ;;;; -- Lisp Formatting --
 
-;;; A form that arrives on one long line is hard to read. This sets such a
-;;; form out on several lines, indented as Lisp is. It works on the text
-;;; itself: every atom keeps the spelling it came with, so nothing the reader
-;;; would resolve, drop or rename changes. Source that already has line
-;;; breaks, or holds a comment, is left exactly as it came.
+;;; Forms on one long line are hard to read. Here, such forms are set out on
+;;; several lines with Lisp indentation. Only the text is changed. All atoms
+;;; keep their spelling, so nothing changes that the reader would resolve,
+;;; drop or rename. Source with line breaks or with a comment is returned
+;;; unchanged.
 
 (defparameter *lisp-format-width* 86
-  "The line width a reformatted form is set out to.")
+  "The line width used to set out reformatted forms.")
 
 (defparameter *lisp-format-minimum* 72
-  "How long a one-line form is before it is worth setting out on several lines.")
+  "The minimum length of a one-line form that is set out on several lines.")
 
 (defparameter *lisp-format-body-heads*
   '(("defun" . 2) ("defmacro" . 2) ("defmethod" . 2) ("defgeneric" . 2) ("defclass" . 2)
@@ -23,19 +23,20 @@
     ("destructuring-bind" . 2) ("case" . 1) ("ecase" . 1) ("typecase" . 1) ("etypecase" . 1)
     ("with-open-file" . 1) ("with-output-to-string" . 1) ("with-input-from-string" . 1)
     ("eval-when" . 1) ("loop" . 0))
-  "Operators whose arguments after the first few are a body, indented by two, with how many arguments stay on the operator's line.")
+  "A list of operators with a body, associated with the number of arguments on the line of the operator.
+The other arguments are the body, indented by two columns.")
 
 (define-condition lisp-format-incomplete (error)
   ()
   (:report "The text ends inside a form.")
-  (:documentation "Text to set out as Lisp ended before its forms were closed, so it is left as it came."))
+  (:documentation "The text ended before all forms were closed."))
 
 (-> lisp-format--parse (string integer) (values t integer))
 (defun lisp-format--parse (text start)
-  "Return the node that begins at START in TEXT and the position after it.
+  "Return the node that starts at START in TEXT and the position after the node.
 
-A node is a string, an atom spelled as it came with any quoting prefix, or
-(:LIST PREFIX . NODES). Signals LISP-FORMAT-INCOMPLETE when TEXT ends inside a
+A node is a string, an atom with the original spelling and quoting prefix, or
+(:LIST PREFIX . NODES). Signal LISP-FORMAT-INCOMPLETE if TEXT ends inside a
 form."
   (let ((position start)
         (length   (length text)))
@@ -46,8 +47,8 @@ form."
       (skip-space)
       (when (>= position length)
         (error 'lisp-format-incomplete))
-      ;; Quote, backquote, comma, comma-at and a sharp-sign dispatch belong to
-      ;; the form they stand before: 'x, `(a ,b), #'f, #(1 2), #p"file".
+      ;; Quote, backquote, comma, comma-at and sharp-sign dispatches are part
+      ;; of the next form: 'x, `(a ,b), #'f, #(1 2), #p"file".
       (let ((prefix-start position))
         (loop while (and (< position length) (find (char text position) "'`,@"))
               do (incf position))
@@ -88,7 +89,7 @@ form."
                (values (concatenate 'string prefix (subseq text position end)) end)))
             (t
              (let ((end position))
-               ;; A character literal takes the character after the backslash whatever it is.
+               ;; In a character literal, any character after the backslash is part of the atom.
                (when (and (< (+ end 2) length)
                           (char= (char text end) #\#)
                           (char= (char text (1+ end)) #\\))
@@ -109,7 +110,9 @@ form."
 
 (-> lisp-format--render (t integer) string)
 (defun lisp-format--render (node column)
-  "Return NODE set out to start at COLUMN: on one line when it fits the width, else broken after its operator as Lisp is indented."
+  "Return NODE set out to start at COLUMN.
+If NODE fits in the width, it is on one line. Otherwise, it is broken after the
+operator, with Lisp indentation."
   (let ((flat (lisp-format--flat node)))
     (if (or (stringp node)
             (<= (+ column (length flat)) *lisp-format-width*)
@@ -131,7 +134,8 @@ form."
                        (body      (rest (assoc head *lisp-format-body-heads* :test #'string-equal)))
                        (beside    (+ open (length head) 1)))
                   (cond
-                    ;; A body form keeps a few arguments beside its operator and indents the rest by two.
+                    ;; In a body form, the first arguments are on the line of the operator.
+                    ;; The rest are indented by two columns.
                     (body
                      (let ((kept (subseq arguments 0 (min body (length arguments))))
                            (at   beside))
@@ -144,13 +148,14 @@ form."
                                (stack (nthcdr body arguments) (1+ open)))))
                     ((null arguments)
                      flat)
-                    ;; A call keeps its first argument beside the operator and lines the others up under it.
+                    ;; In a call, the first argument is on the line of the operator. The
+                    ;; other arguments are aligned under it.
                     (t
                      (format nil "~A(~A ~A~A)"
                              prefix head
                              (lisp-format--render (first arguments) beside)
                              (stack (rest arguments) beside)))))
-                ;; A list of lists, such as bindings, stacks its members.
+                ;; The members of a list of lists, such as bindings, are stacked.
                 (format nil "~A(~A~A)"
                         prefix
                         (lisp-format--render head open)
@@ -158,7 +163,8 @@ form."
 
 (-> lisp-format (string) string)
 (defun lisp-format (source)
-  "Return SOURCE set out on several lines when it is one long line of whole forms without a comment, else SOURCE itself."
+  "Return SOURCE set out on several lines if SOURCE is one long line of whole forms without a comment.
+Otherwise, return SOURCE."
   (let ((trimmed (string-trim '(#\Space #\Tab #\Newline #\Return) source)))
     (if (or (find #\Newline trimmed)
             (< (length trimmed) *lisp-format-minimum*)

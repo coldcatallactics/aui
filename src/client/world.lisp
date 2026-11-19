@@ -2,27 +2,26 @@
 
 ;;;; -- World Client --
 
-;;; AUI's handle on Autolith's world of channels, through the client code
-;;; Autolith's own terminal uses: the world endpoint record to find the
-;;; server, WORLD-CLIENT-OPEN to open a channel in it, and WORLD-SIDEBAR for
-;;; the tree of channels. When no server runs, the autolith command starts
-;;; one, as it would from a terminal. Everything
-;;; that names an Autolith definition lives in this directory, so the
-;;; interface above it depends on AUI's own vocabulary only.
+;;; The connection of AUI to the world of channels in Autolith. It uses the
+;;; client code of the Autolith terminal: the world endpoint record to find
+;;; the server, WORLD-CLIENT-OPEN to open a channel, and WORLD-SIDEBAR for the
+;;; tree of channels. If no server runs, AUI starts one with the autolith
+;;; command. All code that uses Autolith definitions is in this directory.
+;;; The interface above it only uses the vocabulary of AUI.
 
 (define-condition client-error (error)
   ((message
     :initarg       :message
     :reader        client-error-message
     :type          string
-    :documentation "What went wrong, in words fit to show."))
+    :documentation "A description of the failure that can be shown to a person."))
   (:report (lambda (condition stream)
              (write-string (client-error-message condition) stream)))
-  (:documentation "A failure talking to Autolith that the interface reports rather than crashes on."))
+  (:documentation "A failure in the communication with Autolith. The interface reports these failures instead of crashing."))
 
 (-> condition-report (condition) string)
 (defun condition-report (condition)
-  "Return CONDITION's report, bounded so a runaway message cannot flood the interface."
+  "Return the report of CONDITION, cut to at most 2000 characters."
   (let ((report (handler-case (princ-to-string condition)
                   (error ()
                     (format nil "~A" (type-of condition))))))
@@ -32,49 +31,49 @@
   ((configuration
     :initarg       :configuration
     :reader        world-configuration
-    :documentation "The Autolith configuration locating the world server and its data.")
+    :documentation "The Autolith configuration used to find the world server and the data of the world.")
    (permission-mode
     :initarg       :permission-mode
     :initform      ':ask
     :reader        world-permission-mode
     :type          keyword
-    :documentation "The permission mode a channel opened by this client asks for.")
+    :documentation "The permission mode requested for channels opened by this client.")
    (immutable-p
     :initarg       :immutable-p
     :initform      nil
     :reader        world-immutable-p
     :type          boolean
-    :documentation "Whether this launch asked for an immutable server.")
+    :documentation "True if an immutable server was requested for this launch.")
    (launch
     :initarg       :launch
     :initform      nil
     :accessor      world-launch
     :type          list
-    :documentation "The launch options the command line stated, applied to the first channel opened and then spent.")
+    :documentation "The launch options given on the command line. They only apply to the first channel that is opened.")
    (sidebar
     :initform      nil
     :accessor      world--sidebar
-    :documentation "Autolith's sidebar model of the world's channels, once started.")
+    :documentation "The Autolith sidebar model of the channels in the world, or NIL before it is started.")
    (entries
     :initform      nil
     :accessor      world--entries
     :type          list
-    :documentation "The sidebar model's entries and the rows made from them, as (ENTRIES . ROWS), or NIL.")
+    :documentation "The entries of the sidebar model and the rows made from them, as (ENTRIES . ROWS), or NIL.")
    (rows
     :initform      nil
     :accessor      world--rows
     :type          list
-    :documentation "What the sidebar model last gathered and the channel rows made from it, as (GATHERED . ROWS), or NIL."))
-  (:documentation "This client's view of one Autolith world."))
+    :documentation "The last inputs gathered by the sidebar model and the channel rows made from them, as (GATHERED . ROWS), or NIL."))
+  (:documentation "The state of this client for one Autolith world."))
 
 (-> world-working-directory (world) string)
 (defun world-working-directory (world)
-  "Return the directory WORLD's client was launched for."
+  "Return the working directory of WORLD."
   (namestring (autolith::config :working-directory (world-configuration world))))
 
 (-> world-autolith-version () string)
 (defun world-autolith-version ()
-  "Return the version of the Autolith this client was built against."
+  "Return the version of the Autolith used to build this client."
   autolith::*autolith-version*)
 
 
@@ -82,7 +81,8 @@
 
 (-> world-start-watching (world) null)
 (defun world-start-watching (world)
-  "Begin gathering WORLD's channels on a thread of Autolith's own, once."
+  "Start to gather the channels of WORLD on a thread created by Autolith.
+Do nothing if the gathering already runs."
   (unless (world--sidebar world)
     (let ((sidebar (autolith::world-sidebar-create (world-configuration world))))
       (autolith::world-sidebar-start sidebar)
@@ -91,7 +91,7 @@
 
 (-> world-stop-watching (world) null)
 (defun world-stop-watching (world)
-  "Stop gathering WORLD's channels and wait for the gathering thread."
+  "Stop gathering the channels of WORLD and wait for the gathering thread to finish."
   (let ((sidebar (world--sidebar world)))
     (when sidebar
       (autolith::world-sidebar-stop sidebar)
@@ -100,20 +100,21 @@
 
 (-> world-refresh (world) boolean)
 (defun world-refresh (world)
-  "Take what was gathered since the last call and return whether the channel tree changed. Never blocks."
+  "Take the channels gathered since the last call. Return T if the channel tree changed.
+This function does not block."
   (let ((sidebar (world--sidebar world)))
     (and sidebar
          (autolith::screen-panel-refresh sidebar)
          t)))
 
 (defgeneric world--entry-row (entry)
-  (:documentation "Return ENTRY of Autolith's sidebar model as the property list the window reads.
+  (:documentation "Return the entry ENTRY of the Autolith sidebar model as a property list.
 
-Its :KIND is :INBOX, :WORKSPACE or :CHANNEL."))
+The :KIND of the list is :INBOX, :WORKSPACE or :CHANNEL."))
 
 (-> world--fold-row (t) list)
 (defun world--fold-row (node)
-  "Return what the row of tree node NODE says of the channels beneath it."
+  "Return a property list that describes the folding of the tree node NODE and the channels hidden beneath it."
   (let ((open-p (autolith::sidebar-fold-open-p node)))
     (list :children-p      (autolith::sidebar-fold-children-p node)
           :open-p          open-p
@@ -124,14 +125,14 @@ Its :KIND is :INBOX, :WORKSPACE or :CHANNEL."))
           :hidden-mentions (autolith::sidebar-fold-hidden-mentions node))))
 
 (defmethod world--entry-row ((entry autolith::sidebar-home))
-  "Home is the person's inbox."
+  "Return the home entry ENTRY as an inbox row."
   (list :kind      ':inbox
         :id        (autolith::sidebar-entry-identifier entry)
         :current-p (autolith::sidebar-entry-current-p entry)
         :unread    (autolith::sidebar-entry-unread entry)))
 
 (defmethod world--entry-row ((entry autolith::sidebar-workspace))
-  "A workspace stands beneath home with the channels it groups."
+  "Return the workspace entry ENTRY as a workspace row."
   (list* :kind   ':workspace
          :key    (autolith::sidebar-workspace-key entry)
          :name   (autolith::sidebar-entry-name entry)
@@ -140,7 +141,8 @@ Its :KIND is :INBOX, :WORKSPACE or :CHANNEL."))
          (world--fold-row entry)))
 
 (defmethod world--entry-row ((entry autolith::sidebar-channel))
-  "A channel carries its agent's name and state and what arrived unread."
+  "Return the channel entry ENTRY as a channel row.
+The row contains the name and the state of the agent and the unread counts."
   (list* :kind               ':channel
          :id                 (autolith::sidebar-entry-identifier entry)
          :parent             (autolith::sidebar-channel-parent entry)
@@ -160,9 +162,10 @@ Its :KIND is :INBOX, :WORKSPACE or :CHANNEL."))
 
 (-> world-entries (world) list)
 (defun world-entries (world)
-  "Return WORLD's channel tree as rows, property lists whose :KIND is :INBOX, :WORKSPACE or :CHANNEL.
+  "Return the channel tree of WORLD as a list of rows.
 
-The rows are made once for each tree the sidebar model builds."
+Rows are property lists. The :KIND of a row is :INBOX, :WORKSPACE or :CHANNEL.
+The rows are made once for each tree built by the sidebar model."
   (let* ((sidebar (world--sidebar world))
          (entries (and sidebar (autolith::world-sidebar-entries sidebar)))
          (known   (world--entries world)))
@@ -174,7 +177,8 @@ The rows are made once for each tree the sidebar model builds."
 
 (-> world-channel-title (world (or null string)) (or null string))
 (defun world-channel-title (world identifier)
-  "Return the title WORLD's channel tree gives the channel IDENTIFIER, or NIL when it has none there."
+  "Return the title of the channel IDENTIFIER in the channel tree of WORLD.
+Return NIL if the channel has no title there."
   (and identifier
        (let ((entry (find identifier (world-entries world)
                           :key  (lambda (entry)
@@ -184,11 +188,12 @@ The rows are made once for each tree the sidebar model builds."
 
 (-> world-channel-rows (world) list)
 (defun world-channel-rows (world)
-  "Return every channel of WORLD but home, whether or not the tree shows it now, in the order of the tree.
+  "Return the rows of all channels of WORLD other than home, in the order of the tree.
+Channels in folded nodes are included.
 
-Each is a channel row as `world-entries' gives it, with :PARENT naming the
-channel it was started from. The rows are made once for each gathering of
-the tree."
+The rows have the form returned by `world-entries'. The :PARENT of a row is
+the channel from which the channel was started. The rows are made once for
+each gathering of the tree."
   (let* ((sidebar  (world--sidebar world))
          (gathered (and sidebar (autolith::world-sidebar-inputs sidebar)))
          (known    (world--rows world)))
@@ -203,12 +208,14 @@ the tree."
 
 (-> channel-row-working-p (list) boolean)
 (defun channel-row-working-p (row)
-  "Return T when the channel the row ROW describes is doing work."
+  "Return T if the channel described by ROW is doing work."
   (and (member (getf row :state) '(:active :working :cancelling)) t))
 
 (-> channel-row--rank (list) integer)
 (defun channel-row--rank (row)
-  "Return how far down among its siblings the channel of ROW is listed: one at work first, then one that waits for jobs, then any other the server holds, and last one it does not hold."
+  "Return the sort rank of the channel of ROW among the siblings.
+Channels at work have rank 0. Channels that wait for jobs have rank 1.
+Absent channels have rank 3. All other channels have rank 2."
   (cond
     ((channel-row-working-p row)
      0)
@@ -221,12 +228,14 @@ the tree."
 
 (-> channel-descendants ((or null string) list) list)
 (defun channel-descendants (identifier rows)
-  "Return those of ROWS that stand beneath channel IDENTIFIER, each channel before the ones started from it, each with a :DEPTH that is 0 for a channel started from IDENTIFIER itself.
+  "Return the rows of ROWS that are beneath the channel IDENTIFIER in the tree.
+Each channel comes before the channels started from it. Each returned row
+has a :DEPTH, which is 0 for channels started from IDENTIFIER itself.
 
-A row is a property list with an :ID and a :PARENT. Among the channels
-started from one channel, those at work come first and those the server does
-not hold last, and otherwise they keep the order of ROWS. A channel is listed
-once, so rows that name each other as parents end."
+Rows are property lists that contain an :ID and a :PARENT. The children of
+one channel are sorted by `channel-row--rank'. Children of the same rank are
+in the order of ROWS. Each channel is listed once, so the result is finite
+even if rows are parents of each other."
   (let ((seen (list identifier)))
     (labels ((beneath (parent depth)
                (let ((children (stable-sort
@@ -246,7 +255,8 @@ once, so rows that name each other as parents end."
 
 (-> (setf world-current-channel) ((or null string) world) (or null string))
 (defun (setf world-current-channel) (identifier world)
-  "Tell WORLD's channel tree that this client now shows channel IDENTIFIER."
+  "Mark the channel IDENTIFIER as the current channel in the channel tree of WORLD.
+Return IDENTIFIER."
   (let ((sidebar (world--sidebar world)))
     (when sidebar
       (setf (autolith::world-sidebar-current sidebar) identifier)
@@ -257,7 +267,8 @@ once, so rows that name each other as parents end."
 
 (-> world-toggle-node (world string) null)
 (defun world-toggle-node (world key)
-  "Open the workspace or channel node KEY of WORLD's tree when it shows closed, or close it."
+  "Open the workspace or channel node KEY in the tree of WORLD if the node is closed.
+Otherwise, close the node."
   (let* ((sidebar (world--sidebar world))
          (node    (and sidebar
                        (find key (autolith::world-sidebar-entries sidebar)
@@ -273,12 +284,14 @@ once, so rows that name each other as parents end."
 
 (-> world--entry (world) (or null cons))
 (defun world--entry (world)
-  "Return the reachable world server endpoint of WORLD, or NIL when none answers."
+  "Return the endpoint of the world server of WORLD if the server answers.
+Otherwise, return NIL."
   (autolith::world-client-entry (world-configuration world)))
 
 (-> world--last-line (string) string)
 (defun world--last-line (text)
-  "Return the last line of TEXT that says anything, or the empty string."
+  "Return the last nonblank line of TEXT without surrounding whitespace.
+Return the empty string if there is no such line."
   (or (find-if (lambda (line)
                  (plusp (length line)))
                (mapcar (lambda (line)
@@ -289,7 +302,7 @@ once, so rows that name each other as parents end."
 
 (-> world-served-p (world) boolean)
 (defun world-served-p (world)
-  "Return T when WORLD's server answers or is starting."
+  "Return T if the server of WORLD answers or is starting."
   (let ((configuration (world-configuration world)))
     (and (or (autolith::world-client-entry configuration)
              (autolith::world-server-running-p configuration))
@@ -297,10 +310,13 @@ once, so rows that name each other as parents end."
 
 (-> world--run-autolith (world &rest string) (values (or null integer) (or null string)))
 (defun world--run-autolith (world &rest arguments)
-  "Run the autolith command on ARGUMENTS for WORLD, and return its exit code and the last thing it said, NIL when it said nothing.
+  "Run the autolith command with ARGUMENTS for WORLD.
+Return the exit code and the last line written by the command, or NIL if the
+command wrote nothing.
 
-The command is the launcher of the Autolith this client was built against. A
-site configuration root this start named goes to it through its environment."
+The command is the launcher of the Autolith used to build this client. If the
+configuration of WORLD contains a site configuration root, the root is passed
+in the environment of the command."
   (let ((site (autolith::config :site-config-root (world-configuration world))))
     (multiple-value-bind (output complaint code)
         (uiop:run-program (append (when site
@@ -318,12 +334,12 @@ site configuration root this start named goes to it through its environment."
 
 (-> world-start-server (world) null)
 (defun world-start-server (world)
-  "Start WORLD's server with the autolith command when none runs, and return once that command has finished.
+  "Start the server of WORLD with the autolith command if no server runs.
+Return when the command has finished.
 
-The command prepares the image and the helpers a server needs before it
-starts one, which a release needs on its first start, so the server AUI
-starts is the one a terminal would have started. Signal a CLIENT-ERROR with
-what the command said when it fails and no server runs."
+The image and the helpers needed by the server are prepared by the command.
+Signal a CLIENT-ERROR if the command fails and no server runs. The error
+contains the last line written by the command."
   (unless (world-served-p world)
     (multiple-value-bind (code said) (world--run-autolith world "start")
       (unless (or (eql code 0) (world-served-p world))
@@ -333,11 +349,12 @@ what the command said when it fails and no server runs."
 
 (-> world-stop-server (world) null)
 (defun world-stop-server (world)
-  "Stop WORLD's server with the autolith command, and with it the work in every channel, and return once that command has finished.
+  "Stop the server of WORLD with the autolith command. This also stops the work
+in all channels. Return when the command has finished.
 
-The channels and their histories stay; the next channel opened starts a
-server again. Signal a CLIENT-ERROR with what the command said when it fails
-and the server still answers."
+The channels and their histories are kept. Signal a CLIENT-ERROR if the
+command fails and the server still answers. The error contains the last line
+written by the command."
   (when (world--entry world)
     (multiple-value-bind (code said) (world--run-autolith world "stop")
       (unless (or (eql code 0) (null (world--entry world)))
@@ -347,9 +364,9 @@ and the server still answers."
 
 (-> world-request (world keyword &rest t) list)
 (defun world-request (world operation &rest arguments)
-  "Ask WORLD's server to perform OPERATION with ARGUMENTS and return its answer's fields.
+  "Send OPERATION with ARGUMENTS to the server of WORLD. Return the fields of the answer.
 
-Signals CLIENT-ERROR when no server runs or the server refuses."
+Signal a CLIENT-ERROR if no server runs or if the request fails."
   (let ((entry (world--entry world)))
     (unless entry
       (error 'client-error :message "No world server is running."))
@@ -359,17 +376,19 @@ Signals CLIENT-ERROR when no server runs or the server refuses."
 
 (-> world-tell (world string string) list)
 (defun world-tell (world channel text)
-  "Send TEXT to CHANNEL as the person, the way (tell) does."
+  "Send TEXT to CHANNEL as a message from the person, in the same way as (tell)."
   (world-request world ':tell :channel channel :text text))
 
 (-> world-close-channel (world string) list)
 (defun world-close-channel (world channel)
-  "Ask the server to stop serving CHANNEL; its history stays."
+  "Ask the server to close CHANNEL. The history of the channel is kept."
   (world-request world ':close :channel channel))
 
 (-> world-participants (world) list)
 (defun world-participants (world)
-  "Return the world's participants as property lists of :NAME, :KIND, :IDENTIFIER and :RESIDENCE, read from the durable world."
+  "Return the participants of WORLD, read from the durable world.
+Each participant is a property list of :NAME, :KIND, :IDENTIFIER and :RESIDENCE.
+Return NIL if the world cannot be read."
   (handler-case
       (let ((durable (autolith::world-load (world-configuration world))))
         (loop for participant in (autolith::world-participants durable)
@@ -385,10 +404,11 @@ Signals CLIENT-ERROR when no server runs or the server refuses."
 
 (-> world-delete-channel (world string) integer)
 (defun world-delete-channel (world channel)
-  "Delete CHANNEL and every channel nested in it, with their histories, and return how many were deleted.
+  "Delete CHANNEL, all channels nested in it and their histories.
+Return the number of deleted channels.
 
-Autolith refuses for a channel that is shown somewhere or still has work
-running; its reason is then signalled as a CLIENT-ERROR."
+Channels that are shown somewhere or that still have work running cannot be
+deleted. Signal a CLIENT-ERROR with the reason if the deletion fails."
   (handler-case (autolith::channel-remove (world-configuration world) (list channel) :tool-name "the window")
     (autolith::autolith-error (condition)
       (error 'client-error :message (autolith::autolith-error-message condition)))
@@ -399,19 +419,20 @@ running; its reason is then signalled as a CLIENT-ERROR."
 
 ;;;; -- Signing In --
 
-;;; A provider is signed in to by Autolith's own code, the code its auth
-;;; command runs, in this process: a key is saved to Autolith's key store, a
-;;; subscription opens the browser and waits for it. Nothing about either is
-;;; reimplemented here.
+;;; AUI signs in to providers with the code of the Autolith auth command, in
+;;; this process. For a key, the key is saved to the key store of Autolith.
+;;; For a subscription, the browser is opened, and AUI waits for the login.
 
 (-> world--provider (world string) t)
 (defun world--provider (world name)
-  "Return Autolith's provider registered as NAME for signing in to."
+  "Return the Autolith provider that is registered for sign-in as NAME."
   (autolith::provider-authentication-provider (world-configuration world) name))
 
 (-> world-sign-in-kind (world string) (or null keyword))
 (defun world-sign-in-kind (world name)
-  "Return how the provider NAME is signed in to: :KEY for an API key, :BROWSER for a login in the browser, or NIL when this client does not know the provider."
+  "Return the kind of sign-in for the provider NAME.
+The kind is :KEY for an API key or :BROWSER for a login in the browser.
+Return NIL if the provider is unknown."
   (handler-case
       (let ((manager (autolith::provider-credential-manager (world--provider world name))))
         (if (typep manager 'autolith::api-key-credential-manager)
@@ -422,11 +443,11 @@ running; its reason is then signalled as a CLIENT-ERROR."
 
 (-> world-sign-in (world string &key (:key (or null string))) string)
 (defun world-sign-in (world name &key key)
-  "Sign in to the provider NAME and return what Autolith says about it.
+  "Sign in to the provider NAME. Return the message from Autolith about the sign-in.
 
-With KEY the key is checked and saved; without, the browser is opened and
-this waits until the login there is done. Signals a CLIENT-ERROR with
-Autolith's reason when the sign-in fails."
+If KEY is given, the key is checked and saved. Otherwise, the browser is
+opened, and this function waits until the login is done. Signal a
+CLIENT-ERROR with the reason from Autolith if the sign-in fails."
   (handler-case
       (let ((provider (world--provider world name))
             (output   (make-string-output-stream)))
@@ -444,7 +465,7 @@ Autolith's reason when the sign-in fails."
 
 (-> world-providers () list)
 (defun world-providers ()
-  "Return the names of the providers this client knows how to sign in to."
+  "Return the names of the providers that this client can sign in to."
   (handler-case (mapcar #'autolith::provider-registration-name (autolith::provider-registrations))
     (error ()
       nil)))

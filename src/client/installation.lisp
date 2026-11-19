@@ -2,17 +2,18 @@
 
 ;;;; -- Installation --
 
-;;; Where the Autolith this client was built against is installed, and the
-;;; command that starts it. Autolith is installed from a release or from
-;;; source. A release directory holds its launcher at bin/autolith, its
-;;; source at libexec/autolith and its native libraries in lib; a source
-;;; checkout holds bin/autolith itself. The launcher prepares what Autolith
-;;; needs to run, its image and its helpers, so whatever AUI starts of
-;;; Autolith, it starts through that command and never by a path of its own.
+;;; The location of the Autolith used to build this client, and the command
+;;; that starts it. Autolith is installed from a release or from source.
+;;; A release directory contains the launcher at bin/autolith, the source at
+;;; libexec/autolith and the native libraries in lib. A source checkout
+;;; contains bin/autolith itself. The launcher prepares the image and the
+;;; helpers that Autolith needs. For this reason, AUI starts all parts of
+;;; Autolith through that command.
 
 (-> installation--release-root (pathname) (or null pathname))
 (defun installation--release-root (source)
-  "Return the release directory that holds the Autolith source directory SOURCE, or NIL when SOURCE is a checkout."
+  "Return the release directory that contains the Autolith source directory SOURCE.
+Return NIL if SOURCE is a checkout."
   (let ((root (uiop:pathname-parent-directory-pathname
                (uiop:pathname-parent-directory-pathname source))))
     (and (equal (last (pathname-directory source) 2) '("libexec" "autolith"))
@@ -22,21 +23,23 @@
 
 (-> installation--program (pathname) string)
 (defun installation--program (source)
-  "Return the namestring of the autolith command of the Autolith whose source directory is SOURCE: the release's launcher, or the checkout's."
+  "Return the namestring of the autolith command for the Autolith source directory SOURCE.
+The command is the launcher of the release or of the checkout."
   (uiop:native-namestring
    (merge-pathnames "bin/autolith" (or (installation--release-root source) source))))
 
 (-> installation-program () string)
 (defun installation-program ()
-  "Return the namestring of the autolith command of the Autolith this client was built against."
+  "Return the namestring of the autolith command of the Autolith used to build this client."
   (installation--program (asdf:system-source-directory ':autolith)))
 
 (-> installation-adopt () null)
 (defun installation-adopt ()
-  "Name the highlighter's native library a release brings, unless the environment names one already.
+  "Set COLORLISP_NATIVE_LIBRARY to the native highlighter library of the release.
+Do nothing if the variable is already set or if Autolith is a checkout.
 
-A checkout builds that library on first use. A release brings it built,
-because the machine it is installed on may have no compiler for it."
+Checkouts build that library on first use. Releases contain the library
+prebuilt, because the machine may not have a compiler for it."
   (let ((root (installation--release-root (asdf:system-source-directory ':autolith))))
     (when (and root (not (uiop:getenvp "COLORLISP_NATIVE_LIBRARY")))
       (let ((library (find-if #'probe-file

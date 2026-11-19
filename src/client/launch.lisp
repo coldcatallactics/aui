@@ -2,89 +2,91 @@
 
 ;;;; -- Launch --
 
-;;; The aui command line is Autolith's. Its options are the option objects
-;;; Autolith's own top-level command defines, parsed by the same library and
-;;; read by the same functions, so a flag means here what it means there.
-;;; Options that concern the channel (--model, --provider, --permissions,
-;;; --immutable, --image, --site-config-root) reach the world server exactly
-;;; as a terminal sends them. Only a start that would open a channel in a
-;;; terminal opens it in a window instead. Everything else (auth, models, status,
-;;; update, data, usage, replay, an unattended or a rescue start) has no
-;;; window, and this process becomes autolith to do it: Autolith's own image
-;;; holds the person's private definitions and knows which of them still
-;;; apply, which an image built around a window does not.
+;;; The command line of aui is the command line of Autolith. The options are
+;;; the option objects defined by the top-level command of Autolith. They are
+;;; parsed by the same library and read by the same functions, so each flag
+;;; has the same meaning as in autolith. Options for the channel (--model,
+;;; --provider, --permissions, --immutable, --image, --site-config-root) are
+;;; sent to the world server in the same way as from a terminal. A channel
+;;; that autolith would open in a terminal is opened in a window. For all
+;;; other commands (auth, models, status, update, data, usage, replay, an
+;;; unattended or a rescue start), this process becomes autolith. This is
+;;; because the private definitions of the person are only loaded in the image
+;;; of Autolith.
 
 (defclass launch ()
   ((world
     :initarg       :world
     :reader        launch-world
     :type          world
-    :documentation "The world the window attaches to.")
+    :documentation "The world to which the window attaches.")
    (channel
     :initarg       :channel
     :initform      nil
     :reader        launch-channel
     :type          (or null string)
-    :documentation "The channel to open, resolved to its full identifier, or NIL to choose by directory.")
+    :documentation "The full identifier of the channel to open, or NIL.
+If it is NIL, the channel is chosen by directory.")
    (pick-p
     :initarg       :pick-p
     :initform      nil
     :reader        launch-pick-p
     :type          boolean
-    :documentation "Whether the start asked to pick a channel instead of opening one, as aui open does without an identifier.")
+    :documentation "True if the person asked to pick a channel instead of opening one, as with aui open without an identifier.")
    (images
     :initarg       :images
     :initform      nil
     :reader        launch-images
     :type          list
-    :documentation "Namestrings of images to preload into the composer.")
+    :documentation "The namestrings of the images to put in the composer at start.")
    (demo-p
     :initarg       :demo-p
     :initform      nil
     :reader        launch-demo-p
     :type          boolean
-    :documentation "Whether to show the scripted demonstration instead of attaching to a server.")
+    :documentation "True if the scripted demonstration is shown instead of attaching to a server.")
    (shot
     :initarg       :shot
     :initform      nil
     :reader        launch-shot
     :type          (or null string)
-    :documentation "Where to write a picture of the window before exiting, or NIL.")
+    :documentation "The file to which a picture of the window is written before exit, or NIL.")
    (shot-after
     :initarg       :shot-after
     :initform      2
     :reader        launch-shot-after
     :type          real
-    :documentation "Seconds to wait before the picture is taken.")
+    :documentation "The number of seconds to wait before the picture is taken.")
    (size
     :initarg       :size
     :initform      nil
     :reader        launch-size
     :type          (or null cons)
-    :documentation "The window's (WIDTH . HEIGHT) to start with, or NIL for the default.")
+    :documentation "The initial size of the window as (WIDTH . HEIGHT), or NIL for the default size.")
    (view
     :initarg       :view
     :initform      nil
     :reader        launch-view
     :type          (or null keyword)
-    :documentation "A view to show at start, one of `*launch-views*', or NIL.")
+    :documentation "The view to show at start, or NIL. The view is one of `*launch-views*'.")
    (draft
     :initarg       :draft
     :initform      nil
     :reader        launch-draft
     :type          (or null string)
-    :documentation "Text to put in the composer at start, or NIL.")
+    :documentation "The text to put in the composer at start, or NIL.")
    (prompt
     :initarg       :prompt
     :initform      nil
     :accessor      launch-prompt
     :type          (or null string)
-    :documentation "Text to send as soon as a channel is attached, or NIL once it was sent or when none was given."))
-  (:documentation "What one invocation of aui asked for, once its options were read."))
+    :documentation "The text to send when a channel is attached, or NIL.
+It is NIL if no text was given or after the text was sent."))
+  (:documentation "The options of one invocation of aui, after they were read."))
 
 (-> launch--window-options () list)
 (defun launch--window-options ()
-  "Return the options only a window understands, added to Autolith's session options."
+  "Return the window options that are added to the session options of Autolith."
   (list
    (clingon:make-option ':string
                         :short-name  #\C
@@ -137,7 +139,7 @@
 
 (-> launch--open-command () clingon:command)
 (defun launch--open-command ()
-  "Return aui's open sub-command, which opens a channel in a window."
+  "Return the open sub-command of aui. This sub-command opens a channel in a window."
   (clingon:make-command
    :name        "open"
    :description "open a channel in a window, or pick one"
@@ -146,15 +148,16 @@
 
 (-> launch-command () clingon:command)
 (defun launch-command ()
-  "Return aui's command line: Autolith's top-level command with the window's options added and its open sub-command replaced."
+  "Return the command line of aui.
+It is the top-level command of Autolith with the window options and with a new open sub-command."
   (let ((autolith (autolith::main--top-level-command)))
     (clingon:make-command
      :name         "aui"
-     :description  "a window onto Autolith's channels"
+     :description  "a graphical client for Autolith"
      :long-description
-     "aui takes autolith's options and sub-commands. A start that would open a
-channel in a terminal opens it in a window; every other sub-command runs as
-it does under autolith."
+     "aui has the same options and sub-commands as autolith. A channel that
+autolith would open in a terminal is opened in a window. All other
+sub-commands work as under autolith."
      :version      (world-autolith-version)
      :options      (append (autolith::main--session-options) (launch--window-options))
      :sub-commands (cons (launch--open-command)
@@ -164,7 +167,8 @@ it does under autolith."
 
 (-> launch--parse-size ((or null string)) (or null cons))
 (defun launch--parse-size (text)
-  "Return the (WIDTH . HEIGHT) that TEXT, written as WIDTHxHEIGHT, names, or NIL when it names none."
+  "Return the size written as WIDTHxHEIGHT in TEXT as (WIDTH . HEIGHT).
+Return NIL if TEXT does not contain a valid size."
   (let ((cross (and text (position #\x text))))
     (when cross
       (let ((width  (parse-integer text :end cross :junk-allowed t))
@@ -174,14 +178,14 @@ it does under autolith."
 
 (defparameter *launch-window-option-keys*
   '(:directory :demo :shot :shot-after :size :view :draft :prompt)
-  "The keys of the options only a window understands.")
+  "The keys of the window options.")
 
 (-> launch--windowless-p (clingon:command) boolean)
 (defun launch--windowless-p (command)
-  "Return T when COMMAND is Autolith's to run without a window.
+  "Return T if autolith runs COMMAND without a window.
 
-That is every sub-command but open, and a start that is unattended, a rescue
-session, or one of Autolith's internal starts."
+These commands are all sub-commands other than open, unattended starts,
+rescue sessions and the internal starts of Autolith."
   (and (or (not (member (clingon:command-name command) '("aui" "open") :test #'string=))
            (some (lambda (key)
                    (clingon:getopt* command key))
@@ -190,10 +194,10 @@ session, or one of Autolith's internal starts."
 
 (-> launch--become-autolith (list) null)
 (defun launch--become-autolith (arguments)
-  "Replace this process with autolith run on ARGUMENTS.
+  "Replace this process with autolith, run with ARGUMENTS.
 
-Signal a CLIENT-ERROR when the program cannot be started; on success this
-never returns."
+This function does not return if autolith starts. Signal a CLIENT-ERROR if the
+program cannot be started."
   (let* ((program (installation-program))
          (words   (cons program arguments))
          (count   (length words))
@@ -208,26 +212,27 @@ never returns."
      (sb-alien:extern-alien "execv" (function sb-alien:int sb-alien:c-string (* sb-alien:c-string)))
      program vector)
     (error 'client-error
-           :message (format nil "Could not start ~A: ~A." program (sb-int:strerror)))))
+           :message (format nil "~A could not be started: ~A." program (sb-int:strerror)))))
 
 (-> launch--hand-over (clingon:command list) null)
 (defun launch--hand-over (command arguments)
-  "Give the windowless COMMAND, read from ARGUMENTS, to autolith.
+  "Run the windowless COMMAND, read from ARGUMENTS, with autolith.
 
-Signal a CLIENT-ERROR when the arguments also carry an option that only a
-window understands, which autolith would not know."
+Signal a CLIENT-ERROR if ARGUMENTS also contain window options, because
+autolith does not know them."
   (let ((given (remove-if-not (lambda (key)
                                 (clingon:getopt* command key))
                               *launch-window-option-keys*)))
     (when given
       (error 'client-error
-             :message (format nil "~{--~(~A~)~^, ~} ~:[belongs~;belong~] to a window, and this start has none."
+             :message (format nil "~{--~(~A~)~^, ~} ~:[is a window option~;are window options~]. This command does not open a window."
                               given (rest given)))))
   (launch--become-autolith arguments))
 
 (-> launch--window (clingon:command) launch)
 (defun launch--window (command)
-  "Return the window launch COMMAND describes, reading its options the way Autolith's session start does."
+  "Return the window launch described by COMMAND.
+The options are read in the same way as in the session start of Autolith."
   (let* ((open-p          (string= (clingon:command-name command) "open"))
          (open-id         (and open-p (autolith::main--single-selection command "conversation ID")))
          (immutable-p     (and (clingon:getopt* command ':immutable) t))
@@ -276,22 +281,22 @@ window understands, which autolith would not know."
 (defparameter *launch-views*
   '(:commands :settings :channels :agenda :memories :plan :model :permissions :menu :choice :prompt :top
     :approval :welcome)
-  "The views a window can be asked to start in.")
+  "The views that can be shown at start.")
 
 (-> launch--parse-view ((or null string)) (or null keyword))
 (defun launch--parse-view (name)
-  "Return the view the option value NAME asks for, or NIL for none; signal `client-error' for a name that is no view."
+  "Return the view named by the option value NAME, or NIL if NAME is NIL.
+Signal a `client-error' if NAME is not the name of a view."
   (and name
        (or (find name *launch-views* :test #'string-equal)
            (error 'client-error
-                  :message (format nil "No view ~A; choose one of ~{~(~A~)~^, ~}." name *launch-views*)))))
+                  :message (format nil "There is no view ~A. Choose one of ~{~(~A~)~^, ~}." name *launch-views*)))))
 
 (-> launch--read (list) clingon:command)
 (defun launch--read (arguments)
-  "Return the command the command line ARGUMENTS name, with its options read.
+  "Parse the command line ARGUMENTS and return the command with the options.
 
-Help, version and usage errors exit the process the way they do under
-autolith."
+For help, version and usage errors, exit the process in the same way as autolith."
   (handler-case
       (clingon:parse-command-line (launch-command)
                                   (autolith::main--normalize-update-arguments arguments))
@@ -303,10 +308,10 @@ autolith."
 
 (-> launch-parse (list) (or null launch))
 (defun launch-parse (arguments)
-  "Read the command line ARGUMENTS and return the window launch they ask for.
+  "Read the command line ARGUMENTS and return the window launch.
 
-Arguments that name something Autolith does without a window turn this
-process into autolith, so the call does not return for them."
+If ARGUMENTS request a command without a window, this process becomes
+autolith, and the call does not return."
   (let ((command (launch--read arguments)))
     (if (launch--windowless-p command)
         (launch--hand-over command arguments)

@@ -11,11 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The versions of Autolith that AUI is checked against. AUI loads the client
-  # code of Autolith, so the two are updated together. The release is used by
-  # the release job, and the commit is built from source by the source job.
-  AUTOLITH_RELEASE: v0.67.57
-  AUTOLITH_SOURCE_REF: 5f39c1f3e11f90cde7b0b16a1949dd4a9a3e56c1
+  # The Autolith release that AUI is checked against. AUI loads the client code
+  # of Autolith, so the two are updated together.
+  AUTOLITH_REF: v0.67.58
 
 jobs:
   # Autolith is installed from a release by the Autolith installer, and AUI is
@@ -49,7 +47,7 @@ jobs:
           AUTOLITH_RELEASE_BASE_URL: https://github.com/lambda-symbolics/autolith/releases/download
         run: |
           curl --fail --silent --show-error --location --retry 3 https://sh.lambda-symbolics.com/autolith |
-            sh -s -- --version "$AUTOLITH_RELEASE"
+            sh -s -- --version "$AUTOLITH_REF"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/autolith" --version
 
@@ -111,7 +109,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: lambda-symbolics/autolith
-          ref: ${{ env.AUTOLITH_SOURCE_REF }}
+          ref: ${{ env.AUTOLITH_REF }}
           path: autolith
 
       - uses: actions/checkout@v5

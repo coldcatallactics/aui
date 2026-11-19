@@ -2,24 +2,24 @@
 
 ;;;; -- Desk --
 
-;;; What the unslop window knows and does: the checkout and its ledger, which
-;;; file is open, which passage is being written in, and when to save. The
-;;; panes in the other files of this directory read this state and call the
-;;; actions here. Everything runs on the interface thread, except the look at
-;;; the checkout that a thread of its own takes every few seconds; what that
-;;; thread found is handed over and taken up on the interface thread.
+;;; The desk is the state and the actions of the unslop window: the checkout and the
+;;; ledger, the open file, the passage being written in, and the timer of the next
+;;; save. The panes in the other files of this directory read this state and call
+;;; the actions here. Everything runs on the interface thread, except the look at
+;;; the checkout. The checkout is looked at every few seconds on a separate thread,
+;;; and the result is taken up on the interface thread.
 
 (defparameter *autosave-seconds* 0.7
-  "How long after the last keystroke what was typed is written to its file.")
+  "The delay in seconds between the last keystroke and the write of the typed text to the file.")
 
 (defparameter *refresh-seconds* 3
-  "How often the checkout is looked at again for new files, edited files and files changed since they were completed.")
+  "The interval in seconds between two looks at the checkout. A look finds new files, edited files and files changed since they were completed.")
 
 (defparameter *passage-kinds* '(:comment :docstring :string)
-  "The kinds of passage, in the order their switches are shown.")
+  "The kinds of passages, in the order in which their switches are shown.")
 
 (defstruct removal
-  "A comment deleted from the open file, as the proofs of the file BEFORE and AFTER and the LINE the comment began on."
+  "A comment deleted from the open file. BEFORE and AFTER are the proofs of the file before and after the deletion. LINE is the first line of the comment."
   (before nil :type (or null proof))
   (after  nil :type (or null proof))
   (line   0   :type integer))
@@ -29,12 +29,12 @@
     :initarg       :checkout
     :reader        desk-checkout
     :type          checkout
-    :documentation "The folder of source the window works through.")
+    :documentation "The folder of source that the person works through in the window.")
    (ledger
     :initarg       :ledger
     :reader        desk-ledger
     :type          ledger
-    :documentation "What is remembered about the checkout outside it.")
+    :documentation "The ledger with the marks for the checkout.")
    (window
     :initform      nil
     :accessor      desk-window
@@ -42,55 +42,55 @@
    (stage
     :initform      nil
     :accessor      desk-stage
-    :documentation "The window's drawing surface.")
+    :documentation "The drawing surface of the window.")
    (editor
     :initform      nil
     :accessor      desk-editor
-    :documentation "The native text editor a passage is written in.")
+    :documentation "The native text editor in which a passage is written.")
    (field
     :initform      nil
     :accessor      desk-field
-    :documentation "The native field the file filter is typed in.")
+    :documentation "The native field in which the file filter is typed.")
    (files
     :initarg       :files
     :initform      nil
     :accessor      desk-files
     :type          list
-    :documentation "The checkout's source files as names from its root, sorted.")
+    :documentation "The source files of the checkout as sorted names relative to the root.")
    (edited
     :initform      nil
     :accessor      desk-edited
-    :documentation "The files that differ from what was last committed, as a table from names to T, or NIL when that is not known yet.")
+    :documentation "The files that differ from the last commit, as a hash table from names to T, or NIL if they are not known yet.")
    (completed
     :initform      (make-hash-table :test #'equal)
     :accessor      desk-completed
     :type          hash-table
-    :documentation "The files that are completed now, as a table from names to T: those marked that still hold what they held then.")
+    :documentation "The files that are completed now, as a hash table from names to T. These are the marked files that have not changed since they were marked.")
    (filter
     :initform      ""
     :accessor      desk-filter
     :type          string
-    :documentation "What the person typed to narrow the list of files.")
+    :documentation "The text typed by the person to narrow the list of files.")
    (shelf-scroll
     :initform      0
     :accessor      desk-shelf-scroll
     :type          integer
-    :documentation "How far the list of files is scrolled.")
+    :documentation "The scroll offset of the list of files.")
    (shelf-reveal-p
     :initform      nil
     :accessor      desk-shelf-reveal-p
     :type          boolean
-    :documentation "Whether the list is to be scrolled so that the open file is in view when it is next drawn.")
+    :documentation "True if the list of files is to be scrolled at the next draw, so that the open file is in view.")
    (arranger
     :initform      nil
     :accessor      desk-arranger
     :type          (or null function)
-    :documentation "Called with no arguments to put the editor over the passage being written in and bring that passage into view. The window sets it.")
+    :documentation "A function of no arguments that puts the editor over the passage being written in and scrolls that passage into view.")
    (name
     :initform      nil
     :accessor      desk-name
     :type          (or null string)
-    :documentation "The name of the file that is open, or NIL.")
+    :documentation "The name of the open file, or NIL.")
    (proof
     :initform      nil
     :accessor      desk-proof
@@ -100,105 +100,105 @@
     :initform      0
     :accessor      desk-page-scroll
     :type          integer
-    :documentation "How far the open file's page is scrolled.")
+    :documentation "The scroll offset of the page of the open file.")
    (layouts
     :initform      (make-hash-table :test #'equal)
     :reader        desk-layouts
     :type          hash-table
-    :documentation "Paragraphs already laid out for the open file, from a passage's words to the paragraph.")
+    :documentation "The paragraphs laid out for the open file, as a hash table from the words of a passage to the paragraph.")
    (typed-layout
     :initform      nil
     :accessor      desk-typed-layout
-    :documentation "The paragraph of what the editor holds, as (TEXT . PARAGRAPH), or NIL. It is kept apart from the other paragraphs, so that a new text for each key does not add a paragraph that is kept.")
+    :documentation "The paragraph of the text in the editor, as (TEXT . PARAGRAPH), or NIL. It is kept apart from LAYOUTS, so that the text after each key does not add a paragraph to LAYOUTS.")
    (layout-width
     :initform      -1
     :accessor      desk-layout-width
     :type          integer
-    :documentation "The width the kept paragraphs were laid out to.")
+    :documentation "The width to which the paragraphs in LAYOUTS were laid out.")
    (focus
     :initform      nil
     :accessor      desk-focus
     :type          (or null cons)
-    :documentation "The passage being written in as (DEFINITION . PASSAGE), both counted from 0, or NIL.")
+    :documentation "The passage being written in as (DEFINITION . PASSAGE), or NIL. Both numbers count from 0.")
    (dirty-p
     :initform      nil
     :accessor      desk-dirty-p
     :type          boolean
-    :documentation "Whether something was typed that is not in the file yet.")
+    :documentation "True if typed text is not in the file yet.")
    (timer
     :initform      nil
     :accessor      desk--timer
-    :documentation "The timeout that will save what was typed, or NIL when none is pending.")
+    :documentation "The timeout for the save of the typed text, or NIL if no save is pending.")
    (saved-at
     :initform      nil
     :accessor      desk-saved-at
     :type          (or null integer)
-    :documentation "The universal time the open file was last written from this window, or NIL.")
+    :documentation "The universal time of the last write to the open file from this window, or NIL.")
    (notice
     :initform      nil
     :accessor      desk-notice
     :type          (or null string)
-    :documentation "A line saying that something was not written, shown until the next thing works.")
+    :documentation "A notice about an action that failed, or NIL. The notice is shown until a later action succeeds.")
    (sections
     :initform      nil
     :accessor      desk--sections
-    :documentation "The digests of the open file's definitions, as (PROOF . VECTOR) for the proof they were made from, or NIL.")
+    :documentation "The digests of the definitions of the open file as (PROOF . VECTOR), or NIL. PROOF is the proof from which the digests were computed.")
    (head
     :initform      ':unknown
     :accessor      desk--head
-    :documentation "The digests of the definitions the open file has in Git's last commit, or :UNKNOWN when Git does not say.")
+    :documentation "The digests of the definitions of the open file in the last Git commit, or :UNKNOWN if Git did not provide them.")
    (toggled
     :initform      (make-hash-table :test #'equal)
     :reader        desk--toggled
     :type          hash-table
-    :documentation "The definitions of the open file, by digest, that the person folded or unfolded against what their mark says: a completed one opened, an open one folded.")
+    :documentation "The definitions of the open file that the person folded or unfolded against the mark, as a hash table keyed by digest. These are completed definitions that were unfolded, and open definitions that were folded.")
    (removal
     :initform      nil
     :accessor      desk--removal
     :type          (or null removal)
-    :documentation "The comment deleted last, or NIL. It can be brought back for as long as the open file holds what was written then.")
+    :documentation "The last deleted comment, or NIL.")
    (marks
     :initform      0
     :accessor      desk--marks
     :type          integer
-    :documentation "Counts what the person marked and saved, so that a look at the checkout begun before a change does not undo it.")
+    :documentation "The number of marks and saves made by the person. It is used to discard the results of looks at the checkout that started before a change.")
    (found
     :initform      nil
     :accessor      desk--found
-    :documentation "What the last look at the checkout found and the interface thread has not taken up yet, or NIL.")
+    :documentation "The result of the last look at the checkout, or NIL if the result was taken up.")
    (looking-p
     :initform      nil
     :accessor      desk--looking-p
     :type          boolean
-    :documentation "Whether a look at the checkout is under way.")
+    :documentation "True while a look at the checkout is running.")
    (stamps
     :initform      (make-hash-table :test #'equal)
     :reader        desk--stamps
     :type          hash-table
-    :documentation "For the thread that looks at the checkout: each file's write date, size and digest, so an unchanged file is not read again."))
-  (:documentation "One unslop window and everything it knows."))
+    :documentation "A hash table from file names to the write date, size and digest of each file. It is used so that unchanged files are not read again."))
+  (:documentation "The state of one unslop window."))
 
 (-> desk-redraw (desk) null)
 (defun desk-redraw (desk)
-  "Ask for DESK's window to be drawn again."
+  "Request a new draw of the window of DESK."
   (when (desk-stage desk)
     (stage-redraw (desk-stage desk)))
   nil)
 
 (-> desk-pathname (desk string) pathname)
 (defun desk-pathname (desk name)
-  "Return the pathname of the file NAME of DESK's checkout."
+  "Return the pathname of the file NAME in the checkout of DESK."
   (checkout-file (desk-checkout desk) name))
 
 (-> desk-kinds () list)
 (defun desk-kinds ()
-  "Return the kinds of passage the person wants shown."
+  "Return the kinds of passages that the person wants to see."
   (let ((hidden (preference ':hidden-kinds)))
     (remove-if (lambda (kind) (member kind hidden)) *passage-kinds*)))
 
 (-> desk-toggle-kind (desk keyword) null)
 (defun desk-toggle-kind (desk kind)
-  "Show the passages of KIND when they are hidden, or hide them, and remember that. The last kind shown stays shown."
+  "Show the passages of KIND if they are hidden, or else hide them, and save the choice. The last shown kind cannot be hidden."
   (let ((hidden (preference ':hidden-kinds)))
     (cond
       ((member kind hidden)
@@ -211,7 +211,7 @@
 
 (-> desk-hide-completed-p () boolean)
 (defun desk-hide-completed-p ()
-  "Return T when the person wants completed files left out of the list."
+  "Return T if the person wants completed files left out of the list."
   (and (preference ':hide-completed) t))
 
 
@@ -219,28 +219,28 @@
 
 (-> desk-completed-p (desk string) boolean)
 (defun desk-completed-p (desk name)
-  "Return T when the file NAME is completed: marked, and unchanged since."
+  "Return T if the file NAME is completed, which means that it is marked and has not changed since."
   (and (gethash name (desk-completed desk)) t))
 
 (-> desk-edited-p (desk string) boolean)
 (defun desk-edited-p (desk name)
-  "Return T when the file NAME differs from what was last committed."
+  "Return T if the file NAME differs from the last commit."
   (let ((edited (desk-edited desk)))
     (and edited (gethash name edited) t)))
 
 (-> desk--current-digest (desk string) (or null string))
 (defun desk--current-digest (desk name)
-  "Return the digest of what the file NAME holds now."
+  "Return the digest of the current content of the file NAME."
   (if (and (equal name (desk-name desk)) (desk-proof desk) (not (desk-dirty-p desk)))
       (or (file-digest (desk-pathname desk name)) (proof-digest (desk-proof desk)))
       (file-digest (desk-pathname desk name))))
 
 (-> desk-toggle-completed (desk string) null)
 (defun desk-toggle-completed (desk name)
-  "Mark the file NAME completed as it is now, or take the mark from it, and remember that outside the checkout.
+  "Mark the file NAME as completed with the current content, or remove the mark. The mark is recorded in the ledger.
 
-What was typed in it and not yet written is written first, so the mark is
-for what the person sees."
+If NAME is the open file, the typed text that is not written yet is written
+first. The mark is then for the text that the person sees."
   (when (equal name (desk-name desk))
     (desk-save desk))
   (incf (desk--marks desk))
@@ -264,12 +264,12 @@ for what the person sees."
 
 (-> desk-folded-p (desk string) boolean)
 (defun desk-folded-p (desk folder)
-  "Return T when FOLDER is folded in the list of files."
+  "Return T if FOLDER is folded in the list of files."
   (ledger-folded-p (desk-ledger desk) folder))
 
 (-> desk--fold (desk list boolean) null)
 (defun desk--fold (desk folders folded-p)
-  "Fold FOLDERS in the list of files, or unfold them when FOLDED-P is NIL, and say so when that could not be remembered outside the checkout."
+  "Fold FOLDERS in the list of files, or unfold them if FOLDED-P is NIL. Set a notice if the ledger could not be written."
   (unless (ledger-fold (desk-ledger desk) folders folded-p)
     (setf (desk-notice desk)
           (format nil "the folded folders could not be written to ~A"
@@ -278,14 +278,14 @@ for what the person sees."
 
 (-> desk-toggle-folder (desk string) null)
 (defun desk-toggle-folder (desk folder)
-  "Fold FOLDER in the list of files, or unfold it, and remember that outside the checkout."
+  "Fold FOLDER in the list of files, or unfold it, and record the state in the ledger."
   (desk--fold desk (list folder) (not (desk-folded-p desk folder)))
   (desk-redraw desk)
   nil)
 
 (-> desk-completed-count (desk) integer)
 (defun desk-completed-count (desk)
-  "Return how many of DESK's files are completed."
+  "Return the number of completed files of DESK."
   (count-if (lambda (name) (desk-completed-p desk name)) (desk-files desk)))
 
 
@@ -293,7 +293,7 @@ for what the person sees."
 
 (-> desk--stamp-digest (hash-table pathname string) (or null string))
 (defun desk--stamp-digest (stamps pathname name)
-  "Return the digest of the file at PATHNAME, reading it only when its write date or size differ from what STAMPS holds for NAME."
+  "Return the digest of the file at PATHNAME. The file is only read if the write date or the size differs from the entry for NAME in STAMPS."
   (handler-case
       (let* ((status (sb-posix:stat (uiop:native-namestring pathname)))
              (stamp  (list (sb-posix:stat-mtime status) (sb-posix:stat-size status)))
@@ -308,11 +308,10 @@ for what the person sees."
 
 (-> desk--look (desk list list) list)
 (defun desk--look (desk marked baseline)
-  "Look at DESK's checkout and return what was found as a property list: its :FILES, the :EDITED table, the :COMPLETED table, and the :FIRST-SEEN files with their digests.
+  "Look at the checkout of DESK and return the result as a property list. The list contains the :FILES, the :EDITED hash table, the :COMPLETED hash table, and the :FIRST-SEEN files with their digests.
 
-MARKED and BASELINE are the ledger's entries as (NAME . DIGEST), copied by
-the caller, because this runs on a thread of its own. Where Git says what
-changed, the baseline is not looked at."
+MARKED and BASELINE are entries of the ledger as (NAME . DIGEST). BASELINE is
+only used if Git does not provide the edited files."
   (let* ((checkout  (desk-checkout desk))
          (stamps    (desk--stamps desk))
          (files     (checkout-list-files checkout))
@@ -338,7 +337,7 @@ changed, the baseline is not looked at."
 
 (-> desk-look (desk &key (:wait-p boolean)) null)
 (defun desk-look (desk &key wait-p)
-  "Start a look at DESK's checkout on a thread of its own, unless one is under way. With WAIT-P, look now on this thread and take up what is found."
+  "Start a look at the checkout of DESK on a separate thread, unless a look is running already. If WAIT-P is true, look now on this thread and take up the result."
   (let ((marked   (ledger-entries (desk-ledger desk) (ledger-completed (desk-ledger desk))))
         (baseline (ledger-entries (desk-ledger desk) (ledger-baseline (desk-ledger desk))))
         (marks    (desk--marks desk)))
@@ -361,16 +360,16 @@ changed, the baseline is not looked at."
 
 (-> desk-take-up (desk) boolean)
 (defun desk-take-up (desk)
-  "Take up what the last look at the checkout found, and return whether there was anything.
+  "Take up the result of the last look at the checkout, and return T if there was a result.
 
-The completed files are taken only when nothing was marked or saved since
-the look began, since the look would not know of it."
+The completed files are only taken if nothing was marked or saved since the
+look started. Otherwise a new look is started."
   (let ((found (shiftf (desk--found desk) nil)))
     (when found
       (let ((before (and (desk-name desk) (desk-edited-p desk (desk-name desk)))))
         (setf (desk-files desk)  (getf found :files)
               (desk-edited desk) (getf found :edited))
-        ;; A commit makes the open file the same as Git's last commit, and its sections with it.
+        ;; After a commit, the open file and its sections are the same as in the commit.
         (when (and (desk-name desk) (not (eq before (desk-edited-p desk (desk-name desk)))))
           (desk-read-head desk)))
       (if (= (getf found :marks) (desk--marks desk))
@@ -387,14 +386,14 @@ the look began, since the look would not know of it."
 
 (-> desk--forget-layouts (desk) null)
 (defun desk--forget-layouts (desk)
-  "Forget the paragraphs laid out for the open file."
+  "Remove the paragraphs laid out for the open file."
   (clrhash (desk-layouts desk))
   (setf (desk-typed-layout desk) nil)
   nil)
 
 (-> desk-open-file (desk string) null)
 (defun desk-open-file (desk name)
-  "Show the file NAME, read for its words. What was being written in the file shown before is written first, and the folders NAME lies in are unfolded in the list, so that it is in view there."
+  "Open the file NAME and read it for its words. The typed text in the previous file is written first. The folders that contain NAME are unfolded in the list of files, so that NAME is in view."
   (desk-leave desk)
   (desk--forget-layouts desk)
   (setf (desk-name desk)           name
@@ -420,13 +419,13 @@ the look began, since the look would not know of it."
 
 (-> desk-typed-text (desk) string)
 (defun desk-typed-text (desk)
-  "Return what the editor holds."
+  "Return the text in the editor."
   (let ((editor (desk-editor desk)))
     (if editor (lightfast:value editor) "")))
 
 (-> desk--cancel-timer (desk) null)
 (defun desk--cancel-timer (desk)
-  "Drop the save that is waiting for the typing to stop."
+  "Cancel the pending save of the typed text."
   (let ((timer (shiftf (desk--timer desk) nil)))
     (when timer
       (lightfast:remove-timeout timer)))
@@ -434,7 +433,7 @@ the look began, since the look would not know of it."
 
 (-> desk-note-typing (desk) null)
 (defun desk-note-typing (desk)
-  "Take note that the editor's text changed: it is saved once the typing has stopped for a moment."
+  "Record that the text in the editor changed, and schedule a save after *AUTOSAVE-SECONDS*."
   (let ((passage (desk-passage desk)))
     (when passage
       (setf (desk-dirty-p desk)
@@ -452,7 +451,7 @@ the look began, since the look would not know of it."
 
 (-> desk--written (desk proof) null)
 (defun desk--written (desk proof)
-  "Take PROOF, just written to the open file, as what the file holds."
+  "Set PROOF as the proof of the open file after a write, and update the marks and the edited files."
   (let ((name (desk-name desk)))
     (setf (desk-proof desk)     proof
           (desk-dirty-p desk)   nil
@@ -460,7 +459,7 @@ the look began, since the look would not know of it."
           (desk-notice desk)    nil
           (desk--removal desk)  nil)
     (incf (desk--marks desk))
-    ;; The file holds something else now, so a mark on it stands only if it was for exactly this.
+    ;; The file content changed. The file is only completed if the mark is for this content.
     (if (ledger-completed-p (desk-ledger desk) name (proof-digest proof))
         (setf (gethash name (desk-completed desk)) t)
         (remhash name (desk-completed desk)))
@@ -471,7 +470,7 @@ the look began, since the look would not know of it."
 
 (-> desk--change (desk passage string &key (:remove-p boolean)) proof)
 (defun desk--change (desk passage text &key remove-p)
-  "Write the open file with PASSAGE's words changed to TEXT, or without PASSAGE when REMOVE-P, and return the proof of what was written."
+  "Write the open file with the words of PASSAGE changed to TEXT, or without PASSAGE if REMOVE-P is true. Return the proof of the written text."
   (let* ((old (desk-proof desk))
          (new (if remove-p
                   (proof-remove old passage)
@@ -480,14 +479,13 @@ the look began, since the look would not know of it."
 
 (-> desk-save (desk &key (:leaving-p boolean)) boolean)
 (defun desk-save (desk &key leaving-p)
-  "Write what was typed in the passage being written in to its file, and return whether the file now holds it.
+  "Write the typed text of the passage being written in to the file. Return T if the file contains the text afterwards.
 
-A comment left without any words is removed with its lines, but only when
-the person leaves it, which LEAVING-P says: an editor emptied to write
-something else is not a wish to delete. A file that changed on disk in the
-meantime is read again and the words are put into it, when its code is
-still the same. What cannot be written is said in the notice, and the
-editor keeps the words."
+An empty comment is only removed together with its lines if LEAVING-P is
+true. If the file changed on disk in the meantime, the file is read again. If
+the code is still the same, the words are written into the new content. If the
+words cannot be written, the reason is set as the notice, and the words are
+kept in the editor."
   (desk--cancel-timer desk)
   (let ((passage (desk-passage desk))
         (focus   (desk-focus desk)))
@@ -512,7 +510,8 @@ editor keeps the words."
                (handler-case (attempt passage)
                  (proof-error (condition)
                    (if (eq (proof-error-reason condition) ':changed)
-                       ;; Someone else wrote the file. With the same code in it the words still have their place.
+                       ;; Another program wrote the file. If the code is the same,
+                       ;; the passage is still in the same place.
                        (let* ((old   (desk-proof desk))
                               (fresh (proof-read (desk-pathname desk (desk-name desk))))
                               (again (and (null (proof-problem fresh))
@@ -528,7 +527,7 @@ editor keeps the words."
                                 nil)))
                            (t
                             (setf (desk-notice desk)
-                                  "not written: the file was changed by another program; copy your words and open the file again")
+                                  "not written: the file was changed by another program, so copy your words and open the file again")
                             (desk-redraw desk)
                             nil)))
                        (progn
@@ -542,9 +541,9 @@ editor keeps the words."
 
 (-> desk-edit (desk fixnum fixnum &key (:caret (or null integer))) null)
 (defun desk-edit (desk definition passage &key caret)
-  "Begin writing in the passage numbered PASSAGE of the definition numbered DEFINITION of the open file, with the caret before the character numbered CARET or at the end.
+  "Start writing in the passage numbered PASSAGE of the definition numbered DEFINITION in the open file. The caret is put before the character numbered CARET, or at the end if CARET is NIL.
 
-What was being written elsewhere is written first."
+The typed text of another passage is written first."
   (desk-leave desk)
   (let ((found  (and (desk-proof desk) (proof-passage (desk-proof desk) definition passage)))
         (editor (desk-editor desk)))
@@ -557,7 +556,7 @@ What was being written elsewhere is written first."
                 (lightfast:string-byte-length
                  (subseq (passage-text found) 0 (max 0 (min caret (length (passage-text found))))))
                 (lightfast:text-length editor)))
-      ;; A field that is not shown takes no keyboard, so the editor is put in place first.
+      ;; A hidden field does not get the keyboard focus, so the editor is put in place first.
       (when (desk-arranger desk)
         (funcall (desk-arranger desk)))
       (lightfast:take-focus editor)
@@ -566,7 +565,7 @@ What was being written elsewhere is written first."
 
 (-> desk-refocus (desk) null)
 (defun desk-refocus (desk)
-  "Bring the passage being written in back into view and give the editor the keyboard."
+  "Scroll the passage being written in back into view, and give the keyboard focus to the editor."
   (when (and (desk-focus desk) (desk-editor desk))
     (when (desk-arranger desk)
       (funcall (desk-arranger desk)))
@@ -576,7 +575,7 @@ What was being written elsewhere is written first."
 
 (-> desk-leave (desk) null)
 (defun desk-leave (desk)
-  "Stop writing in the passage being written in: what was typed is written, and a comment left empty is removed."
+  "Stop writing in the passage being written in. The typed text is written, and an empty comment is removed."
   (when (desk-focus desk)
     (desk-save desk :leaving-p t)
     (setf (desk-focus desk)   nil
@@ -591,7 +590,7 @@ What was being written elsewhere is written first."
 
 (-> desk--find-again (desk passage) (or null cons))
 (defun desk--find-again (desk passage)
-  "Return the numbers (DEFINITION . PASSAGE) the open file now has for PASSAGE, which was read from it before it was last written: the passage of its kind and with its words that stands nearest to where it stood. NIL when there is none."
+  "Return the current numbers (DEFINITION . PASSAGE) of PASSAGE in the open file, or NIL if there is none. PASSAGE is from an older proof of the file. The result is the passage with the same kind and the same words that is nearest to the old position of PASSAGE."
   (let ((nearest  nil)
         (distance nil))
     (loop for definition in (proof-definitions (desk-proof desk))
@@ -608,7 +607,7 @@ What was being written elsewhere is written first."
 
 (-> desk--passage-from (desk integer) (or null cons))
 (defun desk--passage-from (desk position)
-  "Return the numbers (DEFINITION . PASSAGE) of the first passage of the open file, among the kinds the person wants, that begins at POSITION in the text or after it. NIL when there is none."
+  "Return the numbers (DEFINITION . PASSAGE) of the first passage in the open file that starts at POSITION or after it, or NIL if there is none. Only passages of the kinds that the person wants to see are counted."
   (let ((kinds (desk-kinds)))
     (loop for definition in (proof-definitions (desk-proof desk))
           for definition-index from 0
@@ -620,7 +619,7 @@ What was being written elsewhere is written first."
 
 (-> desk--delete (desk passage &key (:go-on-p boolean)) boolean)
 (defun desk--delete (desk comment &key go-on-p)
-  "Write the open file without COMMENT, a comment of its proof, and return whether that worked. With GO-ON-P the passage that followed it is written in next."
+  "Write the open file without COMMENT, which is a passage of the proof of the file. Return T if the write succeeded. If GO-ON-P is true, start writing in the next passage."
   (let ((before   (desk-proof desk))
         (after    nil)
         (position 0))
@@ -646,19 +645,19 @@ What was being written elsewhere is written first."
        (desk-redraw desk)
        t)
       (t
-       ;; What another program wrote is shown, so the person sees what is there now.
+       ;; Show the file as it was written by another program.
        (desk-check-disk desk)
        (desk-redraw desk)
        nil))))
 
 (-> desk-delete-comment (desk fixnum fixnum &key (:go-on-p boolean)) boolean)
 (defun desk-delete-comment (desk definition passage &key go-on-p)
-  "Delete the comment numbered PASSAGE of the definition numbered DEFINITION from the open file, with its lines when it stands alone on them, and return whether the file was written.
+  "Delete the comment numbered PASSAGE of the definition numbered DEFINITION from the open file. If the comment is alone on its lines, the lines are deleted too. Return T if the file was written.
 
-What was typed in the comment goes with it, and what is being written in
-another passage is written first. With GO-ON-P the passage that followed the
-comment is written in next. The comment can be brought back for as long as
-nothing else is written to the file."
+Typed text in the comment is deleted with it. Typed text in another passage is
+written first. If GO-ON-P is true, start writing in the passage after the
+comment. The comment can be brought back until something else is written to
+the file."
   (let* ((focus   (desk-focus desk))
          (here-p  (and focus (= definition (first focus)) (= passage (rest focus))))
          (comment (and (desk-proof desk) (proof-passage (desk-proof desk) definition passage))))
@@ -666,7 +665,7 @@ nothing else is written to the file."
       ((null comment)
        nil)
       ((not (eq (passage-kind comment) ':comment))
-       (setf (desk-notice desk) "only a comment can be deleted; a string can be emptied")
+       (setf (desk-notice desk) "only a comment can be deleted, and a string can only be emptied")
        (desk-redraw desk)
        nil)
       (t
@@ -678,7 +677,8 @@ nothing else is written to the file."
           (when (desk-stage desk)
             (lightfast:take-focus (stage-canvas (desk-stage desk)))))
          (focus
-          ;; Writing the other passage may renumber the passages, so the comment is found again.
+          ;; The write of the other passage can change the numbers of the passages, so the comment
+          ;; is found again.
           (let ((read (desk-proof desk)))
             (desk-leave desk)
             (unless (eq read (desk-proof desk))
@@ -689,7 +689,7 @@ nothing else is written to the file."
 
 (-> desk-removal (desk) (or null removal))
 (defun desk-removal (desk)
-  "Return the comment deleted last when it can be brought back: nothing was written to the open file since, and nothing typed waits to be written. NIL otherwise."
+  "Return the last deleted comment if it can be brought back, or else NIL. It can be brought back if nothing was written to the open file since the deletion and no typed text is waiting to be written."
   (let ((removal (desk--removal desk)))
     (and removal
          (eq (removal-after removal) (desk-proof desk))
@@ -698,7 +698,7 @@ nothing else is written to the file."
 
 (-> desk-restore-comment (desk) boolean)
 (defun desk-restore-comment (desk)
-  "Bring back the comment deleted last, and return whether the open file holds it again."
+  "Bring back the last deleted comment, and return T if the open file contains it again."
   (desk-leave desk)
   (let ((removal (desk-removal desk))
         (again   nil))
@@ -721,16 +721,15 @@ nothing else is written to the file."
 
 ;;;; -- Sections --
 
-;;; Each definition of the open file is a section of the page, which can be
-;;; marked completed on its own. A mark is kept by the digest of the
-;;; section's words, so it holds for as long as they stay as they were,
-;;; wherever the definition moves and whatever happens to its code. A
-;;; completed section is folded to its heading, and left out of the page
-;;; while the person hides completed things.
+;;; Each definition of the open file is a section of the page. Sections can be
+;;; marked completed one by one. A mark is recorded by the digest of the words of
+;;; the section. The mark is valid as long as the words are the same, even if the
+;;; definition moves or the code changes. A completed section is folded to its
+;;; heading. It is left out of the page while the person hides completed things.
 
 (-> desk-section-digest (desk integer) string)
 (defun desk-section-digest (desk index)
-  "Return the digest of the words of the open file's definition numbered INDEX."
+  "Return the digest of the words of the definition numbered INDEX in the open file."
   (let ((proof (desk-proof desk)))
     (unless (eq (first (desk--sections desk)) proof)
       (setf (desk--sections desk)
@@ -739,13 +738,13 @@ nothing else is written to the file."
 
 (-> desk--section-digests (desk) list)
 (defun desk--section-digests (desk)
-  "Return the digests of every definition of the open file."
+  "Return the digests of all definitions in the open file."
   (loop for index below (length (proof-definitions (desk-proof desk)))
         collect (desk-section-digest desk index)))
 
 (-> desk-section-completed-p (desk integer) boolean)
 (defun desk-section-completed-p (desk index)
-  "Return T when the open file's definition numbered INDEX is marked completed with the words it has now."
+  "Return T if the definition numbered INDEX in the open file is marked completed with its current words."
   (and (member (desk-section-digest desk index)
                (ledger-sections-completed (desk-ledger desk) (desk-name desk))
                :test #'string=)
@@ -753,7 +752,7 @@ nothing else is written to the file."
 
 (-> desk-section-edited-p (desk integer) boolean)
 (defun desk-section-edited-p (desk index)
-  "Return T when the words of the open file's definition numbered INDEX differ from those of every definition in Git's last commit of the file."
+  "Return T if the words of the definition numbered INDEX in the open file differ from the words of all definitions in the last Git commit of the file."
   (let ((head (desk--head desk)))
     (and (listp head)
          (not (member (desk-section-digest desk index) head :test #'string=))
@@ -761,24 +760,24 @@ nothing else is written to the file."
 
 (-> desk-section-folded-p (desk integer) boolean)
 (defun desk-section-folded-p (desk index)
-  "Return T when only the heading of the open file's definition numbered INDEX is shown: it is completed, or the person folded it, but not both."
+  "Return T if only the heading of the definition numbered INDEX in the open file is shown. This is the case if exactly one of two things is true: the definition is completed, or the person folded it."
   (let ((toggled-p (gethash (desk-section-digest desk index) (desk--toggled desk))))
     (if (desk-section-completed-p desk index) (not toggled-p) (and toggled-p t))))
 
 (-> desk-section-hidden-p (desk integer) boolean)
 (defun desk-section-hidden-p (desk index)
-  "Return T when the open file's definition numbered INDEX is left out of the page: it is completed, and the person hides completed things."
+  "Return T if the definition numbered INDEX in the open file is left out of the page. This is the case if it is completed and the person hides completed things."
   (and (desk-hide-completed-p) (desk-section-completed-p desk index)))
 
 (-> desk-sections-completed-count (desk) integer)
 (defun desk-sections-completed-count (desk)
-  "Return how many of the open file's definitions are completed."
+  "Return the number of completed definitions in the open file."
   (loop for index below (length (proof-definitions (desk-proof desk)))
         count (desk-section-completed-p desk index)))
 
 (-> desk-toggle-section-fold (desk integer) null)
 (defun desk-toggle-section-fold (desk index)
-  "Fold the open file's definition numbered INDEX to its heading, or unfold it."
+  "Fold the definition numbered INDEX in the open file to its heading, or unfold it."
   (let ((digest (desk-section-digest desk index)))
     (if (gethash digest (desk--toggled desk))
         (remhash digest (desk--toggled desk))
@@ -788,7 +787,7 @@ nothing else is written to the file."
 
 (-> desk-toggle-section (desk integer) boolean)
 (defun desk-toggle-section (desk index)
-  "Mark the open file's definition numbered INDEX completed, or take the mark from it, and return whether that could be remembered. What is being written in it is written first."
+  "Mark the definition numbered INDEX in the open file as completed, or remove the mark. Return T if the ledger could be written. Typed text in the definition is written first."
   (let ((focus (desk-focus desk)))
     (when (and focus (= (first focus) index))
       (desk-leave desk)))
@@ -807,7 +806,7 @@ nothing else is written to the file."
 
 (-> desk-read-head (desk) null)
 (defun desk-read-head (desk)
-  "Read the open file as Git's last commit has it, for which of its definitions are edited."
+  "Read the open file from the last Git commit, and store the digests of the definitions in it. If Git does not provide the file, the digests are set to :UNKNOWN."
   (setf (desk--head desk) ':unknown)
   (let ((name (desk-name desk)))
     (when (and name (desk-proof desk) (null (proof-problem (desk-proof desk))))
@@ -826,7 +825,7 @@ nothing else is written to the file."
 
 (-> desk-check-disk (desk) null)
 (defun desk-check-disk (desk)
-  "Read the open file again when another program changed it and nothing typed here waits to be written."
+  "Read the open file again if another program changed it and no typed text is waiting to be written."
   (let ((proof (desk-proof desk))
         (name  (desk-name desk)))
     (when (and proof name (not (desk-dirty-p desk)))
@@ -837,7 +836,7 @@ nothing else is written to the file."
             (setf (desk-proof desk) fresh)
             (desk--forget-layouts desk)
             (desk-read-head desk)
-            ;; The passage being written in may say something else now, or be gone.
+            ;; The passage being written in can have other words now, or it can be gone.
             (when focus
               (let ((passage (proof-passage fresh (first focus) (rest focus))))
                 (if (and passage (desk-editor desk))

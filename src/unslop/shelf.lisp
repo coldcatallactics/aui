@@ -2,35 +2,35 @@
 
 ;;;; -- Shelf --
 
-;;; The list of the checkout's source files at the window's left, as a tree
-;;; of the folders they lie in. A folder stands ahead of what lies in it, its
-;;; own files first, and a click folds it away or brings it back. Each file
-;;; has a box that is checked when the file is completed, and the word edited
-;;; behind it when it differs from what was last committed. The field above
-;;; the list narrows it by name, and the switch at its foot leaves the
-;;; completed files out.
+;;; The shelf is the list of source files of the checkout at the left side of the
+;;; window. The list is a tree of the folders that contain the files. Each folder is
+;;; above its contents, with its own files first. A click on a folder folds or
+;;; unfolds it. Each file has a box, which is checked if the file is completed. The
+;;; word edited is shown after the name if the file differs from the last commit.
+;;; A person can narrow the list by name in the field above the list, and hide the
+;;; completed files with the switch at the bottom.
 
 (defparameter *shelf-share* 3/10
-  "The part of the window's width the list of files takes.")
+  "The share of the window width that is used by the list of files.")
 
 (defparameter *shelf-least-width* 300
-  "The narrowest the list of files is in a window with room for it.")
+  "The minimum width of the list of files in a window with room for it.")
 
 (defparameter *shelf-indent* 14
-  "How far a row stands to the right of the folder it lies in.")
+  "The indentation of a row relative to the folder that contains it.")
 
 (defparameter *shelf-row-height* 26
   "The height of one file or folder in the list.")
 
 (defparameter *shelf-list-top* 104
-  "How far below the list's top edge its rows begin, under the title and the field.")
+  "The distance from the top edge of the list to the first row, which leaves room for the title and the field.")
 
 (defparameter *shelf-footer-height* 44
-  "The room at the list's foot for the count of completed files and the switch.")
+  "The height of the footer of the list, which contains the count of completed files and the switch.")
 
 (-> shelf-names (desk) list)
 (defun shelf-names (desk)
-  "Return the files to list: those whose names hold what is in the filter, without the completed ones when the person hides them. The open file is listed whatever it is."
+  "Return the files to list. These are the files whose names contain the filter text, without the completed files if the person hides them. The open file is always listed."
   (let ((filter (string-trim " " (desk-filter desk)))
         (hide-p (desk-hide-completed-p)))
     (remove-if-not (lambda (name)
@@ -41,13 +41,13 @@
                    (desk-files desk))))
 
 (defstruct shelf-folder
-  "A folder of the checkout in the tree of its files, as its PATH from the root with its closing slash, empty for the root itself, the names of its own FILES and the FOLDERS inside it."
+  "A folder of the checkout in the tree of files. PATH is the path relative to the root with the closing slash, or empty for the root. FILES are the names of the files in the folder, and FOLDERS are the folders inside it."
   (path    ""  :type string)
   (files   nil :type list)
   (folders nil :type list))
 
 (defstruct shelf-row
-  "One row of the list of files, as its KIND, a folder or a file, its NAME from the checkout's root, the LABEL it shows and its DEPTH in the tree. A folder also says whether it is FOLDED-P, how many FILES lie in it and below, and how many of those are COMPLETED."
+  "One row of the list of files. KIND is a folder or a file. NAME is the name relative to the root of the checkout. LABEL is the shown text, and DEPTH is the depth in the tree. A folder also has FOLDED-P, the number of FILES in it and below it, and the number of these files that are COMPLETED."
   (kind      ':file :type keyword)
   (name      ""     :type string)
   (label     ""     :type string)
@@ -58,13 +58,13 @@
 
 (-> shelf-width (integer) integer)
 (defun shelf-width (width)
-  "Return how wide the list of files is in a window WIDTH wide: its share of the window, not narrower than its least width, and never more than two fifths of a narrow window."
+  "Return the width of the list of files in a window of width WIDTH. The list takes *SHELF-SHARE* of the window, and at least *SHELF-LEAST-WIDTH*. In a narrow window, the list takes at most two fifths."
   (min (max *shelf-least-width* (round (* width *shelf-share*)))
        (floor (* width 2) 5)))
 
 (-> shelf--tree (list) shelf-folder)
 (defun shelf--tree (names)
-  "Return the root of the tree of folders the files NAMES lie in. NAMES are in the order of the list, and every folder holds its files and its folders in that order."
+  "Return the root of the tree of folders that contain the files NAMES. The files and folders in each folder are in the order of NAMES."
   (let ((root  (make-shelf-folder))
         (table (make-hash-table :test #'equal)))
     (setf (gethash "" table) root)
@@ -83,16 +83,16 @@
 
 (-> shelf-folding-p (desk) boolean)
 (defun shelf-folding-p (desk)
-  "Return T when folded folders are drawn folded. They are not while the person narrows the list by name, so that every file that matches is in view."
+  "Return T if folded folders are drawn folded. While the person narrows the list by name, the folders are drawn unfolded, so that all matching files are in view."
   (zerop (length (string-trim " " (desk-filter desk)))))
 
 (-> shelf-rows (desk) list)
 (defun shelf-rows (desk)
-  "Return the rows of the list in order, as SHELF-ROWs: the files at the root, then each folder ahead of what lies in it, its own files first.
+  "Return the rows of the list in order, as SHELF-ROWs. The files at the root come first. Then each folder comes before its contents, with its own files first.
 
-A folder is listed when a file to list lies in it or below, and what lies in
-a folded folder is left out. A folder that holds nothing but one other folder
-is listed with it as one row, so a chain of such folders takes one row."
+A folder is listed if it contains a listed file at any depth. The contents of
+a folded folder are left out. A folder that only contains one other folder
+shares one row with it, so a chain of such folders is one row."
   (let ((listed    (make-hash-table :test #'equal))
         (folding-p (shelf-folding-p desk)))
     (dolist (name (shelf-names desk))
@@ -104,7 +104,8 @@ is listed with it as one row, so a chain of such folders takes one row."
                        collect (make-shelf-row :kind ':file :name name :label (subseq name start) :depth depth)))
 
              (folder-rows (node depth base)
-               ;; BASE is how much of NODE's path the rows above it say already.
+               ;; BASE is the length of the part of the path of NODE that is shown
+               ;; in the rows above.
                (let ((files   (shelf-folder-files node))
                      (folders (shelf-folder-folders node))
                      (path    (shelf-folder-path node)))
@@ -138,7 +139,7 @@ is listed with it as one row, so a chain of such folders takes one row."
 
 (-> shelf-step (desk integer) null)
 (defun shelf-step (desk step)
-  "Open the file STEP places after the open one in the list, or before it when STEP is negative. With no file open, open the first."
+  "Open the file STEP places after the open file in the list, or before it if STEP is negative. If no file is open, open the first file."
   (let* ((names (shelf-names desk))
          (index (position (desk-name desk) names :test #'equal))
          (next  (if index
@@ -150,7 +151,7 @@ is listed with it as one row, so a chain of such folders takes one row."
 
 (-> shelf-open-next-open (desk) null)
 (defun shelf-open-next-open (desk)
-  "Open the first file after the open one that is not completed, going round to the top of the list when there is none below."
+  "Open the first file after the open file that is not completed. If there is none below, continue from the top of the list."
   (let* ((names (shelf-names desk))
          (index (or (position (desk-name desk) names :test #'equal) -1))
          (after (append (nthcdr (1+ index) names) (subseq names 0 (max 0 index))))
@@ -161,19 +162,19 @@ is listed with it as one row, so a chain of such folders takes one row."
 
 (-> shelf--row-left (shelf-row integer) integer)
 (defun shelf--row-left (row x)
-  "Return where what ROW shows begins in a list whose left edge is X: further right the deeper the row lies in the tree."
+  "Return the left edge of the content of ROW in a list whose left edge is X. Deeper rows start further right."
   (+ x 16 (* *shelf-indent* (shelf-row-depth row))))
 
 (-> shelf--paint-guides (shelf-row integer integer) null)
 (defun shelf--paint-guides (row x y)
-  "Draw a faint line down ROW's height under the mark of each folder ROW lies in, so that what lies in one folder is seen to belong together."
+  "Draw a faint line along the height of ROW under the mark of each folder that contains ROW. With these lines, the rows of one folder are seen as a group."
   (dotimes (level (shelf-row-depth row))
     (paint-dither (+ x 20 (* *shelf-indent* level)) y :width 1 :height *shelf-row-height* :step 2))
   nil)
 
 (-> shelf--paint-folder (desk stage shelf-row &key (:x integer) (:y integer) (:width integer)) null)
 (defun shelf--paint-folder (desk stage row &key x y width)
-  "Draw one folder: the mark that says whether it is folded, its name, and how many of the files in it are completed. A click folds it or unfolds it."
+  "Draw one folder with the fold mark, the name, and the number of completed files in the folder. The person can click the folder to fold or unfold it."
   (let* ((height  *shelf-row-height*)
          (path    (shelf-row-name row))
          (region  (list ':shelf-folder path))
@@ -203,7 +204,7 @@ is listed with it as one row, so a chain of such folders takes one row."
           (with-inversion (x y width height)
             (content))
           (content)))
-    ;; While the list is narrowed by name nothing is folded, so there is nothing to click for.
+    ;; While the list is narrowed by name, no folders are folded, so there is no click region.
     (when (shelf-folding-p desk)
       (stage-region stage region
                     :x       x
@@ -217,7 +218,7 @@ is listed with it as one row, so a chain of such folders takes one row."
 
 (-> shelf--paint-file (desk stage shelf-row &key (:x integer) (:y integer) (:width integer)) null)
 (defun shelf--paint-file (desk stage file &key x y width)
-  "Draw one file: its box, checked when the file is completed, its name, and that it is edited."
+  "Draw one file with the box, the name, and the edited label if the file is edited. The box is checked if the file is completed."
   (let* ((height      *shelf-row-height*)
          (name        (shelf-row-name file))
          (row         (list ':shelf-file name))
@@ -260,19 +261,19 @@ is listed with it as one row, so a chain of such folders takes one row."
                   :height  height
                   :action  (lambda () (desk-open-file desk name))
                   :tooltip name)
-    ;; The box lies over the row, so a click on it marks the file and does not open it.
+    ;; The box is over the row, so a click on the box marks the file and does not open it.
     (stage-region stage box
                   :x       (- box-x 6)
                   :y       y
                   :width   26
                   :height  height
                   :action  (lambda () (desk-toggle-completed desk name))
-                  :tooltip (if completed-p "Take the mark away" "Mark completed")))
+                  :tooltip (if completed-p "Remove the mark" "Mark completed")))
   nil)
 
 (-> shelf-paint (desk stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun shelf-paint (desk stage &key x y width height)
-  "Draw the list of files in the box: the checkout's name, the tree of folders with their files, and at the foot how many files are completed and the switch that hides those."
+  "Draw the list of files in the box: the name of the checkout, the tree of folders and files, and a footer with the number of completed files and the switch to hide them."
   (let* ((checkout (desk-checkout desk))
          (root     (checkout-root checkout))
          (rows     (shelf-rows desk))
@@ -283,7 +284,7 @@ is listed with it as one row, so a chain of such folders takes one row."
          (scroll   (max 0 (min (desk-shelf-scroll desk) maximum)))
          (meta     (text-style ':meta))
          (files    (length (desk-files desk))))
-    ;; A file opened with a key may lie outside what the list shows.
+    ;; A file opened with a key can be outside the visible part of the list.
     (when (shiftf (desk-shelf-reveal-p desk) nil)
       (let ((index (position-if (lambda (row)
                                   (and (eq ':file (shelf-row-kind row))
@@ -326,7 +327,7 @@ is listed with it as one row, so a chain of such folders takes one row."
                    (:file
                     (shelf--paint-file desk stage row :x x :y row-y :width width)))))
       (when (null rows)
-        (paint-text-in (if (zerop files) "no Lisp source here" "no file matches") (text-style ':meta :face ':mono-italic)
+        (paint-text-in (if (zerop files) "no Lisp source here" "no matching files") (text-style ':meta :face ':mono-italic)
                        :x (+ x 16) :y (+ list-y 6) :width (- width 32) :height 20)))
     (when (> total list-h 40)
       (let* ((thumb (max 24 (floor (* list-h list-h) total)))
@@ -342,7 +343,8 @@ is listed with it as one row, so a chain of such folders takes one row."
       (paint-line x foot-y :x2 (+ x width) :y2 foot-y)
       (paint-text-in (format nil "~D of ~D completed" (desk-completed-count desk) files) meta
                      :x (+ x 16) :y foot-y :width (max 0 (- left x 24)) :height *shelf-footer-height*)
-      ;; A box that is checked while completed files are left out, as each file's box is while it is completed.
+      ;; The box is checked while completed files are hidden, in the same way
+      ;; as the box of a completed file.
       (flet ((content ()
                (let ((box-y (+ foot-y (floor (- *shelf-footer-height* 13) 2))))
                  (paint-frame (+ left 8) box-y :width 13 :height 13)
@@ -362,5 +364,5 @@ is listed with it as one row, so a chain of such folders takes one row."
                     :action  (lambda ()
                                (setf (preference ':hide-completed) (not hide-p))
                                (desk-redraw desk))
-                    :tooltip (if hide-p "Show completed files again" "Leave completed files out of the list"))))
+                    :tooltip (if hide-p "Show completed files" "Hide completed files"))))
   nil)

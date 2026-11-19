@@ -2,54 +2,53 @@
 
 ;;;; -- Lexer --
 
-;;; Lisp source cut into the pieces that matter to someone who edits its
-;;; words: parentheses, strings, comments, and everything else as atoms. The
-;;; lexer looks at characters only. It interns nothing and needs no package
-;;; to exist, so it takes any file a Lisp reader would take and many it would
-;;; refuse. Each piece says where it starts and ends in the text, which is
-;;; what lets an edited string or comment be put back in place.
+;;; A lexer for Lisp source. The source is cut into the pieces that matter for an
+;;; edit of its words: parentheses, strings, comments, and atoms for everything else.
+;;; Only characters are looked at. No symbols are interned, so files that a Lisp
+;;; reader would refuse can be read too. Each piece has a start and an end in the
+;;; text, so that an edited string or comment can be put back in place.
 
 (define-condition proof-error (error)
   ((message
     :initarg       :message
     :reader        proof-error-message
     :type          string
-    :documentation "What is wrong, in words fit to show.")
+    :documentation "A description of the problem that can be shown to a person.")
    (reason
     :initarg       :reason
     :initform      ':refused
     :reader        proof-error-reason
     :type          keyword
-    :documentation "What kind of trouble it is: :UNREADABLE for a file that cannot be read as Lisp, :REFUSED for an edit that is not taken, :CHANGED for a file that changed on disk."))
+    :documentation "The kind of the problem: :UNREADABLE for a file that cannot be read as Lisp, :REFUSED for an edit that is not accepted, :CHANGED for a file that changed on disk."))
   (:report (lambda (condition stream)
              (write-string (proof-error-message condition) stream)))
-  (:documentation "A source file that cannot be read for its texts, or an edit to one that is not written."))
+  (:documentation "The error signalled if the texts of a source file cannot be read, or if an edit to the file cannot be written."))
 
 (defstruct lexeme
-  "One piece of Lisp source, as its KIND and where its characters START and END in the text. A kind is one of the keywords OPEN, CLOSE, STRING, COMMENT for a comment to the end of a line, BLOCK for a comment between bars, PREFIX for a quote and its like, and ATOM."
+  "One piece of Lisp source. KIND is the kind of the piece. START and END are the positions where the piece starts and ends in the text. The kinds are the keywords OPEN, CLOSE, STRING, COMMENT for a comment to the end of a line, BLOCK for a comment between bars, PREFIX for a quote and similar marks, and ATOM."
   (kind  ':atom :type keyword)
   (start 0      :type fixnum)
   (end   0      :type fixnum))
 
 (-> lex--whitespace-p (character) boolean)
 (defun lex--whitespace-p (character)
-  "Return T when CHARACTER separates pieces of Lisp source and is nothing itself."
+  "Return T if CHARACTER is whitespace between pieces of Lisp source."
   (and (or (member character '(#\Space #\Newline #\Tab #\Return #\Page #\Rubout))
-           ;; The mark some editors open a file with.
+           ;; The byte order mark, which some editors put at the start of a file.
            (= (char-code character) #xFEFF))
        t))
 
 (-> lex--terminating-p (character) boolean)
 (defun lex--terminating-p (character)
-  "Return T when CHARACTER ends an atom that runs up to it."
+  "Return T if CHARACTER ends an atom."
   (and (member character '(#\( #\) #\' #\" #\; #\` #\,)) t))
 
 (-> lex--atom-end (simple-string fixnum) fixnum)
 (defun lex--atom-end (text start)
-  "Return where the atom of TEXT that begins at START ends.
+  "Return the end of the atom in TEXT that starts at START.
 
-A backslash takes the character after it into the atom, and so do two bars
-whatever stands between them."
+The character after a backslash belongs to the atom. Everything between two bars
+also belongs to the atom."
   (let ((length (length text))
         (index  start))
     (declare (type fixnum length index))
@@ -71,7 +70,7 @@ whatever stands between them."
 
 (-> lex--string-end (simple-string fixnum) fixnum)
 (defun lex--string-end (text start)
-  "Return where the string of TEXT whose opening quote is at START ends, after its closing quote. Signal a PROOF-ERROR when it never closes."
+  "Return the end of the string in TEXT whose opening quote is at START. The end is the position after the closing quote. Signal a PROOF-ERROR if the string does not close."
   (let ((length (length text))
         (index  (1+ start)))
     (declare (type fixnum length index))
@@ -91,7 +90,7 @@ whatever stands between them."
 
 (-> lex--block-end (simple-string fixnum) fixnum)
 (defun lex--block-end (text start)
-  "Return where the block comment of TEXT that opens at START ends, after the bar and sharp that close it. Block comments nest. Signal a PROOF-ERROR when it never closes."
+  "Return the end of the block comment in TEXT that opens at START. The end is the position after the closing bar and sharp sign. Block comments can be nested. Signal a PROOF-ERROR if the comment does not close."
   (let ((length (length text))
         (index  (+ start 2))
         (depth  1))
@@ -116,7 +115,7 @@ whatever stands between them."
 
 (-> lex--sharp (simple-string fixnum) lexeme)
 (defun lex--sharp (text start)
-  "Return the lexeme of TEXT that begins with the sharp sign at START."
+  "Return the lexeme in TEXT that starts with the sharp sign at START."
   (let* ((length (length text))
          (next   (and (< (1+ start) length) (schar text (1+ start)))))
     (cond
@@ -124,7 +123,7 @@ whatever stands between them."
        (make-lexeme :kind ':atom :start start :end length))
       ((char= next #\|)
        (make-lexeme :kind ':block :start start :end (lex--block-end text start)))
-      ;; A character: the one after the backslash whatever it is, then the rest of its name.
+      ;; A character literal contains the character after the backslash and the rest of the name.
       ((char= next #\\)
        (make-lexeme :kind  ':atom
                     :start start
@@ -147,7 +146,7 @@ whatever stands between them."
 
 (-> lisp-lex (string) list)
 (defun lisp-lex (source)
-  "Return the lexemes of the Lisp SOURCE in order. Signal a PROOF-ERROR for a string or a block comment that never closes."
+  "Return the lexemes of the Lisp SOURCE in order. Signal a PROOF-ERROR if a string or a block comment does not close."
   (let* ((text    (coerce source 'simple-string))
          (length  (length text))
          (index   0)

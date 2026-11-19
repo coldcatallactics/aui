@@ -2,18 +2,19 @@
 
 ;;;; -- Checkout --
 
-;;; The folder of Lisp source a person works through: which source files it
-;;; holds and which of them differ from what was last committed. In a Git
-;;; checkout both come from Git, so what Git ignores is not listed and a file
-;;; counts as edited until it is committed. Git is only ever asked; nothing
-;;; here adds, commits or changes anything. A folder that is no Git checkout
-;;; is walked, and the ledger remembers what its files held when first seen.
+;;; A checkout is a folder of Lisp source that a person works through. A checkout
+;;; has a list of source files and a list of the files that differ from the last
+;;; commit. In a Git checkout, both lists come from Git. Files ignored by Git are
+;;; not listed, and files count as edited until they are committed. Git is only
+;;; asked for information. Nothing here adds, commits or changes anything. A folder
+;;; that is not a Git checkout is walked, and the content of each file is recorded
+;;; in the ledger when the file is first seen.
 
 (defparameter *source-types* '("lisp" "asd" "cl" "lsp")
-  "The file types that hold Lisp source.")
+  "The file types of Lisp source files.")
 
 (defstruct checkout
-  "A folder of Lisp source, as its ROOT, whether Git knows it, the PREFIX that leads from the top of its repository to it, and its source FILES as names from the root, folder by folder."
+  "A folder of Lisp source. ROOT is the folder. GIT-P is true if the folder is in a Git checkout. PREFIX is the path from the top of the repository to the folder. FILES are the source files as names relative to the root, folder by folder."
   (root   nil)
   (git-p  nil :type boolean)
   (prefix ""  :type string)
@@ -21,7 +22,7 @@
 
 (-> checkout--git (pathname list) (values string boolean))
 (defun checkout--git (root arguments)
-  "Run Git on ARGUMENTS in the folder ROOT and return what it printed and whether it ended well."
+  "Run Git with ARGUMENTS in the folder ROOT. Return the output and T if Git exited successfully."
   (handler-case
       (multiple-value-bind (output complaint code)
           (uiop:run-program (list* "git" "-C" (uiop:native-namestring root) arguments)
@@ -36,7 +37,7 @@
 
 (-> checkout--records (string) list)
 (defun checkout--records (output)
-  "Return the records of OUTPUT, which Git ended with a null character each."
+  "Return the records of OUTPUT. Each record in OUTPUT ends with a null character."
   (loop with start = 0
         for end = (position (code-char 0) output :start start)
         while end
@@ -45,18 +46,18 @@
 
 (-> checkout--source-p (string) boolean)
 (defun checkout--source-p (name)
-  "Return T when the file NAME holds Lisp source, going by its type."
+  "Return T if the type of the file NAME is a type of Lisp source."
   (let ((dot (position #\. name :from-end t)))
     (and dot
          (member (subseq name (1+ dot)) *source-types* :test #'string-equal)
          t)))
 
 (defparameter *walk-ignored-folders* '("quicklisp" "node_modules")
-  "The folders a walk through a folder Git does not know leaves out, besides those whose names start with a dot: they hold libraries of others.")
+  "The folders that are left out of a walk through a folder that is not a Git checkout. These folders contain libraries by other people. Folders whose names start with a dot are also left out.")
 
 (-> checkout--repository-p (pathname) boolean)
 (defun checkout--repository-p (directory)
-  "Return T when DIRECTORY is the top of a Git repository."
+  "Return T if DIRECTORY is the top of a Git repository."
   (let ((git (merge-pathnames ".git" directory)))
     (and (or (uiop:directory-exists-p (uiop:ensure-directory-pathname git))
              (uiop:file-exists-p git))
@@ -64,7 +65,7 @@
 
 (-> checkout--tracked (pathname) (or (eql :walk) list))
 (defun checkout--tracked (directory)
-  "Return the source files of the Git repository at DIRECTORY that Git tracks or would add, as names from it, or :WALK when DIRECTORY is no repository or Git does not answer."
+  "Return the source files of the Git repository at DIRECTORY that are tracked or would be added by Git, as names relative to DIRECTORY. Return :WALK if DIRECTORY is not a repository or if Git fails."
   (if (checkout--repository-p directory)
       (multiple-value-bind (output ok-p)
           (checkout--git directory '("ls-files" "-z" "--cached" "--others" "--exclude-standard"))
@@ -75,14 +76,15 @@
 
 (-> checkout--walk (pathname) list)
 (defun checkout--walk (root)
-  "Return the source files beneath ROOT as names from it. Folders whose names start with a dot are left out, and so are those of *WALK-IGNORED-FOLDERS*. A Git repository beneath ROOT gives the files Git tracks or would add, so what it ignores is left out too."
+  "Return the source files under ROOT as names relative to ROOT. Folders whose names start with a dot are left out, and so are the folders in *WALK-IGNORED-FOLDERS*. In a Git repository under ROOT, only the files that are tracked or would be added by Git are returned. Files ignored by Git are left out."
   (let ((names  nil)
         (prefix (length (uiop:native-namestring root))))
     (uiop:collect-sub*directories
      root
      (constantly t)
      (lambda (directory)
-       ;; A folder entered is walked; a repository is listed here by Git instead.
+       ;; Return true to walk into the folder. The files of a repository
+       ;; are listed here by Git instead.
        (let ((leaf (first (last (pathname-directory directory)))))
          (and (stringp leaf)
               (plusp (length leaf))
@@ -103,20 +105,20 @@
 
 (-> checkout-folder (string) string)
 (defun checkout-folder (name)
-  "Return the folder the file NAME lies in, with its closing slash, or the empty string for a file at the root."
+  "Return the folder of the file NAME with the closing slash, or the empty string for a file at the root."
   (let ((slash (position #\/ name :from-end t)))
     (if slash (subseq name 0 (1+ slash)) "")))
 
 (-> checkout-folders-above (string) list)
 (defun checkout-folders-above (name)
-  "Return every folder the file NAME lies in, the outermost first, each as a name from the root with its closing slash."
+  "Return all folders that contain the file NAME, the outermost first. Each folder is a name relative to the root with the closing slash."
   (loop for slash = (position #\/ name) then (position #\/ name :start (1+ slash))
         while slash
         collect (subseq name 0 (1+ slash))))
 
 (-> checkout--before-p (string string) boolean)
 (defun checkout--before-p (first second)
-  "Return T when the file FIRST is listed before SECOND. Files are in the order of their folders and then of their names, so those of one folder stand together, ahead of the folders inside it."
+  "Return T if the file FIRST comes before SECOND in the list. Files are sorted by folder and then by name. The files of one folder are together, before the folders inside it."
   (let ((first-folder  (checkout-folder first))
         (second-folder (checkout-folder second)))
     (and (if (string= first-folder second-folder)
@@ -126,7 +128,7 @@
 
 (-> checkout-list-files (checkout) list)
 (defun checkout-list-files (checkout)
-  "Return the source files CHECKOUT holds now, as names from its root, folder by folder. In a Git checkout they are the files Git tracks and those it would add."
+  "Return the current source files of CHECKOUT as names relative to the root, folder by folder. In a Git checkout, these are the files that are tracked or would be added by Git."
   (let ((root (checkout-root checkout)))
     (sort (if (checkout-git-p checkout)
               (remove-if-not (lambda (name)
@@ -139,7 +141,7 @@
 
 (-> checkout-open (pathname) checkout)
 (defun checkout-open (directory)
-  "Return the checkout of the folder DIRECTORY with its source files listed. Signal a PROOF-ERROR when there is no such folder."
+  "Return the checkout of the folder DIRECTORY with the list of source files. Signal a PROOF-ERROR if the folder does not exist."
   (let ((root (uiop:directory-exists-p (uiop:ensure-directory-pathname directory))))
     (unless root
       (error 'proof-error
@@ -160,9 +162,9 @@
 
 (-> checkout-edited (checkout) (or null hash-table))
 (defun checkout-edited (checkout)
-  "Return the files of CHECKOUT that differ from what was last committed, as a table from their names to T, or NIL when Git does not know the folder or does not answer.
+  "Return the files of CHECKOUT that differ from the last commit, as a hash table from the names to T. Return NIL if the folder is not in a Git checkout or if Git fails.
 
-A file Git does not track yet counts as differing."
+Files that are not tracked by Git yet count as differing."
   (when (checkout-git-p checkout)
     (multiple-value-bind (output ok-p)
         (checkout--git (checkout-root checkout)
@@ -175,7 +177,7 @@ A file Git does not track yet counts as differing."
                 do (let* ((record (pop records))
                           (state  (subseq record 0 (min 2 (length record))))
                           (path   (if (> (length record) 3) (subseq record 3) "")))
-                     ;; A rename or a copy names the file it came from in a record of its own.
+                     ;; For a rename or a copy, the original file is in a separate record.
                      (when (find-if (lambda (letter) (member letter '(#\R #\C))) state)
                        (pop records))
                      (when (and (>= (length path) (length prefix))

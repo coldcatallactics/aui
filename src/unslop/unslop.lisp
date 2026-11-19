@@ -2,20 +2,20 @@
 
 ;;;; -- Unslop --
 
-;;; The unslop window and its start. It shows the source files of a Common
-;;; Lisp checkout at the left and the words of one of them at the right, to
-;;; be rewritten in place. What is typed is written to its file once the
-;;; typing stops. Nothing here commits, stages or touches anything but the
-;;; file being written in and the ledger kept outside the checkout.
+;;; The unslop window and the start of the program. The window shows the source
+;;; files of a Common Lisp checkout at the left side and the words of one file at
+;;; the right side, for rewriting in place. Typed text is written to the file when
+;;; the typing stops. The only files that are changed are the file being written
+;;; in and the ledger outside the checkout. Nothing is committed or staged.
 
 (defparameter *unslop-default-size* '(1320 . 880)
-  "The window's width and height when the command line names none.")
+  "The width and height of the window if the command line does not give a size.")
 
 (defparameter *unslop-minimum-size* '(720 . 420)
-  "The smallest the window is made.")
+  "The minimum width and height of the window.")
 
 (defstruct unslop-launch
-  "What the command line asked of unslop, as the DIRECTORY of the checkout, the window's SIZE as a pair of width and height or NIL, the file a picture is written to as SHOT or NIL, and the name of the FILE to open at the start or NIL."
+  "The options from the command line. DIRECTORY is the folder of the checkout. SIZE is the width and height of the window, or NIL. SHOT is the file for a picture of the window, or NIL. FILE is the name of the file to open at the start, or NIL."
   (directory nil)
   (size      nil :type (or null cons))
   (shot      nil :type (or null string))
@@ -24,31 +24,31 @@
 (defparameter *unslop-usage*
   "usage: unslop [DIRECTORY] [--file NAME] [--size WIDTHxHEIGHT] [--shot FILE]
 
-Shows the comments, strings and docstrings of the Common Lisp source in
-DIRECTORY, or in the current directory, for rewriting. What you type is
-written to its file when you stop typing. Nothing is committed.
+Rewrite the comments, strings and docstrings of the Common Lisp source in
+DIRECTORY, or in the current directory. What you type is written to the file
+when you stop typing. Nothing is committed.
 
   --file NAME            open this file of the checkout at the start
   --size WIDTHxHEIGHT    make the window this size
-  --shot FILE            write a picture of the window to FILE and leave
+  --shot FILE            write a picture of the window to FILE and exit
 "
-  "What unslop says of its command line.")
+  "The usage text of the unslop command.")
 
 (-> unslop--parse-size (string) cons)
 (defun unslop--parse-size (text)
-  "Return the size TEXT names, such as 1200x800, as a pair of width and height. Signal a PROOF-ERROR when it names none."
+  "Return the size in TEXT, such as 1200x800, as a pair of width and height. Signal a PROOF-ERROR if TEXT is not a valid size."
   (let* ((cross  (position #\x text :test #'char-equal))
          (width  (and cross (parse-integer text :end cross :junk-allowed t)))
          (height (and cross (parse-integer text :start (1+ cross) :junk-allowed t))))
     (unless (and width height (> width 200) (> height 200))
       (error 'proof-error
              :reason  ':usage
-             :message (format nil "~A is not a size; write one as 1200x800" text)))
+             :message (format nil "~A is not a size such as 1200x800" text)))
     (cons width height)))
 
 (-> unslop-parse (list) (or null unslop-launch))
 (defun unslop-parse (arguments)
-  "Return what the command line ARGUMENTS ask for, or NIL after printing the usage when they ask for that. Signal a PROOF-ERROR for an argument unslop does not know."
+  "Return the launch options from the command line ARGUMENTS. If the arguments ask for help, print the usage and return NIL. Signal a PROOF-ERROR for unknown arguments."
   (let ((launch (make-unslop-launch)))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -70,11 +70,11 @@ written to its file when you stop typing. Nothing is committed.
                    ((and (plusp (length argument)) (char= (char argument 0) #\-))
                     (error 'proof-error
                            :reason  ':usage
-                           :message (format nil "unslop does not know ~A; try --help" argument)))
+                           :message (format nil "unknown option ~A (see --help)" argument)))
                    ((unslop-launch-directory launch)
                     (error 'proof-error
                            :reason  ':usage
-                           :message "unslop takes one directory"))
+                           :message "only one directory can be given"))
                    (t
                     (setf (unslop-launch-directory launch) argument))))))
     (unless (unslop-launch-directory launch)
@@ -86,7 +86,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--layout (integer integer) list)
 (defun unslop--layout (width height)
-  "Return where the panes of a window WIDTH by HEIGHT lie, as a property list of (X Y WIDTH HEIGHT) boxes: the :SHELF, the :PAGE and the :FIELD the file filter is typed in."
+  "Return the boxes of the panes in a window of WIDTH and HEIGHT, as a property list of (X Y WIDTH HEIGHT) boxes. The panes are the :SHELF, the :PAGE and the :FIELD in which the file filter is typed."
   (let ((shelf (shelf-width width)))
     (list :shelf (list 0 0 shelf height)
           :page  (list (1+ shelf) 0 (max 0 (- width shelf 1)) height)
@@ -94,7 +94,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--paint (desk stage) null)
 (defun unslop--paint (desk stage)
-  "Draw the whole window: the list of files, a hairline, and the open file's page."
+  "Draw the whole window: the list of files, a hairline and the page of the open file."
   (let ((layout (unslop--layout (stage-width stage) (stage-height stage))))
     (destructuring-bind (x y width height) (getf layout :shelf)
       (shelf-paint desk stage :x x :y y :width width :height height)
@@ -105,7 +105,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--place (t (or null list)) null)
 (defun unslop--place (widget box)
-  "Show WIDGET in BOX, an (X Y WIDTH HEIGHT) list, or hide it when BOX is NIL."
+  "Show WIDGET in BOX, which is a list (X Y WIDTH HEIGHT), or hide WIDGET if BOX is NIL."
   (if box
       (destructuring-bind (x y width height) box
         (lightfast:resize-widget widget :x x :y y :width (max 1 width) :height (max 1 height))
@@ -115,7 +115,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-arrange (desk) null)
 (defun unslop-arrange (desk)
-  "Put the native fields where the window has them now: the filter over its box, the editor over the passage being written in."
+  "Put the native fields at their current places in the window: the filter over its box, and the editor over the passage being written in."
   (let* ((stage  (desk-stage desk))
          (layout (unslop--layout (stage-width stage) (stage-height stage))))
     (unslop--place (desk-field desk) (getf layout :field))
@@ -138,7 +138,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--complete-and-go-on (desk) null)
 (defun unslop--complete-and-go-on (desk)
-  "Mark the open file completed, unless it is, and open the next file that is not."
+  "Mark the open file completed if it is not completed yet, and open the next file that is not completed."
   (let ((name (desk-name desk)))
     (when name
       (desk-leave desk)
@@ -149,7 +149,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--complete-section-and-go-on (desk) null)
 (defun unslop--complete-section-and-go-on (desk)
-  "Mark the section being written in completed, or the first open one when none is, and begin writing in the first text of the next open section."
+  "Mark the section being written in completed, or the first open section if no section is being written in. Then start writing in the first text of the next open section."
   (when (desk-proof desk)
     (let* ((focus (desk-focus desk))
            (count (length (proof-definitions (desk-proof desk))))
@@ -174,14 +174,14 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--scroll (desk integer) null)
 (defun unslop--scroll (desk amount)
-  "Move the page by AMOUNT units, down when positive."
+  "Scroll the page by AMOUNT units, down if AMOUNT is positive."
   (setf (desk-page-scroll desk) (max 0 (+ (desk-page-scroll desk) amount)))
   (desk-redraw desk)
   nil)
 
 (-> unslop--shortcut (desk key-event) boolean)
 (defun unslop--shortcut (desk event)
-  "Handle a key that means the same wherever the keyboard is, and return whether it was used."
+  "Handle a key that has the same meaning everywhere in the window, and return T if the key was used."
   (let ((key       (key-event-key event))
         (command-p (key-event-command-p event))
         (page      (floor (* 3 (stage-height (desk-stage desk))) 4)))
@@ -216,7 +216,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--editor-key (desk key-event) boolean)
 (defun unslop--editor-key (desk event)
-  "Handle a key pressed in the editor before the editor sees it, and return whether it was used: Escape ends the writing, Tab goes to the next passage and Shift with Tab to the one before, and Control with D deletes the comment being written in and goes on with what follows it."
+  "Handle a key pressed in the editor before the editor handles it, and return T if the key was used. The keys are Escape to stop writing, Tab and Shift+Tab to go to the next and the previous passage, and Control+D to delete the comment being written in and go on with the next text."
   (let ((key   (key-event-key event))
         (focus (desk-focus desk)))
     (cond
@@ -237,7 +237,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--stage-key (desk key-event) boolean)
 (defun unslop--stage-key (desk event)
-  "Handle a key pressed while no field has the keyboard: Tab begins with the first passage, and the keys that mean the same everywhere do what they do."
+  "Handle a key pressed while no field has the keyboard focus, and return T if the key was used. The keys are Tab to start writing in the first passage, Home and End to scroll to the top and the bottom, and the keys handled by UNSLOP--SHORTCUT."
   (let ((key (key-event-key event)))
     (cond
       ((unslop--shortcut desk event)
@@ -259,7 +259,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--field-key (desk key-event) boolean)
 (defun unslop--field-key (desk event)
-  "Handle a key pressed in the file filter: Escape empties it, or from an empty one gives the keyboard back, and Enter opens the first file listed."
+  "Handle a key pressed in the file filter, and return T if the key was used. The keys are Escape to empty the filter or, if the filter is empty, to give the keyboard focus back, and Enter to open the first listed file other than the open file."
   (let ((key   (key-event-key event))
         (field (desk-field desk)))
     (cond
@@ -285,7 +285,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--make-natives (desk t) list)
 (defun unslop--make-natives (desk window)
-  "Create the editor a passage is written in and the field the file filter is typed in, in WINDOW, and return them in that order."
+  "Create in WINDOW the editor in which passages are written and the field in which the file filter is typed. Return them in that order."
   (let ((editor (lightfast:make-text-editor :parent window :x 0 :y 0 :width 200 :height 30))
         (field  (lightfast:make-input :parent window :x 0 :y 0 :width 200 :height 26))
         (style  (text-style ':code)))
@@ -304,7 +304,7 @@ written to its file when you stop typing. Nothing is committed.
     (lightfast:on editor
                   (lambda (widget event value)
                     (declare (ignore widget event value))
-                    (with-stage-guard ("Taking what was typed")
+                    (with-stage-guard ("Handling the typed text")
                       (desk-note-typing desk)))
                   :event lightfast:+event-change+)
     (lightfast:set-box field lightfast:+box-flat-box+)
@@ -331,7 +331,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-build (desk unslop-launch) null)
 (defun unslop-build (desk launch)
-  "Create DESK's window, its stage and its native fields, at the size LAUNCH names."
+  "Create the window of DESK, the stage and the native fields, with the size from LAUNCH."
   (let* ((size   (or (unslop-launch-size launch) *unslop-default-size*))
          (window (lightfast:make-window :width  (first size)
                                         :height (rest size)
@@ -378,7 +378,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-make-desk (unslop-launch) desk)
 (defun unslop-make-desk (launch)
-  "Return the desk for what LAUNCH asks: the checkout read, its ledger opened, and what is completed and edited looked up."
+  "Return the desk for LAUNCH. The checkout is read, the ledger is opened, and the completed and edited files are looked up."
   (let* ((checkout (checkout-open (uiop:parse-native-namestring (unslop-launch-directory launch))))
          (desk     (make-instance 'desk
                                   :checkout checkout
@@ -392,7 +392,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop--picture (desk string) null)
 (defun unslop--picture (desk path)
-  "Write a picture of DESK's window to PATH: a PNG when PATH ends in png and an image tool is at hand, else a PPM."
+  "Write a picture of the window of DESK to PATH. The picture is a PNG if PATH ends in png and an image tool is available, or else a PPM."
   (let* ((png-p (string-equal (or (pathname-type path) "") "png"))
          (ppm   (if png-p (format nil "~A.ppm" path) path)))
     (lightfast:capture-window (desk-window desk) ppm)
@@ -409,11 +409,11 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-run (unslop-launch) null)
 (defun unslop-run (launch)
-  "Show the unslop window LAUNCH asks for and run until it closes."
+  "Show the unslop window for LAUNCH and run until the window closes."
   (lightfast:load-library)
   (lightfast:enable-thread-wakeups)
   (theme-install)
-  ;; A window that is only a picture remembers nothing.
+  ;; A window that is only used for a picture does not save preferences.
   (unless (unslop-launch-shot launch)
     (setf *preferences-pathname* (uiop:xdg-config-home "aui" "unslop.sexp")))
   (let* ((desk   (unslop-make-desk launch))
@@ -467,7 +467,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-main (&optional list) null)
 (defun unslop-main (&optional (arguments (uiop:command-line-arguments)))
-  "Run unslop with the command line ARGUMENTS and exit the process when the window closes."
+  "Run unslop with the command line ARGUMENTS, and exit the process when the window closes."
   (setf (sb-ext:bytes-consed-between-gcs) (* 8 1024 1024))
   (let ((status 0))
     (handler-case
@@ -484,7 +484,7 @@ written to its file when you stop typing. Nothing is committed.
 
 (-> unslop-image-toplevel () null)
 (defun unslop-image-toplevel ()
-  "Run unslop in a saved image with the process's own arguments."
+  "Run unslop in a saved image with the arguments of the process."
   (unslop-main (rest sb-ext:*posix-argv*)))
 
 (-> unslop-save-image (string) null)

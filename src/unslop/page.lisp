@@ -2,38 +2,38 @@
 
 ;;;; -- Page --
 
-;;; The open file at the window's right, as its words alone. Each definition
-;;; is a heading, its operator and name as they stand in the source, and
-;;; under it come its passages in the order of the file: comments, docstrings
-;;; and other strings, each named in the margin. A click on a passage puts
-;;; the editor over it, and the cross beside a comment deletes it. Everything
-;;; is set in the typewriter face, because
-;;; line breaks are kept as they are typed and the face shows how long a line
-;;; has become.
+;;; The page is the open file at the right side of the window, shown only by its
+;;; words. Each definition has a heading with the operator and the name as they are
+;;; written in the source. Under the heading are the passages of the definition in
+;;; the order of the file: comments, docstrings and other strings, each with its
+;;; kind in the margin. A person clicks a passage to put the editor over it, and
+;;; clicks the cross next to a comment to delete the comment. All text is set in the
+;;; typewriter face, because line breaks are kept as typed, and in this face the
+;;; length of a line is visible.
 
 (defparameter *page-header-height* 74
-  "The height of the band over the page that names the file.")
+  "The height of the band above the page, which contains the file name.")
 
 (defparameter *page-status-height* 30
-  "The height of the line under the page that says what was saved.")
+  "The height of the status line under the page.")
 
 (defparameter *page-margin* 24
-  "The room at the page's left and right.")
+  "The space at the left and the right side of the page.")
 
 (defparameter *page-gutter* 96
-  "The width of the margin that names each passage's kind.")
+  "The width of the margin with the kind of each passage.")
 
 (defparameter *page-text-width* 900
-  "The widest a passage is set.")
+  "The maximum width of a passage.")
 
 (defparameter *page-heading-height* 30
-  "The height of a definition's heading.")
+  "The height of the heading of a definition.")
 
 (defparameter *page-padding* 6
-  "The room above and below a passage's words.")
+  "The space above and below the words of a passage.")
 
 (defstruct page-row
-  "One row of the page, a definition's heading or one passage, with the numbers of its DEFINITION and PASSAGE, its TOP in the page, its HEIGHT and for a passage the PARAGRAPH of its words."
+  "One row of the page, which is either the heading of a definition or one passage. KIND is the kind of the row. DEFINITION and PASSAGE are the numbers of the definition and the passage. TOP is the position in the page, and HEIGHT is the height of the row. PARAGRAPH is the paragraph of the words of a passage."
   (kind       ':passage :type keyword)
   (definition 0         :type fixnum)
   (passage    0         :type fixnum)
@@ -43,23 +43,23 @@
 
 (-> page-text-box (integer integer) (values integer integer))
 (defun page-text-box (x width)
-  "Return where the words of a page in a box at X of WIDTH start, and how wide they are set."
+  "Return the left edge and the width of the words of a page in a box at X with WIDTH."
   (values (+ x *page-margin* *page-gutter*)
           (max 120 (min *page-text-width* (- width (* 2 *page-margin*) *page-gutter*)))))
 
 (defparameter *page-kept-paragraphs* 2000
-  "The number of paragraphs that are kept laid out for the open file beyond one for each of its texts.")
+  "The number of laid-out paragraphs that are kept for the open file, in addition to one paragraph for each text of the file.")
 
 (-> page--layout (string integer) paragraph)
 (defun page--layout (text width)
-  "Return a new paragraph of TEXT laid out WIDTH wide."
+  "Return a new paragraph of TEXT laid out to WIDTH."
   (let ((paragraph (make-paragraph (list (make-span text nil)) :style (text-style ':code))))
     (paragraph-layout paragraph width)
     paragraph))
 
 (-> page--paragraph (desk string integer &key (:typed-p boolean)) paragraph)
 (defun page--paragraph (desk text width &key typed-p)
-  "Return the paragraph of TEXT laid out WIDTH wide. The paragraphs of the texts of the open file are kept. With TYPED-P, TEXT is what the editor holds, and only the paragraph of the last such text is kept."
+  "Return the paragraph of TEXT laid out to WIDTH. The paragraphs of the texts of the open file are kept. If TYPED-P is true, TEXT is the text in the editor, and only the paragraph of the last such text is kept."
   (let ((layouts (desk-layouts desk)))
     (unless (= width (desk-layout-width desk))
       (clrhash layouts)
@@ -74,7 +74,8 @@
                (setf (desk-typed-layout desk) (cons text paragraph))
                paragraph))))
       (t
-       ;; Each written text adds one; a file written many times does not keep them all.
+       ;; Each written text adds a paragraph. The paragraphs are cleared if there are too many,
+       ;; so that a file written many times does not keep all of them.
        (when (>= (hash-table-count layouts)
                  (+ *page-kept-paragraphs* (if (desk-proof desk) (proof-passage-count (desk-proof desk)) 0)))
          (clrhash layouts))
@@ -83,12 +84,12 @@
 
 (-> page-rows (desk integer) (values list integer))
 (defun page-rows (desk width)
-  "Return the rows of the open file's page for words set WIDTH wide, and the height of all of them.
+  "Return the rows of the page of the open file for words set to WIDTH, and the total height of the rows.
 
-Only the kinds of passage the person wants are rows, and a definition none
-of whose passages is wanted has no heading. A folded definition is its
-heading alone, and a hidden one has no rows. The passage being written in is
-as tall as what the editor holds."
+Only the passages of the kinds that the person wants to see have rows. A
+definition without such passages has no heading. A folded definition only has
+the heading, and a hidden definition has no rows. The row of the passage being
+written in has the height of the text in the editor."
   (let ((proof (desk-proof desk))
         (kinds (desk-kinds))
         (focus (desk-focus desk))
@@ -119,8 +120,9 @@ as tall as what the editor holds."
                                      (paragraph (if focused-p
                                                     (page--paragraph desk (desk-typed-text desk) width :typed-p t)
                                                     (page--paragraph desk (passage-text passage) width)))
-                                     ;; The editor breaks lines a little sooner than a paragraph does,
-                                     ;; so the passage being written in has a line to spare.
+                                     ;; Lines in the editor break a little earlier than in a
+                                     ;; paragraph, so the passage being written in gets one
+                                     ;; extra line.
                                      (height    (+ (* 2 *page-padding*)
                                                    (paragraph-height paragraph)
                                                    (if focused-p (text-style-line-height (text-style ':code)) 0))))
@@ -136,7 +138,7 @@ as tall as what the editor holds."
 
 (-> page--focus-row (desk list) (or null page-row))
 (defun page--focus-row (desk rows)
-  "Return the row among ROWS of the passage being written in, or NIL."
+  "Return the row in ROWS of the passage being written in, or NIL."
   (let ((focus (desk-focus desk)))
     (and focus
          (find-if (lambda (row)
@@ -147,16 +149,16 @@ as tall as what the editor holds."
 
 (-> page-body-box (integer integer) (values integer integer))
 (defun page-body-box (y height)
-  "Return the top and the height of the part of a page in a box at Y of HEIGHT that scrolls."
+  "Return the top and the height of the scrolled part of a page in a box at Y with HEIGHT."
   (values (+ y *page-header-height*)
           (max 0 (- height *page-header-height* *page-status-height*))))
 
 (-> page--editor-span (integer integer &key (:top integer) (:bottom integer)) (values (or null integer) integer))
 (defun page--editor-span (y height &key top bottom)
-  "Return the top and the height of the part of a passage's row at Y of HEIGHT that the editor covers in a view from TOP to BOTTOM, or NIL and 0 when too little of the row is in view to write in.
+  "Return the top and the height of the editor over the row of a passage at Y with HEIGHT, in a view from TOP to BOTTOM. Return NIL and 0 if too little of the row is in view to write in.
 
-A passage taller than the view is written in through the part of it that
-shows, and the editor moves its own text as the caret moves."
+For a passage that is taller than the view, the editor only covers the visible
+part. The text in the editor scrolls with the caret."
   (let ((from (max (+ y *page-padding* -1) top))
         (to   (min (+ y height (- *page-padding*) 3) bottom)))
     (if (>= (- to from) 40)
@@ -165,7 +167,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page-editor-box (desk &key (:x integer) (:y integer) (:width integer) (:height integer)) (or null list))
 (defun page-editor-box (desk &key x y width height)
-  "Return the (X Y WIDTH HEIGHT) the editor takes on a page in the given box, or NIL when no passage is being written in or too little of its row is in view."
+  "Return the box (X Y WIDTH HEIGHT) of the editor on a page in the given box. Return NIL if no passage is being written in, or if too little of the row of the passage is in view."
   (multiple-value-bind (text-x text-width) (page-text-box x width)
     (multiple-value-bind (body-y body-height) (page-body-box y height)
       (let ((row (page--focus-row desk (page-rows desk text-width))))
@@ -180,7 +182,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page-reveal (desk &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun page-reveal (desk &key x y width height)
-  "Scroll the page in the given box so that the passage being written in is wholly in view, when the view can hold it."
+  "Scroll the page in the given box so that the passage being written in is fully in view, if the view is tall enough."
   (multiple-value-bind (text-x text-width) (page-text-box x width)
     (declare (ignore text-x))
     (multiple-value-bind (body-y body-height) (page-body-box y height)
@@ -199,7 +201,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page-step (desk integer) boolean)
 (defun page-step (desk step)
-  "Begin writing in the passage STEP places after the one being written in, or before it when STEP is negative, and return whether there was one. With none being written in, begin with the first."
+  "Start writing in the passage STEP places after the passage being written in, or before it if STEP is negative. Return T if there was such a passage. If no passage is being written in, start with the first."
   (multiple-value-bind (rows) (page-rows desk (max 120 (desk-layout-width desk)))
     (let* ((passages (remove ':heading rows :key #'page-row-kind))
            (current  (page--focus-row desk rows))
@@ -219,7 +221,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page--kind-label (keyword) string)
 (defun page--kind-label (kind)
-  "Return the word the margin has for a passage of KIND."
+  "Return the label in the margin for a passage of KIND."
   (ecase kind
     (:comment
      "comment")
@@ -230,7 +232,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page--unseen-words (string) (or null string))
 (defun page--unseen-words (text)
-  "Return what to say of TEXT when drawing it would show nothing, because it is empty or all blanks and line ends, or NIL when it has something to show."
+  "Return a description of TEXT if TEXT is empty or only contains blanks and line ends, or else NIL."
   (cond
     ((zerop (length text))
      "empty")
@@ -247,7 +249,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page--paint-heading (desk stage page-row &key (:x integer) (:y integer) (:width integer)) null)
 (defun page--paint-heading (desk stage row &key x y width)
-  "Draw the heading of ROW's definition: the box that marks it completed, its operator, its name, how many texts a folded one holds, that it is edited, and at the right the line it starts on. A click on the heading folds the definition or unfolds it."
+  "Draw the heading of the definition of ROW: the box for the completed mark, the operator, the name, the number of texts in a folded definition, the edited label, and the first line at the right. The person can click the heading to fold or unfold the definition."
   (let* ((index       (page-row-definition row))
          (definition  (nth index (proof-definitions (desk-proof desk))))
          (operator    (definition-operator definition))
@@ -278,7 +280,8 @@ shows, and the editor moves its own text as the caret moves."
              (paint-frame box-x box-y :width 13 :height 13)
              (when completed-p
                (paint-mark ':check (- box-x 1) (- box-y 2) :size 16))
-             ;; Operator, name and, when folded, how many texts, one after the other in the room there is.
+             ;; Draw the operator, the name and, if the definition is folded, the number of texts,
+             ;; one after the other in the available room.
              (let ((at left))
                (flet ((say (text style)
                         (let ((width (min (text-width text style) (max 0 (- (+ left name-room) at)))))
@@ -313,7 +316,7 @@ shows, and the editor moves its own text as the caret moves."
                   :height  height
                   :action  (lambda () (desk-toggle-section-fold desk index))
                   :tooltip (if folded-p "Show the texts" "Fold to the heading"))
-    ;; The box lies over the heading, so a click on it marks and does not fold.
+    ;; The box is over the heading, so a click on the box marks the section and does not fold it.
     (stage-region stage box
                   :x       (- box-x 6)
                   :y       y
@@ -321,13 +324,13 @@ shows, and the editor moves its own text as the caret moves."
                   :height  height
                   :action  (lambda () (desk-toggle-section desk index))
                   :tooltip (if completed-p
-                               "Take the mark away"
+                               "Remove the mark"
                                "Mark this section completed (Ctrl+Shift+Enter while writing in it)")))
   nil)
 
 (-> page--paint-delete (desk stage page-row &key (:x integer) (:y integer) (:shown-p boolean)) null)
 (defun page--paint-delete (desk stage row &key x y shown-p)
-  "Declare the cross that deletes the comment of ROW in a box whose top-left corner is X, Y, and draw it when SHOWN-P or the pointer is over it."
+  "Add the click region of the cross used to delete the comment of ROW, with the top left corner at X, Y. Draw the cross if SHOWN-P is true or if the pointer is over it."
   (let* ((definition (page-row-definition row))
          (index      (page-row-passage row))
          (identifier (list ':passage-delete definition index))
@@ -351,7 +354,7 @@ shows, and the editor moves its own text as the caret moves."
 (-> page--paint-passage (desk stage page-row &key (:x integer) (:y integer) (:text-x integer) (:text-width integer))
     null)
 (defun page--paint-passage (desk stage row &key x y text-x text-width)
-  "Draw ROW's passage with its top at Y: its kind in the margin at X and its words from TEXT-X, TEXT-WIDTH wide. A click puts the editor over it with the caret where the pointer is. A comment has a cross between the margin and its words, drawn while the pointer is on the passage or the passage is being written in."
+  "Draw the passage of ROW with the top at Y. The kind is drawn in the margin at X, and the words are drawn from TEXT-X with TEXT-WIDTH. If the person clicks the passage, the editor is put over it with the caret at the pointer. A comment has a cross between the margin and the words. The cross is drawn while the pointer is on the passage or while the passage is being written in."
   (let* ((definition (page-row-definition row))
          (index      (page-row-passage row))
          (passage    (proof-passage (desk-proof desk) definition index))
@@ -368,8 +371,8 @@ shows, and the editor moves its own text as the caret moves."
                    :width  (- *page-gutter* 10)
                    :height (text-style-line-height (text-style ':code)))
     (cond
-      ;; The editor lies over the words. Where too little of the row shows for it,
-      ;; the words are drawn, and a click brings the passage back into view.
+      ;; The editor is over the words. If too little of the row is visible for the editor,
+      ;; the words are drawn, and the person can click to scroll the passage back into view.
       (focused-p
        (paint-frame (- text-x 7) (- y 1) :width (+ text-width 14) :height (+ height 2))
        (unless (page--editor-span y height :top *paint-top* :bottom *paint-bottom*)
@@ -392,7 +395,8 @@ shows, and the editor moves its own text as the caret moves."
              (paragraph-paint paragraph text-x text-y :top *paint-top* :bottom *paint-bottom*)))
        (when (stage-hot-p stage identifier)
          (paint-frame (- text-x 7) (- y 1) :width (+ text-width 14) :height (+ height 2) :dashed-p t))
-       ;; The margin belongs to the passage, so the pointer stays on it on its way to the cross.
+       ;; The margin is part of the click region of the passage, so the pointer is still on
+       ;; the passage on its way to the cross.
        (stage-region stage identifier
                      :x      (+ x *page-margin*)
                      :y      y
@@ -405,7 +409,8 @@ shows, and the editor moves its own text as the caret moves."
                                                   paragraph
                                                   (- (stage-pointer-x stage) text-x)
                                                   (- (stage-pointer-y stage) text-y)))))))
-    ;; The cross lies over the passage's margin, so a click on it deletes and does not begin writing.
+    ;; The cross is over the margin of the passage, so a click on the cross deletes the
+    ;; comment and does not start writing.
     (when (eq (passage-kind passage) ':comment)
       (page--paint-delete desk stage row
                           :x       (- text-x 32)
@@ -415,7 +420,7 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page--paint-header (desk stage &key (:x integer) (:y integer) (:width integer)) null)
 (defun page--paint-header (desk stage &key x y width)
-  "Draw the band over the page: the file's name and folder, how many passages it has, the switches for the kinds of passage, and the button that marks the file completed."
+  "Draw the band above the page: the name and the folder of the file, the number of passages, the switches for the kinds of passages, and the button used to mark the file completed."
   (let* ((name        (desk-name desk))
          (proof       (desk-proof desk))
          (completed-p (desk-completed-p desk name))
@@ -443,8 +448,8 @@ shows, and the editor moves its own text as the caret moves."
                   :primary-p completed-p
                   :mark      (and completed-p ':check)
                   :action    (lambda () (desk-toggle-completed desk name))
-                  :tooltip   (if completed-p "Take the mark away" "Mark this file completed as it is now"))
-    ;; The switches for what is listed, from the right.
+                  :tooltip   (if completed-p "Remove the mark" "Mark this file completed as it is now"))
+    ;; Draw the switches for the kinds of passages, from the right.
     (let ((chip-x right))
       (dolist (kind (reverse *passage-kinds*))
         (let* ((label (format nil "~As" (page--kind-label kind)))
@@ -456,24 +461,24 @@ shows, and the editor moves its own text as the caret moves."
                       :height     22
                       :mark-color (if (member kind kinds) *green* *paper*)
                       :action     (lambda () (desk-toggle-kind desk chip))
-                      :tooltip    (if (member kind kinds) "Leave these out" "List these")))))
+                      :tooltip    (if (member kind kinds) "Hide these" "Show these")))))
     (paint-line x (+ y *page-header-height* -1) :x2 (+ x width) :y2 (+ y *page-header-height* -1)))
   nil)
 
 (-> page--clock (integer) string)
 (defun page--clock (time)
-  "Return the universal TIME as the hour, minute and second of this place."
+  "Return the universal TIME as hours, minutes and seconds in the local time zone."
   (multiple-value-bind (second minute hour) (decode-universal-time time)
     (format nil "~2,'0D:~2,'0D:~2,'0D" hour minute second)))
 
 (-> page--paint-status (desk stage &key (:x integer) (:y integer) (:width integer)) null)
 (defun page--paint-status (desk stage &key x y width)
-  "Draw the line under the page: what was not written, or when the file was last written, and the keys that move through the texts. After a comment was deleted the line says so and has the chip that brings it back."
+  "Draw the status line under the page. The line contains the notice, the typing state or the time of the last write, and the keys used to move through the texts. After the deletion of a comment, the line contains a message about the deletion and a chip used to bring the comment back."
   (let* ((meta    (text-style ':meta))
          (left    (+ x *page-margin*))
          (keys    "Tab next text   Esc done   Ctrl+D delete comment   Ctrl+Shift+Enter section completed   Ctrl+Enter file completed")
          (keys-w  (text-width keys meta))
-         ;; What went wrong, or what can be undone, takes the line from the keys.
+         ;; A notice is drawn in place of the keys.
          (keys-p  (and (not (desk-notice desk)) (> width (+ keys-w 260))))
          (room    (max 0 (- width (* 2 *page-margin*) (if keys-p (+ keys-w 20) 0))))
          (removal (desk-removal desk)))
@@ -507,14 +512,14 @@ shows, and the editor moves its own text as the caret moves."
 
 (-> page-paint (desk stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun page-paint (desk stage &key x y width height)
-  "Draw the open file's page in the box, or say what to do when no file is open or the open one is left alone."
+  "Draw the page of the open file in the box. If no file is open or the open file cannot be edited, draw a short message instead."
   (let ((proof  (desk-proof desk))
         (italic (text-style ':small :face ':serif-italic)))
     (cond
       ((null proof)
        (paint-text-in (if (desk-files desk)
                           "Choose a file on the left."
-                          "This folder holds no Lisp source.")
+                          "There is no Lisp source in this folder.")
                       italic
                       :x (+ x *page-margin*) :y (+ y 20) :width (- width (* 2 *page-margin*)) :height 30))
       (t
@@ -525,7 +530,7 @@ shows, and the editor moves its own text as the caret moves."
              (let* ((maximum (max 0 (- total body-height)))
                     (scroll  (max 0 (min (desk-page-scroll desk) maximum))))
                (setf (desk-page-scroll desk) scroll)
-               ;; A click beside the texts ends the writing, as a click outside a field does.
+               ;; Stop writing on a click next to the texts, as on a click outside a field.
                (stage-region stage ':page
                              :x      x
                              :y      body-y
@@ -542,7 +547,7 @@ shows, and the editor moves its own text as the caret moves."
                        (*paint-bottom* (+ body-y body-height)))
                    (cond
                      ((proof-problem proof)
-                      (paint-text-in (format nil "This file is left alone: ~A." (proof-problem proof)) italic
+                      (paint-text-in (format nil "This file cannot be edited: ~A." (proof-problem proof)) italic
                                      :x      (+ x *page-margin*)
                                      :y      (+ body-y 16)
                                      :width  (- width (* 2 *page-margin*))
@@ -552,9 +557,9 @@ shows, and the editor moves its own text as the caret moves."
                                        ((zerop (proof-passage-count proof))
                                         "This file has no comments and no strings.")
                                        ((and (desk-hide-completed-p) (plusp (desk-sections-completed-count desk)))
-                                        "Every section here is completed. Mark the file completed with Ctrl+Enter.")
+                                        "All sections in this file are completed. Press Ctrl+Enter to mark the file completed.")
                                        (t
-                                        "Every kind of text in this file is switched off."))
+                                        "This file has no texts of the kinds that are shown."))
                                      italic
                                      :x      (+ x *page-margin*)
                                      :y      (+ body-y 16)

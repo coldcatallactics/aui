@@ -2,18 +2,18 @@
 
 ;;;; -- Proof --
 
-;;; One source file read for its words. A proof holds the file's text and,
-;;; in the order of the file, its definitions: each top-level form that has
-;;; words in it, and each run of comments that stands outside any form. A
-;;; definition holds passages, and a passage is one stretch of words that a
-;;; person reads: a comment, a docstring or any other string.
+;;; A proof is one source file read for its words. A proof contains the text of
+;;; the file and the definitions of the file in order. A definition is a top-level
+;;; form that has words in it, or a run of comments outside any form. A definition
+;;; contains passages. A passage is one stretch of words that a person reads: a
+;;; comment, a docstring or another string.
 ;;;
-;;; A passage knows where it stands in the text and how it is written there,
-;;; so that words changed by a person go back in the same place, behind the
-;;; same semicolons or between the same quotes.
+;;; Each passage has its place in the text and the way it is written there. Changed
+;;; words can then be written back in the same place, behind the same semicolons or
+;;; between the same quotes.
 
 (defstruct passage
-  "One stretch of words in a source file, with what it is, how it is written, where its source starts and ends, the words themselves and the lines they start and end on. A comment also keeps its semicolons, what separates them from the words, what stands before the semicolons on its later lines, and whether it stands alone on its lines."
+  "One stretch of words in a source file. A passage has a kind, a shape, the start and the end of the source, the words themselves, and the first and the last line. A comment also has the semicolons, the separator between the semicolons and the words, the margin before the semicolons on the later lines, and a flag that is true if the comment is alone on its lines."
   (kind      ':comment :type (member :comment :docstring :string))
   (shape     ':line    :type (member :line :block :string))
   (start     0         :type fixnum)
@@ -27,14 +27,14 @@
   (alone-p   t         :type boolean))
 
 (defstruct definition
-  "One top-level form with words in it, as its OPERATOR, its NAME, the LINE it starts on and its PASSAGES in the order of the file. A run of comments outside any form is a definition with an empty operator."
+  "One top-level form that contains words. OPERATOR and NAME are the operator and the name of the form. LINE is the first line of the form. PASSAGES are the passages of the form in the order of the file. A run of comments outside any form is a definition with an empty operator."
   (operator ""  :type string)
   (name     ""  :type string)
   (line     1   :type fixnum)
   (passages nil :type list))
 
 (defstruct proof
-  "One source file read for its words, as its PATHNAME, its TEXT, the DIGEST of what the file held, its DEFINITIONS and its SKELETON, which is its code without its words. A file that cannot be read this way has a PROBLEM that says why and no definitions."
+  "One source file read for its words. PATHNAME and TEXT are the file and the text of the file. DIGEST is the digest of the file content. DEFINITIONS are the definitions of the file. SKELETON is the code of the file without the words. If the file cannot be read this way, PROBLEM is a description of the reason and there are no definitions."
   (pathname    nil)
   (text        ""  :type string)
   (digest      ""  :type string)
@@ -43,24 +43,22 @@
   (problem     nil :type (or null string)))
 
 (defparameter *documentation-keywords* '(":documentation" ":description" ":long-description")
-  "The keywords after which a string is documentation, in a class, a condition, a package or a system.")
+  "The keywords that are followed by documentation strings in classes, conditions, packages and systems.")
 
 (defparameter *function-definers* '("defun" "defmacro" "defmethod" "deftype" "define-compiler-macro" "defsetf"
                                     "define-setf-expander")
-  "The operators whose string after the lambda list is a docstring.")
+  "The operators in which the string after the lambda list is a docstring.")
 
 (defparameter *variable-definers* '("defvar" "defparameter" "defconstant" "defglobal" "define-symbol-macro")
-  "The operators whose string after the value is a docstring.")
+  "The operators in which the string after the value is a docstring.")
 
 
 ;;;; -- Digest --
 
 (-> octets-digest ((simple-array (unsigned-byte 8) (*))) string)
 (defun octets-digest (octets)
-  "Return a short digest of OCTETS that differs, as good as always, when the octets do.
-
-It only has to tell whether a file changed, so it is the FNV-1a sum of the
-octets with their count, not a cryptographic one."
+  "Return a short digest of OCTETS. The digest consists of the FNV-1a sum and the
+count of the octets."
   (let ((sum #xcbf29ce484222325))
     (declare (type (unsigned-byte 64) sum))
     (loop for octet across octets
@@ -70,7 +68,7 @@ octets with their count, not a cryptographic one."
 
 (-> file-octets (pathname) (simple-array (unsigned-byte 8) (*)))
 (defun file-octets (pathname)
-  "Return what the file at PATHNAME holds, as octets."
+  "Return the content of the file at PATHNAME as octets."
   (with-open-file (stream pathname :element-type '(unsigned-byte 8))
     (let ((octets (make-array (file-length stream) :element-type '(unsigned-byte 8))))
       (read-sequence octets stream)
@@ -78,7 +76,7 @@ octets with their count, not a cryptographic one."
 
 (-> file-digest (pathname) (or null string))
 (defun file-digest (pathname)
-  "Return the digest of what the file at PATHNAME holds, or NIL when it cannot be read."
+  "Return the digest of the content of the file at PATHNAME, or NIL if the file cannot be read."
   (handler-case (octets-digest (file-octets pathname))
     (error ()
       nil)))
@@ -88,7 +86,7 @@ octets with their count, not a cryptographic one."
 
 (-> string-literal-text (string) string)
 (defun string-literal-text (literal)
-  "Return the words of the string LITERAL, which is written with its quotes: what stands between them, each backslash giving way to the character after it."
+  "Return the words of LITERAL, which is a string written with quotes as in Lisp source. The words are the characters between the quotes. Each backslash is removed, and the character after it is kept."
   (with-output-to-string (stream)
     (let ((index 1)
           (end   (1- (length literal))))
@@ -102,7 +100,7 @@ octets with their count, not a cryptographic one."
 
 (-> string-literal (string) string)
 (defun string-literal (text)
-  "Return TEXT written as a string in Lisp source: between quotes, with a backslash before each quote and each backslash."
+  "Return TEXT as a string in Lisp source. The text is put between quotes, and a backslash is put before each quote and each backslash."
   (with-output-to-string (stream)
     (write-char #\" stream)
     (loop for character across text
@@ -113,7 +111,7 @@ octets with their count, not a cryptographic one."
 
 (-> text-lines (string) list)
 (defun text-lines (text)
-  "Return the lines of TEXT without their line ends. A text that ends with a line end has an empty last line."
+  "Return the lines of TEXT without the line ends. If TEXT ends with a line end, the last line is empty."
   (loop with start = 0
         for end = (position #\Newline text :start start)
         collect (string-right-trim '(#\Return) (subseq text start end))
@@ -122,18 +120,18 @@ octets with their count, not a cryptographic one."
 
 (-> passage-source (passage string) string)
 (defun passage-source (passage text)
-  "Return TEXT written the way PASSAGE is written in its file: behind its semicolons line by line, between its bars, or between quotes.
+  "Return TEXT written in the same way as PASSAGE in the file: behind the semicolons on each line, between the bars of a block comment, or between quotes.
 
-A comment line loses the blanks at its end, and an empty one is its
-semicolons alone. Signal a PROOF-ERROR when a block comment's words would
-end the comment."
+The blanks at the end of each comment line are removed. An empty comment line
+contains only the semicolons. Signal a PROOF-ERROR if the words of a block
+comment would close the comment."
   (ecase (passage-shape passage)
     (:string
      (string-literal (remove #\Return text)))
     (:block
      (when (or (search "|#" text) (search "#|" text))
        (error 'proof-error
-              :message "a block comment cannot hold the two characters that open or close one"))
+              :message "a block comment cannot contain the characters that open or close a block comment"))
      (format nil "#|~A|#" (remove #\Return text)))
     (:line
      (let ((prefix    (passage-prefix passage))
@@ -156,7 +154,7 @@ end the comment."
 
 (-> proof--line-comment (string list &key (:alone-p boolean) (:margin string) (:line fixnum)) passage)
 (defun proof--line-comment (text lexemes &key alone-p (margin "") (line 1))
-  "Return the passage of the comment lines LEXEMES of TEXT, which follow one another and are written alike."
+  "Return one passage for LEXEMES, which are consecutive comment lines in TEXT that are written in the same way."
   (let* ((first     (first lexemes))
          (count     (or (position #\; text :start (lexeme-start first) :end (lexeme-end first) :test #'char/=)
                         (lexeme-end first)))
@@ -188,7 +186,7 @@ end the comment."
 
 (-> proof--brief (string fixnum fixnum) string)
 (defun proof--brief (text start end)
-  "Return the source of TEXT between START and END on one line, its blank runs as one blank each, cut short when long."
+  "Return the source in TEXT between START and END as one line. Each run of blanks becomes one blank. A long source is cut short."
   (let* ((flat  (with-output-to-string (stream)
                   (let ((blank-p   nil)
                         (written-p nil))
@@ -209,18 +207,19 @@ end the comment."
 
 (-> proof--operator-key (string) string)
 (defun proof--operator-key (operator)
-  "Return OPERATOR in lower case without the package it is written with."
+  "Return OPERATOR in lower case without the package prefix."
   (let ((colon (position #\: operator :from-end t)))
     (string-downcase (if colon (subseq operator (1+ colon)) operator))))
 
 (-> proof--settle (definition string list) definition)
 (defun proof--settle (definition text children)
-  "Name DEFINITION from the CHILDREN of its form in TEXT and mark its docstrings, then return it.
+  "Set the operator and the name of DEFINITION from CHILDREN, and mark the docstrings of the definition. Return DEFINITION.
 
-CHILDREN are the form's own members in order, each as (KIND START END
-PASSAGE), the passage NIL for anything but a string. A function's docstring
-is the string after its lambda list when something follows it. A variable's
-is its fourth member, and a structure's its third."
+CHILDREN are the members of the form in TEXT, in order. Each child is a list
+(KIND START END PASSAGE), and PASSAGE is NIL for children that are not strings.
+The docstring of a function is the string after the lambda list if more
+follows that string. The docstring of a variable is the fourth member of the
+form. The docstring of a structure is the third member."
   (flet ((kind (child) (first child))
          (source (child) (subseq text (second child) (third child)))
          (docstring (child)
@@ -251,12 +250,12 @@ is its fourth member, and a structure's its third."
   definition)
 
 (defstruct (proof-frame (:constructor make-proof-frame ()))
-  "What is known of a form that is being read, as its CHILDREN so far, newest first, each (KIND START END PASSAGE)."
+  "A form that is being read. CHILDREN are the members of the form read so far, the newest first. Each child is a list (KIND START END PASSAGE)."
   (children nil :type list))
 
 (-> proof--documentation-follows-p (string proof-frame) boolean)
 (defun proof--documentation-follows-p (text frame)
-  "Return T when the member of FRAME's form read last is a keyword after which a string is documentation."
+  "Return T if the last member read in the form of FRAME is a keyword that is followed by documentation."
   (let ((previous (first (proof-frame-children frame))))
     (and previous
          (eq (first previous) ':atom)
@@ -266,12 +265,13 @@ is its fourth member, and a structure's its third."
 
 (-> proof--definitions (string list) list)
 (defun proof--definitions (text lexemes)
-  "Return the definitions of TEXT, whose lexemes are LEXEMES, in the order of the file.
+  "Return the definitions of TEXT in the order of the file. LEXEMES are the lexemes of TEXT.
 
-Comment lines that follow one another, start in the same column and have as
-many semicolons are one passage. A comment directly above a top-level form
-belongs to that form, and so does one behind it on its last line. Other
-comments outside any form are gathered into definitions of their own."
+Consecutive comment lines that start in the same column and have the same
+number of semicolons are one passage. A comment directly above a top-level form
+belongs to that form. A comment behind the form on the last line of the form
+also belongs to it. Other comments outside forms are collected into definitions
+of their own."
   (let ((definitions nil)
         (frames      nil)
         (current     nil)
@@ -298,15 +298,16 @@ comments outside any form are gathered into definitions of their own."
                (setf scanned (max scanned position)))
 
              (alone-p (lexeme)
-               "Whether nothing but blanks stands before LEXEME on its line."
+               "Return T if only blanks are before LEXEME on the line."
                (every #'lex--whitespace-p (subseq text line-start (lexeme-start lexeme))))
 
              (place (passage)
-               "Put PASSAGE where it belongs: in the form being read, or among the comments outside any."
+               "Add PASSAGE to the form being read, to the form that ended on the same line, or to the comments outside forms."
                (cond
                  (current
                   (push passage (definition-passages current)))
-                 ;; Behind a form, on the line it ends on. A form without words was not kept until now.
+                 ;; The passage is behind a form, on the last line of the form. A form
+                 ;; without words was not kept before, so it is kept now.
                  ((and closed (not (passage-alone-p passage)) (= (passage-line passage) closed-line))
                   (unless (definition-passages closed)
                     (push closed definitions))
@@ -316,11 +317,11 @@ comments outside any form are gathered into definitions of their own."
                   (push passage loose))))
 
              (lines-within (lexeme)
-               "How many line ends LEXEME holds."
+               "Return the number of line ends in LEXEME."
                (count #\Newline text :start (lexeme-start lexeme) :end (lexeme-end lexeme)))
 
              (end-run ()
-               "Make a passage of the comment lines gathered so far."
+               "Make a passage of the comment lines collected so far."
                (when run
                  (place (proof--line-comment text (nreverse run)
                                              :alone-p run-alone-p
@@ -329,7 +330,7 @@ comments outside any form are gathered into definitions of their own."
                  (setf run nil)))
 
              (end-loose ()
-               "Make a definition of the comments gathered outside any form."
+               "Make a definition of the comments collected outside forms."
                (when loose
                  (let ((passages (nreverse loose)))
                    (push (make-definition :line (passage-line (first passages)) :passages passages)
@@ -396,7 +397,8 @@ comments outside any form are gathered into definitions of their own."
              (end-run)
              (if frames
                  (note ':list lexeme)
-                 ;; A form begins. The comment that ends on the line above is its own.
+                 ;; A form starts here. The comment that ends on the line above
+                 ;; belongs to the form.
                  (let ((above (and loose
                                    (passage-alone-p (first loose))
                                    (= (passage-last-line (first loose)) (1- line))
@@ -411,7 +413,7 @@ comments outside any form are gathered into definitions of their own."
                (let ((frame (pop frames)))
                  (cond
                    (frames
-                    ;; The list this closes was noted when it opened; now its end is known.
+                    ;; The list was noted when it opened. The end of the list is known now.
                     (let ((member (first (proof-frame-children (first frames)))))
                       (when (and member (eq (first member) ':list))
                         (setf (third member) (lexeme-end lexeme)))))
@@ -429,7 +431,7 @@ comments outside any form are gathered into definitions of their own."
             (:prefix
              (end-run)))))
       (end-run)
-      ;; A form that never closes still gives up the words read in it.
+      ;; The words read in a form that does not close are also kept.
       (when current
         (setf (definition-passages current) (nreverse (definition-passages current)))
         (when frames
@@ -441,10 +443,10 @@ comments outside any form are gathered into definitions of their own."
 
 (-> proof--skeleton (string list) string)
 (defun proof--skeleton (text lexemes)
-  "Return the code of TEXT without its words: every lexeme of LEXEMES but the comments, each string as a quote alone.
+  "Return the code of TEXT without the words. The skeleton contains all LEXEMES except comments, and each string is replaced by one quote.
 
-Two texts with one skeleton differ in their comments and in what their
-strings say, and in nothing a compiler reads otherwise."
+If two texts have the same skeleton, they only differ in comments and in the
+content of strings."
   (with-output-to-string (stream)
     (dolist (lexeme lexemes)
       (case (lexeme-kind lexeme)
@@ -458,7 +460,7 @@ strings say, and in nothing a compiler reads otherwise."
 
 (-> definition-digest (definition) string)
 (defun definition-digest (definition)
-  "Return the digest of DEFINITION's words: its operator, its name and the kind and words of each of its passages. It stays the same while those do, wherever the definition moves and whatever happens to its code."
+  "Return the digest of the words of DEFINITION. The digest is only computed from the operator, the name, and the kind and the words of each passage."
   (octets-digest
    (sb-ext:string-to-octets
     (with-output-to-string (stream)
@@ -469,7 +471,7 @@ strings say, and in nothing a compiler reads otherwise."
 
 (-> proof-from-text (string &key (:pathname t) (:digest string)) proof)
 (defun proof-from-text (text &key pathname (digest ""))
-  "Return the proof of the source TEXT, which the file at PATHNAME holds with DIGEST. A text that cannot be read for its words gives a proof with a problem."
+  "Return the proof of the source TEXT. PATHNAME is the file that contains TEXT, and DIGEST is the digest of the file. If the words of TEXT cannot be read, the proof has a problem."
   (handler-case
       (let ((lexemes (lisp-lex text)))
         (make-proof :pathname    pathname
@@ -487,8 +489,9 @@ strings say, and in nothing a compiler reads otherwise."
 (defun proof-read (pathname)
   "Return the proof of the source file at PATHNAME.
 
-A file that is not UTF-8, or that ends its lines the way DOS does, gives a
-proof with a problem: writing it back would change more than words."
+If the file is not UTF-8, or if the lines end with a carriage return and a line
+feed, the proof has a problem. If such a file were written back, more than the
+words would change."
   (handler-case
       (let* ((octets (file-octets pathname))
              (digest (octets-digest octets))
@@ -498,24 +501,24 @@ proof with a problem: writing it back would change more than words."
            (make-proof :pathname pathname :digest digest :problem "the file is not written in UTF-8"))
           ((find #\Return text)
            (make-proof :pathname pathname :text text :digest digest
-                       :problem "the file ends its lines with a carriage return and a line feed"))
+                       :problem "the lines of the file end with a carriage return and a line feed"))
           (t
            (proof-from-text text :pathname pathname :digest digest))))
     (file-error (condition)
       (make-proof :pathname pathname :problem (format nil "the file cannot be read: ~A" condition)))
-    ;; Octets that are no text at all.
+    ;; The octets are not text.
     (error ()
       (make-proof :pathname pathname :problem "the file is not written in UTF-8"))))
 
 (-> proof-passage (proof fixnum fixnum) (or null passage))
 (defun proof-passage (proof definition passage)
-  "Return the passage numbered PASSAGE in the definition numbered DEFINITION of PROOF, both counted from 0, or NIL when there is none."
+  "Return the passage numbered PASSAGE in the definition numbered DEFINITION of PROOF, or NIL if there is none. Both numbers count from 0."
   (let ((found (nth definition (proof-definitions proof))))
     (and found (nth passage (definition-passages found)))))
 
 (-> proof-passage-count (proof) fixnum)
 (defun proof-passage-count (proof)
-  "Return how many passages PROOF has."
+  "Return the number of passages in PROOF."
   (reduce #'+ (proof-definitions proof) :key (lambda (definition) (length (definition-passages definition)))))
 
 
@@ -523,7 +526,7 @@ proof with a problem: writing it back would change more than words."
 
 (-> passage-clean-text (passage string) string)
 (defun passage-clean-text (passage text)
-  "Return TEXT as PASSAGE would hold it once written and read again: without carriage returns, and for a comment without the blanks that end its lines."
+  "Return TEXT as PASSAGE would contain it after a write and a new read. Carriage returns are removed. In a line comment, the blanks at the end of each line are also removed."
   (if (eq (passage-shape passage) ':line)
       (format nil "~{~A~^~%~}"
               (mapcar (lambda (line)
@@ -533,25 +536,25 @@ proof with a problem: writing it back would change more than words."
 
 (-> proof--replace (proof fixnum fixnum &key (:source string)) proof)
 (defun proof--replace (proof start end &key (source ""))
-  "Return the proof of PROOF's text with what stands between START and END replaced by SOURCE.
+  "Return the proof of the text of PROOF in which the part between START and END is replaced by SOURCE.
 
-Signal a PROOF-ERROR when the result does not read, or when its code differs
-from the code of PROOF. Words are all that may change."
+Signal a PROOF-ERROR if the new text cannot be read, or if the code of the new
+text differs from the code of PROOF."
   (let* ((old  (proof-text proof))
          (text (concatenate 'string (subseq old 0 start) source (subseq old end)))
          (new  (proof-from-text text :pathname (proof-pathname proof) :digest (proof-digest proof))))
     (when (proof-problem new)
       (error 'proof-error :message (format nil "not written: ~A" (proof-problem new))))
     (unless (string= (proof-skeleton new) (proof-skeleton proof))
-      (error 'proof-error :message "not written: the change would alter the code, not only its words"))
+      (error 'proof-error :message "not written: the edit would change the code as well as the words"))
     new))
 
 (-> proof-revise (proof passage string) proof)
 (defun proof-revise (proof passage text)
-  "Return the proof of PROOF's file with the words of PASSAGE changed to TEXT. PROOF itself stays as it was, and nothing is written.
+  "Return a new proof of the file of PROOF, in which the words of PASSAGE are replaced by TEXT. PROOF is not modified, and nothing is written to the file.
 
-The new words are written the way the passage is written. Signal a
-PROOF-ERROR when they cannot be, or when the change would reach beyond the
+The new words are written in the same way as the passage. Signal a PROOF-ERROR
+if they cannot be written that way, or if the edit would change more than the
 passage."
   (let* ((source (passage-source passage text))
          (new    (proof--replace proof (passage-start passage) (passage-end passage) :source source))
@@ -562,23 +565,24 @@ passage."
     (unless (and found
                  (= (- (passage-end found) (passage-start found)) (length source))
                  (eq (passage-shape found) (passage-shape passage)))
-      (error 'proof-error :message "not written: the change would reach beyond this text"))
+      (error 'proof-error :message "not written: the edit would change more than this text"))
     new))
 
 (-> proof-remove (proof passage) (values proof integer))
 (defun proof-remove (proof passage)
-  "Return the proof of PROOF's file without the comment PASSAGE, and where in the text the comment was taken out. PROOF itself stays as it was, and nothing is written.
+  "Return a new proof of the file of PROOF without the comment PASSAGE, and the position in the text where the comment was removed. PROOF is not modified, and nothing is written to the file.
 
-A comment that stands alone on its lines goes with those lines. One behind
-code goes with the blanks before it. A string is never removed, since its
-form needs it. Signal a PROOF-ERROR for one."
+A comment that is alone on its lines is removed together with those lines. A
+comment behind code is removed together with the blanks before it. Signal a
+PROOF-ERROR if PASSAGE is a string, because strings are part of the code."
   (when (eq (passage-shape passage) ':string)
     (error 'proof-error :message "a string cannot be removed, only emptied"))
   (let* ((text  (proof-text proof))
          (start (passage-start passage))
          (end   (passage-end passage)))
     (if (passage-alone-p passage)
-        ;; Whole lines: from the start of the first to the start of the one after the last.
+        ;; Remove whole lines, from the start of the first line to the start
+        ;; of the line after the last.
         (let ((line-start (let ((newline (position #\Newline text :end start :from-end t)))
                             (if newline (1+ newline) 0)))
               (line-end   (let ((newline (position #\Newline text :start end)))
@@ -594,11 +598,12 @@ form needs it. Signal a PROOF-ERROR for one."
 
 (-> proof-write (proof proof) proof)
 (defun proof-write (new old)
-  "Write the text of the proof NEW to its file, which must still hold what the proof OLD was read from, and return NEW with the digest of what the file holds now.
+  "Write the text of the proof NEW to the file, and return NEW with the digest of the new file content.
 
-The text is written beside the file and moved over it, so the file is whole
-at every moment, and it keeps its permissions. Signal a PROOF-ERROR whose
-reason is :CHANGED when the file no longer holds what OLD was read from."
+The text is first written to a temporary file next to the file. The temporary
+file gets the permissions of the file and is then renamed over the file. Signal
+a PROOF-ERROR with the reason :CHANGED if the file content differs from the
+content that OLD was read from."
   (let* ((pathname (proof-pathname old))
          (target   (truename pathname))
          (octets   (sb-ext:string-to-octets (proof-text new) :external-format ':utf-8))

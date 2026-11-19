@@ -2,26 +2,26 @@
 
 ;;;; -- Ledger --
 
-;;; What a person decided about their files, kept outside every checkout so
-;;; that a checkout holds nothing but its source. A file marked completed is
-;;; remembered by its whole path with the digest of what it held at that
-;;; moment. It counts as completed for as long as it holds exactly that, so a
-;;; file that anyone changes afterwards is open again by itself. The folders
-;;; a person folded in the list of files are remembered here too.
+;;; The ledger is a file with the decisions that a person made about files. The
+;;; ledger is kept outside all checkouts, so that checkouts only contain source. A
+;;; file marked completed is recorded by its whole path, together with the digest
+;;; of the file content at that moment. The file counts as completed as long as
+;;; the content has the same digest. Files that are changed later are open again.
+;;; The folders folded in the list of files are also recorded here.
 ;;;
-;;; There is one ledger for all folders, so the marks made with the home
-;;; folder open are there when only one checkout inside it is open, and the
-;;; other way round. Each window reads the file again before it writes it, so
-;;; two windows do not undo each other's marks.
+;;; There is one ledger for all folders. Marks made while the home folder is open
+;;; are also present while a checkout inside the home folder is open, and the
+;;; other way round. The file is read again before each write, so that two windows
+;;; do not undo the marks of each other.
 
 (defvar *ledger-directory* nil
-  "The folder the ledger is kept in, or NIL for the person's state folder.")
+  "The folder of the ledger, or NIL for the state folder of the person.")
 
 (defparameter *ledger-name* "marks.sexp"
-  "The name of the ledger's file in its folder. Every other file there is a ledger of one folder from before, which is taken in once.")
+  "The file name of the ledger. All other files in the folder of the ledger are older ledgers of single folders. Each of them is imported once.")
 
 (defstruct ledger
-  "What is remembered, as the FILE it is kept in, the ROOT of the folder open in this window with its closing slash, and, each by whole paths, the files marked COMPLETED with the digest each had then, as BASELINE the digest each file had when first seen, which is kept only where Git does not say what changed, and the FOLDS, the folders folded in the list of files. IMPORTED names the ledgers of one folder from before that were taken in, and SECTIONS holds, by the whole path of a file, the digests of the definitions in it that are completed."
+  "The state recorded in the ledger. FILE is the ledger file. ROOT is the folder open in this window, with the closing slash. COMPLETED is a hash table from the whole paths of the files marked completed to the digests at that moment. BASELINE is a hash table from the whole paths of files to the digests when the files were first seen. BASELINE is only kept for files that are not in a Git checkout. FOLDS are the whole paths of the folders folded in the list of files. IMPORTED are the names of the older ledgers that were imported. SECTIONS is a hash table from the whole path of each file to the digests of the completed definitions in the file."
   (file      nil)
   (root      ""  :type string)
   (completed (make-hash-table :test #'equal) :type hash-table)
@@ -32,7 +32,7 @@
 
 (-> ledger-directory () pathname)
 (defun ledger-directory ()
-  "Return the folder the ledger is kept in: the one set, else unslop's folder under the person's state folder."
+  "Return the folder of the ledger. This is *LEDGER-DIRECTORY* if it is set, or else the unslop folder in the state folder of the person."
   (or *ledger-directory*
       (let ((state (uiop:getenvp "XDG_STATE_HOME")))
         (merge-pathnames "unslop/"
@@ -42,17 +42,17 @@
 
 (-> ledger-pathname () pathname)
 (defun ledger-pathname ()
-  "Return the file the ledger is kept in."
+  "Return the ledger file."
   (merge-pathnames *ledger-name* (ledger-directory)))
 
 (-> ledger--string (t) (or null string))
 (defun ledger--string (object)
-  "Return OBJECT as a string of characters when it is a string, else NIL."
+  "Return OBJECT as a string of characters if it is a string, or else NIL."
   (and (stringp object) (coerce object '(simple-array character (*)))))
 
 (-> ledger--read-file (pathname) (values list boolean))
 (defun ledger--read-file (pathname)
-  "Return the property list the file at PATHNAME holds, and whether it could be read: a file that is not there reads as an empty list, one that does not hold a property list does not read."
+  "Return the property list in the file at PATHNAME, and T if the file could be read. A missing file is read as an empty list. A file that does not contain a property list cannot be read."
   (if (not (probe-file pathname))
       (values nil t)
       (handler-case
@@ -68,7 +68,7 @@
 
 (-> ledger--table (t) hash-table)
 (defun ledger--table (pairs)
-  "Return a table of PAIRS, a list of (NAME . DIGEST) as a ledger file holds them. Anything else in the list is left out."
+  "Return a hash table of PAIRS, which is a list of (NAME . DIGEST) as in a ledger file. Other elements of the list are left out."
   (let ((table (make-hash-table :test #'equal)))
     (when (listp pairs)
       (dolist (pair pairs)
@@ -78,12 +78,12 @@
 
 (-> ledger--strings (t) list)
 (defun ledger--strings (list)
-  "Return the strings of LIST, leaving out anything else."
+  "Return the strings in LIST. Other elements are left out."
   (and (listp list) (mapcar #'ledger--string (remove-if-not #'stringp list))))
 
 (-> ledger--take (ledger list) null)
 (defun ledger--take (ledger plist)
-  "Make LEDGER hold what PLIST, read from the ledger's file, says."
+  "Set the content of LEDGER from PLIST, which has the format of the ledger file."
   (setf (ledger-completed ledger) (ledger--table (getf plist :completed))
         (ledger-baseline ledger)  (ledger--table (getf plist :baseline))
         (ledger-folds ledger)     (ledger--strings (getf plist :folds))
@@ -98,7 +98,7 @@
 
 (-> ledger--import (ledger) boolean)
 (defun ledger--import (ledger)
-  "Take into LEDGER what the ledgers of one folder from before hold that it does not, and return whether there was any such ledger. Each is taken in once and left where it is."
+  "Add to LEDGER the entries from the older ledgers of single folders that LEDGER does not have yet. Return T if there was such a ledger. Each older ledger is imported once and left where it is."
   (let ((found nil))
     (dolist (file (uiop:directory-files (ledger-directory) "*.sexp"))
       (let ((name (file-namestring file)))
@@ -135,7 +135,7 @@
 
 (-> ledger--write (ledger) boolean)
 (defun ledger--write (ledger)
-  "Write LEDGER to its file and return whether that worked. The file is written beside itself and moved into place."
+  "Write LEDGER to the ledger file and return T if the write succeeded. The content is first written to a new file next to the ledger file. The new file is then renamed over the ledger file."
   (let* ((pathname (ledger-file ledger))
          (beside   (make-pathname :type "new" :defaults pathname)))
     (handler-case
@@ -161,10 +161,10 @@
 
 (-> ledger--change (ledger function) boolean)
 (defun ledger--change (ledger change)
-  "Read LEDGER's file again, call CHANGE with no arguments to change LEDGER, and write it, so that what another window wrote in the meantime stays. Return whether the file was written.
+  "Read the ledger file of LEDGER again, call CHANGE with no arguments, and write LEDGER to the file. Changes written by other windows in the meantime are kept. Return T if the file was written.
 
-When the file is there and does not read, it is not written over: the
-change is kept in this window alone."
+If the file exists and cannot be read, the file is not overwritten. The change
+is then only kept in LEDGER."
   (multiple-value-bind (plist read-p) (ledger--read-file (ledger-file ledger))
     (when read-p
       (ledger--take ledger plist))
@@ -173,7 +173,7 @@ change is kept in this window alone."
 
 (-> ledger-open (pathname) ledger)
 (defun ledger-open (root)
-  "Return the ledger as the window for the folder ROOT sees it, read from its file, with the ledgers of one folder from before taken in."
+  "Return the ledger for the folder ROOT, read from the ledger file. Older ledgers of single folders are imported."
   (let* ((name   (uiop:native-namestring (uiop:ensure-directory-pathname root)))
          (ledger (make-ledger :file (ledger-pathname)
                               :root (if (char= #\/ (char name (1- (length name)))) name (format nil "~A/" name)))))
@@ -191,12 +191,12 @@ change is kept in this window alone."
 
 (-> ledger-path (ledger string) string)
 (defun ledger-path (ledger name)
-  "Return the whole path of the file or folder NAME of the folder LEDGER's window has open."
+  "Return the whole path of NAME, which is a file or folder relative to the root of LEDGER."
   (concatenate 'string (ledger-root ledger) name))
 
 (-> ledger-entries (ledger hash-table) list)
 (defun ledger-entries (ledger table)
-  "Return the entries of TABLE, one of LEDGER's, that lie in the folder its window has open, as (NAME . DIGEST) with NAME from that folder."
+  "Return the entries of TABLE that are inside the root of LEDGER, as (NAME . DIGEST). TABLE is one of the tables of LEDGER, and each NAME is relative to the root."
   (let ((root    (ledger-root ledger))
         (entries nil))
     (maphash (lambda (path digest)
@@ -208,13 +208,13 @@ change is kept in this window alone."
 
 (-> ledger-completed-p (ledger string (or null string)) boolean)
 (defun ledger-completed-p (ledger name digest)
-  "Return T when the file NAME was marked completed while it held what DIGEST is the digest of."
+  "Return T if the file NAME was marked completed with the digest DIGEST."
   (let ((marked (gethash (ledger-path ledger name) (ledger-completed ledger))))
     (and marked digest (string= marked digest))))
 
 (-> ledger-mark (ledger string (or null string)) boolean)
 (defun ledger-mark (ledger name digest)
-  "Remember that the file NAME is completed while it holds what DIGEST is the digest of, or forget that it was when DIGEST is NIL. Return whether the ledger could be written."
+  "Mark the file NAME as completed with the digest DIGEST. If DIGEST is NIL, remove the mark. Return T if the ledger could be written."
   (let ((path (ledger-path ledger name)))
     (ledger--change ledger
                     (lambda ()
@@ -224,7 +224,7 @@ change is kept in this window alone."
 
 (-> ledger-note-baseline (ledger list) boolean)
 (defun ledger-note-baseline (ledger pairs)
-  "Remember the digests of PAIRS, (NAME . DIGEST) of files seen for the first time, as what those files held then. Return whether the ledger could be written."
+  "Record the digests in PAIRS as the first content of the files. PAIRS is a list of (NAME . DIGEST) for files seen for the first time. Return T if the ledger could be written."
   (ledger--change ledger
                   (lambda ()
                     (loop for (name . digest) in pairs
@@ -232,12 +232,12 @@ change is kept in this window alone."
 
 (-> ledger-folded-p (ledger string) boolean)
 (defun ledger-folded-p (ledger folder)
-  "Return T when FOLDER, a name from the open folder with its closing slash, is folded in the list of files."
+  "Return T if FOLDER is folded in the list of files. FOLDER is a name relative to the root, with the closing slash."
   (and (member (ledger-path ledger folder) (ledger-folds ledger) :test #'string=) t))
 
 (-> ledger-folded (ledger) list)
 (defun ledger-folded (ledger)
-  "Return the folders folded in the list that lie in the folder LEDGER's window has open, as names from it."
+  "Return the folded folders inside the root of LEDGER, as names relative to the root."
   (let ((root (ledger-root ledger)))
     (sort (loop for path in (ledger-folds ledger)
                 when (and (> (length path) (length root))
@@ -247,7 +247,7 @@ change is kept in this window alone."
 
 (-> ledger-fold (ledger list boolean) boolean)
 (defun ledger-fold (ledger folders folded-p)
-  "Remember each of FOLDERS as folded in the list of files, or as unfolded when FOLDED-P is NIL. Return whether the ledger could be written. Nothing is written when nothing changes."
+  "Record each of FOLDERS as folded in the list of files, or as unfolded if FOLDED-P is NIL. Return T if the ledger could be written. If nothing changes, nothing is written."
   (let ((paths (mapcar (lambda (folder) (ledger-path ledger folder)) folders)))
     (if (if folded-p
             (subsetp paths (ledger-folds ledger) :test #'string=)
@@ -267,7 +267,7 @@ change is kept in this window alone."
 
 (-> ledger-mark-section (ledger string string &key (:completed-p boolean) (:present list)) boolean)
 (defun ledger-mark-section (ledger name digest &key completed-p present)
-  "Remember the definition of the file NAME whose words have DIGEST as completed, or forget that it was unless COMPLETED-P. Marks for definitions no longer among PRESENT, the digests of the file's definitions now, are dropped. Return whether the ledger could be written."
+  "Mark the definition with the digest DIGEST in the file NAME as completed if COMPLETED-P is true, or else remove the mark. PRESENT is a list of the current digests of the definitions in the file. Marks for other definitions are removed. Return T if the ledger could be written."
   (let ((path (ledger-path ledger name)))
     (ledger--change ledger
                     (lambda ()

@@ -2,15 +2,14 @@
 
 ;;;; -- Overlays --
 
-;;; Everything laid over the window, all of it drawn here in the window's own
-;;; manner: the list of commands and the settings, a picker for a choice among
-;;; many, a prompt for one line of text, a panel that shows something the
-;;; channel knows, and the small menus that open at a chip or a button. A
-;;; picker or a prompt opened from the settings returns to them; one overlay
-;;; is drawn at a time, so the ground is dimmed once.
+;;; The views drawn over the window. They are the list of commands, the
+;;; settings, pickers for one choice among many, prompts for one line of text,
+;;; panels with information about the channel, and the small menus that open at
+;;; a chip or a button. A picker or a prompt opened from the settings returns to
+;;; the settings.
 
 (defstruct choice
-  "One thing a menu or a picker offers, with the LABEL it goes by, the DETAIL said about it, the VALUE handed on when it is chosen, and whether it is the CURRENT-P one. A choice with no value is a divider."
+  "One entry of a menu or a picker. LABEL is the name of the entry, and DETAIL is a short description. VALUE is passed on if the entry is chosen. CURRENT-P is true for the entry in force. Choices without a value are dividers."
   (label     ""  :type string)
   (detail    nil :type (or null string))
   (value     nil)
@@ -21,92 +20,92 @@
     :initarg       :kind
     :reader        overlay-kind
     :type          (member :commands :settings :picker :menu :prompt :panel :board)
-    :documentation "Which view this is.")
+    :documentation "The kind of the overlay.")
    (title
     :initarg       :title
     :initform      ""
     :reader        overlay-title
     :type          string
-    :documentation "The words in the window's title bar.")
+    :documentation "The title of the overlay window.")
    (query
     :initarg       :query
     :initform      ""
     :accessor      overlay-query
     :type          string
-    :documentation "What the person typed: the words that narrow a list, or a prompt's answer.")
+    :documentation "The text typed by the person. It narrows a list, or it is the answer to a prompt.")
    (selection
     :initform      0
     :accessor      overlay-selection
     :type          integer
-    :documentation "The index of the highlighted row among those shown.")
+    :documentation "The index of the highlighted row among the rows shown.")
    (scroll
     :initform      0
     :accessor      overlay-scroll
     :type          integer
-    :documentation "How far the content is scrolled: in rows for a list, in units for a panel.")
+    :documentation "The scroll position of the content, in rows for a list and in pixels for a panel.")
    (choices
     :initarg       :choices
     :initform      nil
     :reader        overlay-choices
     :type          list
-    :documentation "What a picker or a menu offers.")
+    :documentation "The choices of a picker or a menu.")
    (action
     :initarg       :action
     :initform      nil
     :reader        overlay-action
     :type          (or null function)
-    :documentation "Called with the chosen value of a picker or a menu, or with a prompt's answer.")
+    :documentation "The function called with the chosen value of a picker or a menu, or with the answer to a prompt.")
    (note
     :initarg       :note
     :initform      nil
     :reader        overlay-note
     :type          (or null string)
-    :documentation "What a prompt asks for, in a sentence, or NIL.")
+    :documentation "A sentence that says what a prompt asks for, or NIL.")
    (content
     :initarg       :content
     :initform      nil
     :accessor      overlay-content
-    :documentation "The block a panel shows, or NIL while it is still being fetched.")
+    :documentation "The block shown in a panel, or NIL while the block is fetched.")
    (tabs
     :initarg       :tabs
     :initform      nil
     :reader        overlay-tabs
     :type          list
-    :documentation "The tabs of a board, each (LABEL COUNT BLOCK): its name, how many things it holds, and what it shows.")
+    :documentation "The tabs of a board. Each tab is a list (LABEL COUNT BLOCK) of the name, the number of items and the block shown.")
    (anchor
     :initarg       :anchor
     :initform      nil
     :reader        overlay-anchor
     :type          list
-    :documentation "Where a menu opens, as (X Y ABOVE-P): its corner, and whether it grows upward from there.")
+    :documentation "The position of a menu, as a list (X Y ABOVE-P). X and Y are a corner of the menu. ABOVE-P is true if the menu grows upward from the corner.")
    (parent
     :initarg       :parent
     :initform      nil
     :reader        overlay-parent
-    :documentation "The overlay to return to when this one is put away, or NIL."))
-  (:documentation "A view laid over the window."))
+    :documentation "The overlay shown again after this overlay is closed, or NIL."))
+  (:documentation "A view drawn over the window."))
 
 (defparameter *overlay-row-height* 46
-  "The height of one row in the list of commands and in the settings.")
+  "The height of a row in the list of commands and in the settings.")
 
 (defparameter *choice-row-height* 30
-  "The height of one row of a picker or a menu.")
+  "The height of a row in a picker or a menu.")
 
 (defparameter *picker-filter-minimum* 9
-  "How many choices a picker has before it offers a field to narrow them.")
+  "The smallest number of choices for which a picker has a search field.")
 
 
 ;;;; -- Opening and Putting Away --
 
 (-> overlay--field (workbench) t)
 (defun overlay--field (workbench)
-  "Return the native field an overlay's text is typed into, or NIL before the window has one."
+  "Return the native text field of the overlays, or NIL if the window has no field yet."
   (let ((stage (workbench-stage workbench)))
     (and stage (third (stage-natives stage)))))
 
 (-> overlay--focus (workbench) null)
 (defun overlay--focus (workbench)
-  "Give the keyboard to the overlay's field, to the stage when it has none, or back to the composer when no overlay is shown."
+  "Give the keyboard focus to the field of the overlay shown, or to the stage if the overlay has no field. If no overlay is shown, give the focus to the composer."
   (let ((stage   (workbench-stage workbench))
         (overlay (workbench-overlay workbench)))
     (when (and stage (stage-natives stage))
@@ -122,7 +121,7 @@
 
 (-> overlay-open (workbench overlay) null)
 (defun overlay-open (workbench overlay)
-  "Lay OVERLAY over WORKBENCH's window and give it the keyboard."
+  "Show OVERLAY over the window of WORKBENCH and give it the keyboard focus."
   (setf (workbench-overlay workbench) overlay)
   (let ((field (overlay--field workbench)))
     (when field
@@ -135,7 +134,7 @@
 
 (-> workbench-show-overlay (workbench (or null keyword)) null)
 (defun workbench-show-overlay (workbench kind)
-  "Lay the commands or the settings, as KIND says, over WORKBENCH's window, or put every overlay away when KIND is NIL."
+  "Show the commands or the settings over the window of WORKBENCH, as selected by KIND. Close all overlays if KIND is NIL."
   (if kind
       (overlay-open workbench
                     (make-instance 'overlay
@@ -147,7 +146,7 @@
                                              "Settings"))))
       (let ((field (overlay--field workbench)))
         (setf (workbench-overlay workbench) nil)
-        ;; What was typed, which may be a key, does not stay behind in the field.
+        ;; Clear the field, because the typed text can be a key.
         (when field
           (setf (lightfast:value field) ""))
         (overlay--focus workbench)
@@ -156,7 +155,7 @@
 
 (-> overlay-dismiss (workbench) null)
 (defun overlay-dismiss (workbench)
-  "Put the overlay shown away, returning to the one it was opened from when there is one."
+  "Close the overlay shown. Show the overlay that it was opened from, if there is one."
   (let* ((overlay (workbench-overlay workbench))
          (parent  (and overlay (overlay-parent overlay))))
     (if parent
@@ -166,20 +165,20 @@
 
 (-> overlay--returning (workbench) (or null overlay))
 (defun overlay--returning (workbench)
-  "Return the overlay a picker or a prompt opened now should return to: the settings, when they are what is shown."
+  "Return the overlay of the settings if it is shown, or NIL."
   (let ((overlay (workbench-overlay workbench)))
     (and overlay (eq (overlay-kind overlay) ':settings) overlay)))
 
 (-> workbench-pick (workbench list function &key (:title string)) null)
 (defun workbench-pick (workbench choices action &key (title "Choose"))
-  "Offer CHOICES in a window titled TITLE and call ACTION with the value of the one chosen."
+  "Show CHOICES in a picker titled TITLE. Call ACTION with the value of the chosen entry."
   (let ((picker (make-instance 'overlay
                                :kind    ':picker
                                :title   title
                                :choices choices
                                :action  action
                                :parent  (overlay--returning workbench))))
-    ;; The list opens on the choice in force.
+    ;; Highlight the choice in force.
     (setf (overlay-selection picker) (or (position-if #'choice-current-p choices) 0))
     (overlay-open workbench picker))
   nil)
@@ -187,25 +186,26 @@
 (-> workbench-menu
     (workbench list &key (:x integer) (:y integer) (:above-p boolean) (:action function)) null)
 (defun workbench-menu (workbench choices &key (x 0) (y 0) above-p (action #'funcall))
-  "Open a menu of CHOICES with its corner at X, Y, growing upward when ABOVE-P.
+  "Open a menu of CHOICES with a corner at X, Y. The menu grows upward if ABOVE-P is true.
 
-ACTION is called with the value of the choice taken; without one each
-choice's value is a function, and that is called."
+ACTION is called with the value of the chosen entry. The default ACTION
+calls the value as a function."
   (let ((menu (make-instance 'overlay
                              :kind    ':menu
                              :choices choices
                              :action  action
                              :anchor  (list x y above-p))))
-    ;; Nothing is highlighted until the pointer or a key says what.
+    ;; Highlight nothing until the pointer moves or a key is pressed.
     (setf (overlay-selection menu) -1)
     (overlay-open workbench menu))
   nil)
 
 (-> workbench-ask (workbench string function &key (:note (or null string)) (:initial string)) null)
 (defun workbench-ask (workbench title action &key note (initial ""))
-  "Ask for one line of text in a window titled TITLE, starting from INITIAL, and call ACTION with what was entered.
+  "Ask for one line of text in a prompt titled TITLE. Call ACTION with the text entered.
 
-NOTE says in a sentence what is asked for."
+The field starts with the text INITIAL. NOTE is a sentence that says what is
+asked for."
   (overlay-open workbench
                 (make-instance 'overlay
                                :kind   ':prompt
@@ -218,7 +218,7 @@ NOTE says in a sentence what is asked for."
 
 (-> workbench-show-panel (workbench string list) null)
 (defun workbench-show-panel (workbench title blocks)
-  "Show BLOCKS in a window titled TITLE; an empty list of BLOCKS says the content is still on its way."
+  "Show BLOCKS in a panel titled TITLE. If BLOCKS is empty, the panel is shown as waiting for the content."
   (overlay-open workbench
                 (make-instance 'overlay
                                :kind    ':panel
@@ -233,7 +233,7 @@ NOTE says in a sentence what is asked for."
 
 (-> workbench-show-board (workbench string list) null)
 (defun workbench-show-board (workbench title tabs)
-  "Show a board titled TITLE: TABS down its left side, each (LABEL COUNT . BLOCKS), and the blocks of the chosen one beside them."
+  "Show a board titled TITLE. TABS is a list of (LABEL COUNT . BLOCKS). The tabs are drawn down the left side, and the blocks of the chosen tab are drawn beside them."
   (overlay-open workbench
                 (make-instance 'overlay
                                :kind  ':board
@@ -250,7 +250,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-choose (workbench choice) null)
 (defun overlay-choose (workbench choice)
-  "Take CHOICE from the picker or menu shown: put it away, then do what the choice stands for."
+  "Close the picker or menu shown and call the action of the overlay with the value of CHOICE. Nothing happens for a divider."
   (let ((action (overlay-action (workbench-overlay workbench))))
     (when (choice-value choice)
       (overlay-dismiss workbench)
@@ -260,7 +260,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-accept (workbench) null)
 (defun overlay-accept (workbench)
-  "Take the prompt's answer: put the prompt away, then hand the answer on."
+  "Close the prompt shown and call the action of the prompt with the answer."
   (let* ((overlay (workbench-overlay workbench))
          (action  (overlay-action overlay))
          (answer  (overlay-query overlay)))
@@ -274,7 +274,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-shown-choices (overlay) list)
 (defun overlay-shown-choices (overlay)
-  "Return the choices of OVERLAY that its query leaves: all of a menu's, and of a picker's those whose label or detail holds what was typed."
+  "Return the choices of OVERLAY that match the query. All choices of a menu are returned. For a picker, only the choices whose label or detail contains the query are returned."
   (let ((query (overlay-query overlay)))
     (if (or (eq (overlay-kind overlay) ':menu) (zerop (length query)))
         (overlay-choices overlay)
@@ -286,13 +286,13 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay--filter-p (overlay) boolean)
 (defun overlay--filter-p (overlay)
-  "Return T when OVERLAY is a picker with enough choices to be worth narrowing."
+  "Return T if OVERLAY is a picker with enough choices for a search field."
   (and (eq (overlay-kind overlay) ':picker)
        (>= (length (overlay-choices overlay)) *picker-filter-minimum*)))
 
 (-> overlay--note-height (overlay integer) integer)
 (defun overlay--note-height (overlay width)
-  "Return the height OVERLAY's note takes when set WIDTH wide, zero when it has none."
+  "Return the height of the note of OVERLAY at WIDTH, or zero if there is no note."
   (let ((note (overlay-note overlay)))
     (if (and note (plusp (length note)))
         (paragraph-layout (make-paragraph (list (make-span note nil)) :style (text-style ':small))
@@ -301,14 +301,14 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay--label-width (overlay) integer)
 (defun overlay--label-width (overlay)
-  "Return the width of the widest label among OVERLAY's choices."
+  "Return the width of the widest label among the choices of OVERLAY."
   (let ((style (text-style ':label-bold)))
     (loop for choice in (overlay-choices overlay)
           maximize (text-width (choice-label choice) style))))
 
 (-> overlay--menu-size (overlay) (values integer integer))
 (defun overlay--menu-size (overlay)
-  "Return the width and height of OVERLAY's menu: as wide as its widest label and detail, a divider half a row high."
+  "Return the width and the height of the menu OVERLAY. The width fits the widest label and the widest detail. Dividers are a third of a row high."
   (let* ((choices (overlay-choices overlay))
          (detail  (loop for choice in choices
                         maximize (if (choice-detail choice)
@@ -322,7 +322,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-box (overlay integer integer) list)
 (defun overlay-box (overlay stage-width stage-height)
-  "Return the (X Y WIDTH HEIGHT) OVERLAY's window takes on a stage of the given size."
+  "Return the box (X Y WIDTH HEIGHT) of the window of OVERLAY on a stage of the given size."
   (flet ((centered (width height)
            (list (floor (- stage-width width) 2) (max 32 (floor (- stage-height height) 3)) width height)))
     (ecase (overlay-kind overlay)
@@ -357,7 +357,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-input-box (overlay integer integer) list)
 (defun overlay-input-box (overlay stage-width stage-height)
-  "Return the (X Y WIDTH HEIGHT) of OVERLAY's field, or NIL when it has none."
+  "Return the box (X Y WIDTH HEIGHT) of the field of OVERLAY, or NIL if OVERLAY has no field."
   (destructuring-bind (x y width height) (overlay-box overlay stage-width stage-height)
     (declare (ignore height))
     (case (overlay-kind overlay)
@@ -377,14 +377,14 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay--paint-layer (workbench stage overlay) null)
 (defun overlay--paint-layer (workbench stage overlay)
-  "Draw OVERLAY: the dimmed ground under it, its window, and what its kind shows in it."
+  "Draw OVERLAY, which consists of the dimmed ground under it, the window and the content of the window."
   (destructuring-bind (x y width height) (overlay-box overlay (stage-width stage) (stage-height stage))
     (let* ((kind   (overlay-kind overlay))
            (menu-p (eq kind ':menu))
            (top-p  (eq overlay (workbench-overlay workbench)))
            (field  (overlay-input-box overlay (stage-width stage) (stage-height stage))))
-      ;; A menu leaves the window readable around it; everything else dims
-      ;; what lies beneath, an overlay it was opened from included.
+      ;; Dim everything beneath the overlay, including the overlay that it
+      ;; was opened from. Menus are drawn without dimming.
       (unless menu-p
         (paint-dither 0 0 :width (stage-width stage) :height (stage-height stage) :step 3))
       (stage-region stage (list ':overlay-ground kind)
@@ -410,7 +410,7 @@ NOTE says in a sentence what is asked for."
                         :tooltip "Close (Esc)"))
         (when (and field (not (eq kind ':prompt)))
           (paint-frame (+ x 12) (+ y bar 10) :width (- width 24) :height 36)
-          ;; The field itself is with the overlay on top; beneath it, what was typed is drawn.
+          ;; Only the top overlay has the field. Beneath it, draw the typed text.
           (unless top-p
             (let ((query (overlay-query overlay)))
               (paint-text-in (if (plusp (length query)) query "Type to search")
@@ -447,7 +447,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-paint (workbench stage) null)
 (defun overlay-paint (workbench stage)
-  "Draw the overlay shown over everything else, on top of the overlays it was opened from, each dimmed by the one above it."
+  "Draw the overlay shown on top of the overlays that it was opened from. Each layer is dimmed by the layer above it."
   (let ((layers nil))
     (loop for overlay = (workbench-overlay workbench) then (overlay-parent overlay)
           while overlay
@@ -461,7 +461,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay--move (overlay integer) null)
 (defun overlay--move (overlay step)
-  "Move OVERLAY's highlight STEP rows among its choices, passing over dividers and stopping at either end."
+  "Move the highlight of OVERLAY by STEP rows. Dividers are skipped, and the highlight stops at either end."
   (let* ((choices (overlay-shown-choices overlay))
          (count   (length choices))
          (index   (overlay-selection overlay)))
@@ -477,7 +477,7 @@ NOTE says in a sentence what is asked for."
 
 (-> overlay-key (workbench key-event) boolean)
 (defun overlay-key (workbench event)
-  "Handle a key while an overlay is shown and return whether it was used."
+  "Handle the key EVENT for the overlay shown. Return T if the key was used."
   (let* ((overlay (workbench-overlay workbench))
          (kind    (overlay-kind overlay))
          (key     (key-event-key event)))

@@ -2,21 +2,23 @@
 
 ;;;; -- Activity --
 
-;;; What runs beside the conversation: child agents, commands, evaluations
-;;; and model calls the agent started and has not heard back from. Each kind
-;;; is listed under its name, and a kind with nothing running is not named at
-;;; all. A row can be cancelled with its cross; its menu copies the call that
-;;; cancels it, as the terminal offers.
+;;; The list of jobs that run beside the conversation. These are the child
+;;; agents, commands, evaluations and model calls started by the agent that
+;;; have not finished yet. The jobs are grouped by kind under a heading, and
+;;; only kinds with running jobs are listed. A person cancels a job with the
+;;; cross at the end of the row or copies the cancel call from the menu.
 
 (defparameter *activity-row-height* 24
-  "The height of one running thing in the activity list.")
+  "The height of one job row in the activity list.")
 
 (defparameter *activity-heading-height* 22
-  "The height of the name over each kind of activity.")
+  "The height of the heading above each kind of activity.")
 
 (-> activity--kind (list) keyword)
 (defun activity--kind (job)
-  "Return which kind of activity JOB is, by what runs it: a tool's name has a dot in it, an agent's role has none."
+  "Return the kind of activity of JOB, which is decided by the role of the job.
+
+Tool names contain a dot. Agent roles do not contain a dot."
   (let ((role (princ-to-string (or (portable-get job "role") ""))))
     (cond
       ((null (position #\. role))
@@ -32,7 +34,9 @@
 
 (-> activity-sections (workbench) list)
 (defun activity-sections (workbench)
-  "Return the live jobs of WORKBENCH's channel by kind, as (NAME . JOBS), leaving out every kind that has none."
+  "Return the live jobs of the channel of WORKBENCH grouped by kind, as a list of (NAME . JOBS) pairs.
+
+Kinds without jobs are left out."
   (let ((jobs (workbench-live-jobs workbench)))
     (loop for (kind . name) in '((:agents . "Agents")
                                  (:commands . "Commands")
@@ -47,23 +51,23 @@
 
 (-> activity-height (workbench &key (:most integer)) integer)
 (defun activity-height (workbench &key (most most-positive-fixnum))
-  "Return the height the activity list needs, at most MOST units."
+  "Return the height of the activity list, limited to MOST units."
   (min most
        (loop for (nil . jobs) in (activity-sections workbench)
              sum (+ *activity-heading-height* (* *activity-row-height* (length jobs))))))
 
 (-> activity--menu (workbench string) null)
 (defun activity--menu (workbench identifier)
-  "Open the menu of what can be done with the job IDENTIFIER at the pointer."
+  "Open the menu of the job IDENTIFIER at the pointer."
   (let ((stage (workbench-stage workbench)))
     (workbench-menu
      workbench
      (list (make-choice :label "Cancel"
                         :value (lambda () (workbench-cancel-job workbench identifier)))
-           (make-choice :label "Copy the call that cancels it"
+           (make-choice :label "Copy the cancel call"
                         :value (lambda ()
                                  (lightfast:copy-text (format nil "(job.cancel :id ~S)" identifier))))
-           (make-choice :label "Copy its identifier"
+           (make-choice :label "Copy the identifier"
                         :value (lambda () (lightfast:copy-text identifier))))
      :x (stage-pointer-x stage)
      :y (stage-pointer-y stage)))
@@ -71,7 +75,10 @@
 
 (-> activity--paint-row (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
 (defun activity--paint-row (workbench stage job &key x y width)
-  "Draw one running JOB: the working mark, its identifier, what runs it, what it is doing, how long it has run, and the cross that cancels it."
+  "Draw one row for JOB.
+
+The row contains the working mark, the identifier, the role, the current activity,
+the elapsed time and a cancel button with a cross."
   (let* ((meta       (text-style ':meta))
          (identifier (portable-string (portable-get job "id")))
          (role       (princ-to-string (or (portable-get job "role") "job")))
@@ -122,7 +129,9 @@
 
 (-> activity-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun activity-paint (workbench stage &key x y width height)
-  "Draw the activity list in the box: each kind's name, then one row for everything of that kind that runs. What does not fit is counted in a last line."
+  "Draw the activity list in the box. Each kind has a heading and one row for each running job of that kind.
+
+The number of jobs that do not fit is shown in the last line."
   (let ((bottom  (+ y height))
         (row-y   y)
         (dropped 0))

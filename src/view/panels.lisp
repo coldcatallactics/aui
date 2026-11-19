@@ -2,18 +2,18 @@
 
 ;;;; -- Panels --
 
-;;; What the channel and its workspace know, each shown in a window of its
-;;; own instead of printed into the conversation: the agenda, the plan, what
-;;; is remembered, and the output of a command that only reports.
+;;; Panels and boards with information about the channel and the workspace.
+;;; They show the agenda, the plan, the memories and the output of commands
+;;; that only report something.
 
 (-> panel--line (string &key (:style text-style) (:margin-bottom integer)) text-block)
 (defun panel--line (text &key (style (text-style ':meta)) (margin-bottom 10))
-  "Return a block of TEXT in STYLE, the interface's small voice by default."
+  "Return a block of TEXT in STYLE. The default STYLE is the small style of the interface."
   (make-text-block (list (make-span text nil)) :style style :margin-bottom margin-bottom))
 
 (-> panel--empty (string) list)
 (defun panel--empty (text)
-  "Return the blocks of a panel that has nothing to list, saying so with TEXT."
+  "Return the blocks of an empty panel, which contain only TEXT."
   (list (panel--line text :style (text-style ':small :face ':serif-italic))))
 
 
@@ -21,7 +21,7 @@
 
 (-> panel--card (list) box-block)
 (defun panel--card (blocks)
-  "Return a card, a framed box, holding BLOCKS."
+  "Return a card, which is a framed box that contains BLOCKS."
   (make-instance 'box-block
                  :children      blocks
                  :padding-x     16
@@ -30,7 +30,7 @@
 
 (-> panel--card-head (list) text-block)
 (defun panel--card-head (parts)
-  "Return the line at the head of a card from PARTS, each a string or a (TEXT STYLE) list, set apart by middle dots."
+  "Return the head line of a card, made of PARTS. Each part is a string or a list (TEXT STYLE). The parts are separated by middle dots."
   (make-text-block (loop for (part . more) on (remove nil parts)
                          collect (if (consp part)
                                      (make-span (first part) (second part))
@@ -42,9 +42,11 @@
 
 (-> panel--tabs (list list function) list)
 (defun panel--tabs (names things card)
-  "Return the tabs of a board over THINGS: one for all of them, then one for each of NAMES, a list of (KEY . LABEL), holding the things whose :STATUS is KEY, each drawn by the function CARD.
+  "Return the tabs of a board for THINGS. The first tab contains all THINGS.
 
-A tab with nothing in it says so."
+NAMES is a list of (KEY . LABEL). Each entry adds a tab named LABEL, which
+contains the things whose :STATUS is KEY. The function CARD returns the card
+of a thing. Empty tabs contain a short note."
   (flet ((tab (label members)
            (list* label
                   (length members)
@@ -61,7 +63,7 @@ A tab with nothing in it says so."
 
 (-> panel--agenda-card (list) box-block)
 (defun panel--agenda-card (item)
-  "Return the card of the agenda ITEM: what it is and how it stands at its head, its text as Markdown, and the memories attached to it."
+  "Return the card of the agenda ITEM. The head line contains the status, the identifier and the number of memories of the item. The text of the item follows as Markdown."
   (let ((status (getf item :status)))
     (panel--card
      (append
@@ -100,7 +102,7 @@ A tab with nothing in it says so."
 
 (-> panel--shown-p (workbench string) boolean)
 (defun panel--shown-p (workbench title)
-  "Return T while the panel titled TITLE is the overlay shown."
+  "Return T if the overlay shown is the panel titled TITLE."
   (let ((overlay (workbench-overlay workbench)))
     (and overlay
          (eq (overlay-kind overlay) ':panel)
@@ -108,14 +110,14 @@ A tab with nothing in it says so."
 
 (-> panel--show-read (workbench string &key (:read function) (:show function)) null)
 (defun panel--show-read (workbench title &key read show)
-  "Open a panel titled TITLE at once, and call SHOW with what READ returns once READ, run off this thread, has returned."
+  "Open an empty panel titled TITLE. Run READ on another thread, and call SHOW with the value of READ."
   (workbench-show-panel workbench title nil)
   (workbench-run-aside workbench (list ':read title show) read)
   nil)
 
 (-> panel-take-read (workbench list &key (:value t) (:report (or null string))) null)
 (defun panel-take-read (workbench request &key value report)
-  "Show VALUE, read for the panel REQUEST opened, when that panel still waits for it; REPORT says why nothing was read."
+  "Show VALUE in the panel opened by REQUEST, if that panel is still shown. REPORT is the reason why nothing was read, or NIL."
   (destructuring-bind (title show) (rest request)
     (when (panel--shown-p workbench title)
       (if report
@@ -125,7 +127,7 @@ A tab with nothing in it says so."
 
 (-> panel-show-agenda (workbench) null)
 (defun panel-show-agenda (workbench)
-  "Show the agenda of the workspace the channel works in as a board: a tab for each state an item can be in, and the items as cards."
+  "Show the agenda of the workspace of the channel as a board. The items are shown as cards, on one tab for each status."
   (let* ((directory (workbench-directory workbench))
          (title     (format nil "Agenda of ~A" (short-directory directory))))
     (flet ((show (items)
@@ -151,7 +153,7 @@ A tab with nothing in it says so."
 
 (-> panel--memory-card (list) box-block)
 (defun panel--memory-card (memory)
-  "Return the card of MEMORY: how it stands and where it is from at its head, its title, why it may no longer hold, and what it says as Markdown."
+  "Return the card of MEMORY. The head line contains the status, scope, date and identifier of the memory. The title, the summary of a stale or unverified memory, the content as Markdown and the provenance follow."
   (let ((status (getf memory :status)))
     (panel--card
      (append
@@ -191,7 +193,7 @@ A tab with nothing in it says so."
 
 (-> panel-show-memories (workbench) null)
 (defun panel-show-memories (workbench)
-  "Show what is remembered for the workspace the channel works in as a board: a tab for each state a memory can be in, and the memories as cards."
+  "Show the memories of the workspace of the channel as a board. The memories are shown as cards, on one tab for each status."
   (let ((directory (workbench-directory workbench)))
     (flet ((show (memories)
              (workbench-show-board workbench
@@ -212,7 +214,7 @@ A tab with nothing in it says so."
 
 (-> panel-show-output (workbench string string) null)
 (defun panel-show-output (workbench title operation)
-  "Show what the channel's OPERATION reports in a window titled TITLE, without printing it into the conversation."
+  "Show the report of the operation OPERATION of the channel in a panel titled TITLE."
   (let ((session (workbench-session workbench)))
     (cond
       ((and session (workbench-attached-p workbench))
@@ -226,7 +228,7 @@ A tab with nothing in it says so."
 
 (-> panel-take-output (workbench string string) null)
 (defun panel-take-output (workbench title text)
-  "Put TEXT, which the channel reported, into the panel titled TITLE when that is still the one shown."
+  "Put TEXT into the panel titled TITLE, if that panel is still shown."
   (let ((overlay (workbench-overlay workbench)))
     (when (panel--shown-p workbench title)
       (setf (overlay-content overlay)
@@ -245,7 +247,7 @@ A tab with nothing in it says so."
 
 (-> panel-show-plan (workbench) null)
 (defun panel-show-plan (workbench)
-  "Show the plan the agent keeps: its latest update in the conversation, or what the channel reports when none is in view."
+  "Show the plan of the agent. Use the latest plan update in the conversation, or ask the channel for the plan if there is no update."
   (let ((update (find-if (lambda (entry)
                            (and (typep entry 'tool-entry) (string= (tool-entry-name entry) "plan.update")))
                          (transcript-entries (workbench-transcript workbench))

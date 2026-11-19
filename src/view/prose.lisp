@@ -2,19 +2,19 @@
 
 ;;;; -- Prose --
 
-;;; Markdown's nodes given their typography: the blocks an answer is drawn
-;;; from. Emphasis is weight and slope; code among prose is the typewriter
-;;; face in blue; a link is underlined blue.
+;;; The typography of Markdown nodes, which gives the blocks of an answer.
+;;; Emphasis is set in a bold or italic face. Code among prose is set in the
+;;; typewriter face in blue. Links are underlined and blue.
 
 (defparameter *prose-paragraph-gap* 12
-  "Space between two paragraphs of an answer.")
+  "The space between two paragraphs of an answer.")
 
 (defparameter *prose-item-indent* 26
-  "How far each level of a list is set in.")
+  "The indentation of one level of a list.")
 
 (-> prose--inline-style (text-style list) (or null text-style))
 (defun prose--inline-style (base properties)
-  "Return the style of an inline node with PROPERTIES inside text set in BASE, or NIL when it is BASE itself."
+  "Return the style of an inline node that has PROPERTIES inside text set in BASE, or NIL if the style is BASE."
   (let ((bold-p   (getf properties :bold))
         (italic-p (getf properties :italic))
         (code-p   (getf properties :code))
@@ -26,7 +26,7 @@
             (code-p
              (let ((code (text-style ':code)))
                (setf (text-style-face style) (face-variant ':mono :bold-p bold-p :italic-p italic-p)
-                     ;; Inline code keeps the line it sits in: a little smaller, the same leading.
+                     ;; Inline code is a little smaller than the text and has the same leading.
                      (text-style-size style) (max 11 (- (text-style-size base) 3))
                      (text-style-line-height style) (max (text-style-line-height base)
                                                          (text-style-line-height code)))))
@@ -56,7 +56,8 @@
 
 (-> prose--table (list list) table-block)
 (defun prose--table (header rows)
-  "Return the table block of HEADER cells and ROWS of cells, each cell a list of inline nodes."
+  "Return the table block made from HEADER and ROWS. HEADER is a list of cells, ROWS is a list of
+lists of cells, and a cell is a list of inline nodes."
   (let ((bold (text-style ':list-bold))
         (body (text-style ':list)))
     (make-instance 'table-block
@@ -73,9 +74,9 @@
 
 (-> prose-blocks (string &key (:style text-style) (:breaks-p boolean)) list)
 (defun prose-blocks (text &key (style (text-style ':body)) breaks-p)
-  "Return the blocks of the Markdown TEXT, its running text set in STYLE.
+  "Return the blocks of the Markdown TEXT, with the running text set in STYLE.
 
-BREAKS-P keeps the line breaks a person typed inside a paragraph."
+If BREAKS-P is true, the line breaks inside a paragraph are kept."
   (let ((blocks nil))
     (dolist (node (markdown-blocks text :breaks-p breaks-p))
       (push
@@ -131,14 +132,13 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 ;;;; -- Code Highlighting --
 
-;;; Code is colored by Autolith's highlighter where it knows the language,
-;;; each role in one of the theme's inks. Where it does not, a lighter pass
-;;; of AUI's own sets defining words bold in plum, strings green and comments
-;;; italic.
+;;; Code is colored by the highlighter of Autolith if Autolith has one for the language.
+;;; Each role gets one of the inks of the theme. Other languages get a simpler
+;;; pass by AUI: defining words are bold plum, strings green and comments italic.
 
 (-> code-role-style (keyword) (or null text-style))
 (defun code-role-style (role)
-  "Return the style code of the highlighter's ROLE is set in, or NIL for the code face as it is."
+  "Return the style of code that has the highlighter role ROLE, or NIL for the plain code style."
   (case role
     ((:syntax-keyword :syntax-heading)
      (text-style ':code :face ':mono-bold :color *plum*))
@@ -156,7 +156,7 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
      (text-style ':code :color *green*))
     ((:elision :prompt)
      (text-style ':code :face ':mono-italic))
-    ;; Parentheses by depth: the outermost in ink, then each accent in turn.
+    ;; Parentheses are colored by depth. The outermost are ink, deeper ones are accents.
     (:syntax-parenthesis-2
      (text-style ':code :color *blue*))
     (:syntax-parenthesis-3
@@ -172,7 +172,10 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 (-> code--role-spans (list &key (:plain (or null text-style))) list)
 (defun code--role-spans (parts &key plain)
-  "Return the spans of PARTS, a list of (ROLE . TEXT), each in its role's style and plain text in PLAIN. Neighbours in one style join."
+  "Return the spans of PARTS, a list of (ROLE . TEXT) pairs.
+
+Each part is set in the style of its role, or in PLAIN if the role has no style.
+Neighbouring parts of the same role are joined into one span."
   (let ((spans nil)
         (roles nil))
     (loop for (role . text) in parts
@@ -191,11 +194,13 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
     "func" "const" "var" "for" "while" "else" "struct" "enum" "impl" "pub" "use" "match" "export"
     "async" "await" "static" "void" "public" "private" "interface" "type" "package" "elif" "try"
     "except" "raise" "with" "as" "in" "not" "and" "or" "then" "fi" "do" "done" "end")
-  "Words set bold in code, across the languages agents most often write.")
+  "A list of the words set bold in code, taken from the languages that agents write most often.")
 
 (-> code--comment-start (string (or null string)) (or null integer))
 (defun code--comment-start (line language)
-  "Return where a comment begins on LINE of LANGUAGE, or NIL. Lisp comments start at a semicolon, most others at // or #."
+  "Return the position of the start of a comment on LINE of LANGUAGE, or NIL if there is none.
+
+Lisp comments start at a semicolon. Comments of most other languages start at // or #."
   (let ((lisp-p (member language '("lisp" "common-lisp" "cl" "elisp" "emacs-lisp" "scheme" "clojure")
                         :test #'equal)))
     (cond
@@ -210,7 +215,9 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 (-> code--string-end (string integer) integer)
 (defun code--string-end (source start)
-  "Return the position after the string literal that opens at START in SOURCE, the end of SOURCE when it is not closed."
+  "Return the position after the string literal that starts at START in SOURCE.
+
+If the string literal is not closed, return the length of SOURCE."
   (let ((quote (char source start)))
     (loop for index from (1+ start) below (length source)
           do (cond
@@ -222,7 +229,10 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 (-> code-spans (string (or null string)) list)
 (defun code-spans (code language)
-  "Return the spans of CODE in LANGUAGE, colored by Autolith's highlighter when it knows the language and by AUI's lighter pass when it does not."
+  "Return the colored spans of CODE in LANGUAGE.
+
+The code is colored by the highlighter of Autolith if Autolith has one for LANGUAGE.
+Otherwise, the code is colored by the simpler pass of AUI."
   (let ((parts (and language (source-highlight code :language language))))
     (if parts
         (code--role-spans parts)
@@ -230,10 +240,10 @@ BREAKS-P keeps the line breaks a person typed inside a paragraph."
 
 (-> edit-spans (string string &key (:pathname (or null string))) list)
 (defun edit-spans (old new &key pathname)
-  "Return the spans of the edit that replaced OLD with NEW as a numbered diff, or NIL when Autolith's renderer cannot show it.
+  "Return the spans of a numbered diff that replaces OLD with NEW, or NIL if Autolith cannot render the edit.
 
-A line's gutter says whether it was removed or added, in red or green, and
-so does its plain text; what the highlighter recognizes keeps its own ink."
+The gutter and the plain text of removed lines are red. The gutter and the plain
+text of added lines are green. Highlighted code has the ink of its role."
   (let ((rows (edit-highlight old new :pathname pathname)))
     (and rows
          (loop for (row . more) on rows
@@ -250,7 +260,7 @@ so does its plain text; what the highlighter recognizes keeps its own ink."
 
 (-> patch-p (string) boolean)
 (defun patch-p (text)
-  "Return T when TEXT reads as a unified diff: it has a hunk header and lines that add or remove."
+  "Return T if TEXT is a unified diff. A unified diff has a hunk header and added or removed lines."
   (let ((lines (markdown-lines text)))
     (and (some (lambda (line)
                  (and (> (length line) 3) (string= "@@ " line :end2 3)))
@@ -262,7 +272,9 @@ so does its plain text; what the highlighter recognizes keeps its own ink."
 
 (-> patch-spans (string) list)
 (defun patch-spans (text)
-  "Return the spans of the unified diff TEXT: removed lines red, added ones green, hunk headers blue, file headers bold."
+  "Return the spans of the unified diff TEXT.
+
+Removed lines are red, added lines are green, hunk headers are blue and file headers are bold."
   (let ((removed (text-style ':code :color *red*))
         (added   (text-style ':code :color *green*))
         (hunk    (text-style ':code :color *blue*))
@@ -288,13 +300,15 @@ so does its plain text; what the highlighter recognizes keeps its own ink."
 
 (-> code--light-spans (string (or null string)) list)
 (defun code--light-spans (code language)
-  "Return the spans of CODE in LANGUAGE: comments italic, defining words bold plum, strings green, the rest plain."
+  "Return the spans of CODE in LANGUAGE.
+
+Comments are italic, defining words are bold plum, strings are green and the rest is plain."
   (let ((bold   (text-style ':code :face ':mono-bold :color *plum*))
         (italic (text-style ':code :face ':mono-italic))
         (quoted (text-style ':code :color *green*))
         (spans  nil))
     (flet ((emit (text style)
-             ;; Neighbours in one style join, so a line of code is a few runs, not one a word.
+             ;; Neighbouring text of the same style is joined into one span.
              (when (plusp (length text))
                (let ((previous (first spans)))
                  (if (and previous (eq (span-style previous) style))

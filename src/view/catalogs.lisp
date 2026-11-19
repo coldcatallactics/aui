@@ -2,16 +2,16 @@
 
 ;;;; -- Catalogs --
 
-;;; The two lists a channel sends about itself, each in an overlay: its
-;;; commands, found by typing, and its settings, each with its current value
-;;; to change in place. They stand in for the terminal's pickers and its
-;;; settings page.
+;;; The list of commands and the list of settings of a channel, each shown in
+;;; an overlay. Commands are found by typing. Settings are shown with the
+;;; current value, which can be changed in place. These overlays replace the
+;;; pickers and the settings page of the terminal.
 
 ;;;; -- Commands --
 
 (-> catalog--command-rows (workbench string) list)
 (defun catalog--command-rows (workbench query)
-  "Return the operations to list for QUERY: commands first, then tools, those not usable from a window left out."
+  "Return the operations that match QUERY, with the commands before the tools. Commands that only work in the terminal are left out."
   (let ((rows (remove-if (lambda (row)
                            (member (portable-get row "name") *terminal-only-commands* :test #'equal))
                          (workbench-operations workbench))))
@@ -27,7 +27,7 @@
 
 (-> catalog--run (workbench list) null)
 (defun catalog--run (workbench row)
-  "Do what choosing the operation ROW means: open the window's own view, ask for its argument, or run it."
+  "Run the operation ROW. For commands of the interface, a view of the window is opened. Tools are put into the composer. For commands with an argument, the argument is asked for first."
   (let ((name    (portable-get row "name"))
         (choices (mapcar #'princ-to-string (portable-items (portable-get row "choices")))))
     (workbench-show-overlay workbench nil)
@@ -67,7 +67,7 @@
 
 (-> catalog--scroll (overlay integer integer) function)
 (defun catalog--scroll (overlay count visible)
-  "Return the wheel handler of a list of COUNT rows of which VISIBLE fit: it scrolls OVERLAY and keeps the highlight among the rows shown."
+  "Return a wheel handler for a list of COUNT rows, of which VISIBLE rows fit. The handler scrolls OVERLAY and moves the highlight into the rows shown."
   (lambda (vertical horizontal)
     (declare (ignore horizontal))
     (let ((scroll (max 0 (min (max 0 (- count visible)) (+ (overlay-scroll overlay) vertical)))))
@@ -78,14 +78,14 @@
 (-> catalog-paint-commands
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun catalog-paint-commands (workbench stage overlay &key x y width height)
-  "Draw the list of operations matching OVERLAY's query."
+  "Draw the list of operations that match the query of OVERLAY."
   (let* ((rows    (catalog--command-rows workbench (overlay-query overlay)))
          (visible (max 1 (floor height *overlay-row-height*)))
          (count   (length rows)))
     (setf (overlay-selection overlay) (max 0 (min (overlay-selection overlay) (1- count))))
     (setf (overlay-scroll overlay)
           (max 0 (min (overlay-scroll overlay) (max 0 (- count visible)))))
-    ;; The keys move the highlight; the list follows it.
+    ;; Scroll the list to the highlight.
     (when (< (overlay-selection overlay) (overlay-scroll overlay))
       (setf (overlay-scroll overlay) (overlay-selection overlay)))
     (when (>= (overlay-selection overlay) (+ (overlay-scroll overlay) visible))
@@ -152,7 +152,7 @@
 
 (-> catalog--setting-value-text (list) string)
 (defun catalog--setting-value-text (row)
-  "Return the setting ROW's value as it reads on a chip."
+  "Return the value of the setting ROW as text for a chip."
   (let ((value (portable-get row "value" ':null)))
     (cond
       ((equal (portable-get row "type") "boolean")
@@ -166,7 +166,7 @@
 
 (-> catalog--change-setting (workbench list) null)
 (defun catalog--change-setting (workbench row)
-  "Let the person change the setting ROW in the way its type calls for: a switch turns, a choice opens a picker, anything else a prompt."
+  "Let the person change the setting ROW. Boolean settings are switched. For choice settings, a picker is opened. For other settings, a prompt is opened."
   (let ((name  (portable-get row "name"))
         (type  (portable-get row "type"))
         (label (or (portable-get row "label") (portable-get row "name") "")))
@@ -198,7 +198,7 @@
 
 (-> catalog--setting-rows (workbench string) list)
 (defun catalog--setting-rows (workbench query)
-  "Return the settings to list for QUERY, each group's rows together under its name: (:GROUP NAME) or (:SETTING ROW)."
+  "Return the rows of the settings that match QUERY. Each row is (:GROUP NAME) or (:SETTING ROW). The settings of a group follow the row of the group."
   (let ((rows   (remove-if-not (lambda (row)
                                  (or (zerop (length query))
                                      (search query (or (portable-get row "label") "") :test #'char-equal)
@@ -218,7 +218,7 @@
 (-> catalog-paint-settings
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun catalog-paint-settings (workbench stage overlay &key x y width height)
-  "Draw the settings OVERLAY lists as a property sheet: label and explanation at the left, the value as a chip at the right."
+  "Draw the settings of OVERLAY as a property sheet. The label and the documentation of each setting are drawn at the left, and the value is drawn as a chip at the right."
   (let* ((rows    (catalog--setting-rows workbench (overlay-query overlay)))
          (count   (length rows))
          (visible (max 1 (floor height *overlay-row-height*))))
@@ -247,7 +247,8 @@
             for row-y from y by *overlay-row-height*
             while (< row-y (+ y height))
             do (ecase kind
-                 ;; A group is named in the interface's bold; the space above it does the parting.
+                 ;; Draw the name of a group in bold. The space above the name
+                 ;; separates the groups.
                  (:group
                   (paint-text (string-capitalize value) (+ x 16) (+ row-y 34) :style (text-style ':label-bold)))
                  (:setting

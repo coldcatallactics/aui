@@ -3,15 +3,17 @@
 ;;;; -- Main --
 
 ;;; Startup and the event loop. The interface runs on the thread that calls
-;;; MAIN, which on macOS must be the process's first; client threads only
-;;; post events and wake it.
+;;; MAIN. On macOS, this must be the first thread of the process. Client
+;;; threads only post events and wake the interface thread.
 
 (defparameter *tick-seconds* 0.12
-  "How often the interface advances what moves while something is working.")
+  "The interval in seconds between two animation and polling ticks.")
 
 (-> main--picture (workbench string) null)
 (defun main--picture (workbench path)
-  "Write a picture of WORKBENCH's window to PATH: a PNG when PATH ends in png and an image tool is at hand, else a PPM."
+  "Write a picture of the window of WORKBENCH to PATH.
+
+The picture is a PNG if PATH ends in png and an image tool is installed. Otherwise, it is a PPM."
   (let* ((png-p (string-equal (or (pathname-type path) "") "png"))
          (ppm   (if png-p (format nil "~A.ppm" path) path)))
     (lightfast:capture-window (workbench-window workbench) ppm)
@@ -28,10 +30,7 @@
 
 (-> main--settle (workbench real) null)
 (defun main--settle (workbench seconds)
-  "Apply what the world says for SECONDS.
-
-A picture taken without a window then shows the channels as the server
-reports them, not the moment before it answered."
+  "Apply the events from the world server for SECONDS."
   (let ((deadline (+ (get-internal-real-time)
                      (round (* seconds internal-time-units-per-second)))))
     (loop while (< (get-internal-real-time) deadline)
@@ -42,7 +41,9 @@ reports them, not the moment before it answered."
 
 (-> main--start (workbench) null)
 (defun main--start (workbench)
-  "Open what the launch asked for: the demonstration, a named channel, the picker, or the directory's channel."
+  "Open the view requested by the launch of WORKBENCH.
+
+The view is the demonstration, a named channel, the channel list, or the channel of the directory."
   (let ((launch (workbench-launch workbench)))
     (cond
       ((launch-demo-p launch)
@@ -104,11 +105,11 @@ reports them, not the moment before it answered."
 
 (-> run-interface (launch) null)
 (defun run-interface (launch)
-  "Show the window LAUNCH asks for and run until it closes."
+  "Show the window requested by LAUNCH and run the event loop until the window is closed."
   (lightfast:load-library)
   (lightfast:enable-thread-wakeups)
   (theme-install)
-  ;; A window that is only a picture or a demonstration remembers nothing.
+  ;; Preferences are not saved for a picture or a demonstration.
   (unless (or (launch-demo-p launch) (launch-shot launch))
     (setf *preferences-pathname* (preferences-default-pathname)))
   (let* ((queue     (make-ui-queue :wakeup #'lightfast:awake))
@@ -120,7 +121,7 @@ reports them, not the moment before it answered."
     (window-show workbench)
     (lightfast:add-timeout *tick-seconds*
                            (lambda ()
-                             (with-stage-guard ("Looking at the channel again")
+                             (with-stage-guard ("Polling the channel")
                                (let ((stage (workbench-stage workbench)))
                                  (workbench-poll-jobs workbench)
                                  (workbench-poll-waiting workbench)
@@ -128,8 +129,8 @@ reports them, not the moment before it answered."
                                    (incf (stage-phase stage))
                                    (stage-redraw stage)))))
                            :repeat t)
-    ;; A window that was never shown has no event loop to run: draw it once
-    ;; offscreen and leave.
+    ;; A window with a size and a picture path is not shown. Draw it once
+    ;; offscreen and return.
     (when (and (launch-shot launch) (launch-size launch))
       (unless (launch-demo-p launch)
         (main--settle workbench (launch-shot-after launch)))
@@ -164,21 +165,21 @@ reports them, not the moment before it answered."
   nil)
 
 (defparameter *nursery-megabytes* 8
-  "How much the process allocates between two collections of garbage.
+  "The number of megabytes allocated between two garbage collections.
 
-SBCL's own measure is a twentieth of the heap it may grow to, some two
-hundred megabytes here, and what a window allocates is short-lived: left to
-that measure it would hold all of it as garbage until the first collection.")
+The default of SBCL is a twentieth of the maximum heap, which is about two
+hundred megabytes here. Most allocations of the window are short-lived, so a
+smaller value gives a smaller process.")
 
 (-> main--keep-small () null)
 (defun main--keep-small ()
-  "Have garbage collected often, so that the process holds little more than what it uses."
+  "Collect garbage often, so that the process uses little more memory than it needs."
   (setf (sb-ext:bytes-consed-between-gcs) (* *nursery-megabytes* 1024 1024))
   nil)
 
 (-> main (&optional list) null)
 (defun main (&optional (arguments (uiop:command-line-arguments)))
-  "Run aui with the command line ARGUMENTS and exit the process when the window closes."
+  "Run aui with the command line ARGUMENTS. Exit the process after the window is closed."
   (main--keep-small)
   (let ((status 0))
     (handler-case
@@ -198,16 +199,15 @@ that measure it would hold all of it as garbage until the first collection.")
 
 (-> image-toplevel () null)
 (defun image-toplevel ()
-  "Run aui in a saved image with the process's own arguments."
+  "Run aui in a saved image with the command line arguments of the process."
   (main (rest sb-ext:*posix-argv*)))
 
 (-> save-image (string) null)
 (defun save-image (pathname)
   "Save this process as an executable at PATHNAME that starts aui, and exit.
 
-The executable holds Autolith's client code and AUI together, so it starts in
-a fraction of a second. It takes every argument for itself rather than for
-the Lisp runtime."
+The executable contains the client code of Autolith and AUI. All command line
+arguments are passed to aui, and none to the Lisp runtime."
   (ensure-directories-exist pathname)
   (sb-ext:save-lisp-and-die pathname
                             :toplevel             #'image-toplevel

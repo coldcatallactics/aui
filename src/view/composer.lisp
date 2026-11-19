@@ -2,37 +2,39 @@
 
 ;;;; -- Composer --
 
-;;; Where the person writes: a native text editor in a hairline frame, with
-;;; the channel's model, effort and permission mode as chips beneath it and
-;;; the send button at the right. Enter sends and Shift+Enter breaks the
-;;; line. While the agent works, Enter steers the running turn, Tab queues a
-;;; follow-up for after it, and the send button becomes the stop button.
+;;; The composer, in which the person writes messages. It is a native text
+;;; editor in a hairline frame. The model, the reasoning effort and the
+;;; permission mode of the channel are drawn as chips beneath it, and the send
+;;; button is drawn at the right. The person sends with Enter and breaks the
+;;; line with Shift+Enter. While the agent works, the person steers the running
+;;; turn with Enter and queues a follow-up with Tab. The send button is then
+;;; replaced by the stop button.
 
 (defparameter *composer-line-height* 29
-  "The height of one line of the composer's text.")
+  "The height of a line of text in the composer.")
 
 (defparameter *composer-maximum-lines* 9
-  "How many lines the composer grows to before it scrolls.")
+  "The largest number of lines shown in the composer before it scrolls.")
 
 (defparameter *composer-toolbar-height* 34
   "The height of the row of chips and the send button.")
 
 (defparameter *permission-modes*
   '((:ask         "Ask first"   "Ask me before running a command that is not recognized")
-    (:auto        "Auto"        "Decided for each command: sandbox, full access or refusal")
+    (:auto        "Auto"        "Choose the sandbox, full access or refusal for each command")
     (:sandboxed   "Sandbox"     "Run commands inside the workspace sandbox")
     (:full-access "Full access" "Run commands with your full privileges"))
-  "The permission modes as (MODE LABEL EXPLANATION), in the order they are offered.")
+  "A list of the permission modes as (MODE LABEL EXPLANATION), in the order of the menu.")
 
 (-> composer-text (workbench) string)
 (defun composer-text (workbench)
-  "Return what the composer holds."
+  "Return the text in the composer."
   (let ((editor (workbench-editor workbench)))
     (if editor (lightfast:value editor) "")))
 
 (-> (setf composer-text) (string workbench) string)
 (defun (setf composer-text) (text workbench)
-  "Replace what the composer holds with TEXT."
+  "Replace the text in the composer with TEXT."
   (let ((editor (workbench-editor workbench)))
     (when editor
       (setf (lightfast:value editor) text)
@@ -41,7 +43,7 @@
 
 (-> composer-caret-to-end (workbench) null)
 (defun composer-caret-to-end (workbench)
-  "Put the composer's caret after its last character."
+  "Put the caret of the composer after the last character."
   (let ((editor (workbench-editor workbench)))
     (when editor
       (setf (lightfast:text-insert-position editor) (lightfast:text-length editor))))
@@ -49,9 +51,9 @@
 
 (-> composer-recall (workbench integer) boolean)
 (defun composer-recall (workbench step)
-  "Show the text sent STEP places earlier, or later when negative, and return whether there was one to show.
+  "Show the sent text that is STEP places earlier in the history, or later if STEP is negative. Return T if there was a text to show.
 
-Stepping past the newest returns to an empty composer."
+A step past the newest text empties the composer."
   (let* ((history (workbench-history workbench))
          (index   (workbench-history-index workbench))
          (target  (if index (+ index step) (if (plusp step) 0 -1))))
@@ -73,7 +75,7 @@ Stepping past the newest returns to an empty composer."
 
 (-> composer-text-height (workbench integer) integer)
 (defun composer-text-height (workbench width)
-  "Return the height the composer's text needs at WIDTH, between one line and the most it grows to."
+  "Return the height of the text in the composer at WIDTH. The height is between one line and the largest number of lines."
   (let* ((text      (composer-text workbench))
          (paragraph (make-paragraph (list (make-span text nil)) :style (text-style ':body)))
          (height    (paragraph-layout paragraph (max 40 (- width 8)))))
@@ -82,7 +84,7 @@ Stepping past the newest returns to an empty composer."
 
 (-> composer-height (workbench integer) integer)
 (defun composer-height (workbench width)
-  "Return the height of the whole composer frame at WIDTH: attachments, text and toolbar."
+  "Return the height of the composer frame at WIDTH, including the attachments, the text and the toolbar."
   (+ 10
      (if (workbench-attachments workbench) 30 0)
      (composer-text-height workbench (- width 28))
@@ -92,7 +94,7 @@ Stepping past the newest returns to an empty composer."
 
 (-> composer-send (workbench &key (:steer-p boolean)) null)
 (defun composer-send (workbench &key (steer-p (workbench-working-p workbench)))
-  "Send what the composer holds, with its attachments, and empty it when it went."
+  "Send the text and the attachments in the composer. Empty the composer if the message was sent."
   (when (workbench-submit workbench (composer-text workbench)
                           :steer-p steer-p
                           :images  (workbench-attachments workbench))
@@ -113,7 +115,7 @@ Stepping past the newest returns to an empty composer."
 
 (-> composer--offered-models (workbench) list)
 (defun composer--offered-models (workbench)
-  "Return the models to offer: those of providers the person has signed in to, or all of them when none is."
+  "Return the models of the providers that the person has signed in to. Return all models if the person has not signed in to any provider."
   (let* ((models (workbench-models workbench))
          (usable (remove-if-not (lambda (model)
                                   (portable-true-p (portable-get model "credentialStored")))
@@ -122,11 +124,11 @@ Stepping past the newest returns to an empty composer."
 
 (-> composer--model-choices (workbench) list)
 (defun composer--model-choices (workbench)
-  "Return the models to choose among, each with its provider where the channel says it.
+  "Return the choices of models, with the provider of each model if it is known.
 
-They are the channel's list of models. A channel whose list did not arrive,
-as happens while one of its providers cannot be asked, still names the models
-its model setting takes, and those are offered instead."
+The choices come from the list of models of the channel. If that list is
+missing, the choices come from the options of the model setting. The list is
+missing, for example, if a provider cannot be reached."
   (let ((current (workbench-model workbench)))
     (or (mapcar (lambda (model)
                   (make-choice :label     (or (portable-get model "id") "")
@@ -140,11 +142,11 @@ its model setting takes, and those are offered instead."
 
 (-> composer--choose-model (workbench) null)
 (defun composer--choose-model (workbench)
-  "Offer the models in a list that can be narrowed by typing, and select the one chosen."
+  "Show the models in a picker, and select the model chosen."
   (let ((choices (composer--model-choices workbench)))
     (if (null choices)
         (progn
-          (setf (workbench-notice workbench) "The list of models is not known yet.")
+          (setf (workbench-notice workbench) "the list of models is not loaded yet")
           (workbench-redraw workbench))
         (workbench-pick workbench choices
                         (lambda (model)
@@ -154,7 +156,7 @@ its model setting takes, and those are offered instead."
 
 (-> composer--setting-options (workbench string) list)
 (defun composer--setting-options (workbench name)
-  "Return the values the channel offers for the setting NAME, as strings."
+  "Return the options of the setting NAME of the channel, as strings."
   (let ((row (find name (workbench-settings workbench)
                    :key (lambda (row) (portable-get row "name")) :test #'equal)))
     (loop for option in (portable-items (portable-get row "options"))
@@ -164,7 +166,7 @@ its model setting takes, and those are offered instead."
 
 (-> composer--offer (workbench list function &key (:title string) (:x (or null integer)) (:y integer)) null)
 (defun composer--offer (workbench choices action &key (title "Choose") x (y 0))
-  "Offer CHOICES and call ACTION with the value taken: in a menu growing upward from X, Y when a chip was clicked there, else in a picker titled TITLE."
+  "Show CHOICES and call ACTION with the value of the choice taken. If X is given, show a menu that grows upward from X, Y. Otherwise, show a picker titled TITLE."
   (if x
       (workbench-menu workbench choices :x x :y y :above-p t :action action)
       (workbench-pick workbench choices action :title title))
@@ -172,7 +174,7 @@ its model setting takes, and those are offered instead."
 
 (-> composer--choose-effort (workbench &key (:x (or null integer)) (:y integer)) null)
 (defun composer--choose-effort (workbench &key x (y 0))
-  "Offer the reasoning efforts the model supports and select the one chosen."
+  "Show the reasoning efforts supported by the model, and select the effort chosen."
   (let ((current (workbench-effort workbench)))
     (composer--offer workbench
                      (mapcar (lambda (option)
@@ -188,7 +190,7 @@ its model setting takes, and those are offered instead."
 
 (-> composer--choose-mode (workbench &key (:x (or null integer)) (:y integer)) null)
 (defun composer--choose-mode (workbench &key x (y 0))
-  "Offer the permission modes, what each means beside it, and select the one chosen."
+  "Show the permission modes with an explanation of each, and select the mode chosen."
   (let ((current (workbench-permission-mode workbench)))
     (composer--offer workbench
                      (mapcar (lambda (mode)
@@ -207,15 +209,18 @@ its model setting takes, and those are offered instead."
 
 ;;;; -- Editing Keys --
 
-;;; The composer answers to the keys Autolith's line editor does, so hands
-;;; that know the terminal find them here: Ctrl-A and Ctrl-E for the ends of
-;;; the line, Ctrl-U and Ctrl-K to delete to them, Ctrl-W, Ctrl-Backspace and
-;;; Alt-Backspace to delete a word back, Alt-D and Ctrl-Delete a word
-;;; forward, Alt-B and Alt-F to move by words.
+;;; The editing keys of the line editor of Autolith, which also work in the
+;;; composer:
+;;;
+;;;   Ctrl-A, Ctrl-E                         move to the start or the end of the line
+;;;   Ctrl-U, Ctrl-K                         delete to the start or the end of the line
+;;;   Ctrl-W, Ctrl-Backspace, Alt-Backspace  delete the word before the caret
+;;;   Alt-D, Ctrl-Delete                     delete the word after the caret
+;;;   Alt-B, Alt-F                           move by words
 
 (-> composer--caret (workbench) integer)
 (defun composer--caret (workbench)
-  "Return the index of the character the composer's caret stands before."
+  "Return the index of the character after the caret of the composer."
   (let* ((editor (workbench-editor workbench))
          (text   (composer-text workbench))
          (octets (lightfast:text-insert-position editor))
@@ -228,12 +233,12 @@ its model setting takes, and those are offered instead."
 
 (-> composer--octets (string integer) integer)
 (defun composer--octets (text end)
-  "Return how many octets the first END characters of TEXT take in the editor."
+  "Return the number of octets of the first END characters of TEXT in the editor."
   (lightfast:string-byte-length (subseq text 0 end)))
 
 (-> composer--delete (workbench integer integer) null)
 (defun composer--delete (workbench start end)
-  "Delete the composer's characters from START up to END and leave the caret where they were."
+  "Delete the characters of the composer from START up to END, and put the caret at START."
   (let ((editor (workbench-editor workbench))
         (text   (composer-text workbench)))
     (when (< start end)
@@ -244,14 +249,14 @@ its model setting takes, and those are offered instead."
 
 (-> composer--move (workbench integer) null)
 (defun composer--move (workbench index)
-  "Put the composer's caret before the character at INDEX."
+  "Put the caret of the composer before the character at INDEX."
   (setf (lightfast:text-insert-position (workbench-editor workbench))
         (composer--octets (composer-text workbench) index))
   nil)
 
 (-> composer--word-start (string integer) integer)
 (defun composer--word-start (text index)
-  "Return where the word before INDEX in TEXT begins, passing over the space between."
+  "Return the start of the word before INDEX in TEXT. Whitespace before INDEX is skipped."
   (let ((start index))
     (loop while (and (plusp start) (member (char text (1- start)) '(#\Space #\Tab #\Newline)))
           do (decf start))
@@ -261,7 +266,7 @@ its model setting takes, and those are offered instead."
 
 (-> composer--word-end (string integer) integer)
 (defun composer--word-end (text index)
-  "Return where the word after INDEX in TEXT ends, passing over the space between."
+  "Return the end of the word after INDEX in TEXT. Whitespace after INDEX is skipped."
   (let ((end index))
     (loop while (and (< end (length text)) (member (char text end) '(#\Space #\Tab #\Newline)))
           do (incf end))
@@ -271,10 +276,10 @@ its model setting takes, and those are offered instead."
 
 (-> composer-edit-key (workbench key-event) boolean)
 (defun composer-edit-key (workbench event)
-  "Do what EVENT means to Autolith's line editor in the composer, and return whether it meant anything.
+  "Handle the key EVENT in the composer as the line editor of Autolith does. Return T if the key was used.
 
-Ctrl-K deletes to the end of the line only when there is something there to
-delete, so that at the end of the text it still opens the commands."
+Ctrl-K is only used if there is text after the caret on the line. At the end
+of a line, Ctrl-K is left unused, so that it can open the list of commands."
   (let* ((key       (key-event-key event))
          (control-p (key-event-control-p event))
          (alt-p     (key-event-alt-p event))
@@ -316,7 +321,7 @@ delete, so that at the end of the text it still opens the commands."
 
 (-> composer-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun composer-paint (workbench stage &key x y width height)
-  "Draw the composer's frame, attachments, chips and send button; the editor itself is a native widget inside."
+  "Draw the frame, the attachments, the chips and the send button of the composer. The editor is a native widget inside the frame."
   (let* ((middle    (- (+ y height) 8 16))
          (chip-y    (- middle 12))
          (cursor    (+ x 8))
@@ -325,7 +330,7 @@ delete, so that at the end of the text it still opens the commands."
     (paint-fill x y :width width :height height :color *paper*)
     (paint-frame x y :width width :height height)
     (paint-frame (1+ x) (1+ y) :width (- width 2) :height (- height 2))
-    ;; Attachments, each removable.
+    ;; Draw the attachments. Each attachment can be removed.
     (let ((chip-x (+ x 10)))
       (loop for pathname in (workbench-attachments workbench)
             do (let ((attached pathname))
@@ -340,8 +345,8 @@ delete, so that at the end of the text it still opens the commands."
                                                                  :test #'string=))
                                                    (workbench-redraw workbench))
                                         :tooltip "Remove this image"))))))
-    ;; Toolbar: attach, then what the next turn runs with. Everything on it
-    ;; shares one middle line, eight units above the frame's bottom edge.
+    ;; Draw the toolbar, with the attach button and the settings of the next
+    ;; turn. All parts of the toolbar are centered on one horizontal line.
     (paint-button stage ':attach ""
                   :x         cursor
                   :y         (- middle 14)
@@ -373,7 +378,7 @@ delete, so that at the end of the text it still opens the commands."
       (let* ((mode   (find (workbench-permission-mode workbench) *permission-modes* :key #'first))
              (label  (if mode (second mode) "Ask first"))
              (chip-x cursor))
-        ;; The mode is shown where there is room for it before the send button.
+        ;; Only show the mode if there is room for it before the send button.
         (when (<= (+ cursor (chip-width label :menu-p t)) (- (+ x width) 48))
           (paint-chip stage ':mode label
                       :x       cursor
@@ -383,7 +388,8 @@ delete, so that at the end of the text it still opens the commands."
                       :action  (lambda ()
                                  (composer--choose-mode workbench :x chip-x :y (- chip-y 4)))
                       :tooltip (and mode (third mode))))))
-    ;; Send, or stop while the agent works: as far from the right edge as from the bottom.
+    ;; Draw the send button, or the stop button while the agent works. The
+    ;; distance to the right edge is the same as the distance to the bottom.
     (let ((button-x (- (+ x width) 32 8)))
       (if (and working-p (zerop (length (string-trim '(#\Space #\Newline) (composer-text workbench)))))
           (paint-button stage ':stop ""
@@ -411,7 +417,7 @@ delete, so that at the end of the text it still opens the commands."
 
 (-> composer-editor-box (workbench &key (:x integer) (:y integer) (:width integer) (:height integer)) list)
 (defun composer-editor-box (workbench &key x y width height)
-  "Return the (X Y WIDTH HEIGHT) of the editor inside a composer frame of the given box."
+  "Return the box (X Y WIDTH HEIGHT) of the editor inside a composer frame with the given box."
   (let ((top (+ y 8 (if (workbench-attachments workbench) 30 0))))
     (list (+ x 12)
           top

@@ -2,14 +2,14 @@
 
 ;;;; -- Sheets --
 
-;;; What the smaller overlays draw inside their windows: the rows of a picker
-;;; or a menu, set in columns; a prompt's sentence, field and buttons; and a
-;;; panel's blocks, scrolled.
+;;; The content of the smaller overlays. It consists of the rows of pickers and
+;;; menus, the note, field and buttons of prompts, and the scrolled blocks of
+;;; panels and boards.
 
 (-> sheet-paint-scrollbar
     (stage &key (:x integer) (:y integer) (:height integer) (:content integer) (:scroll integer)) null)
 (defun sheet-paint-scrollbar (stage &key (x 0) (y 0) (height 0) (content 0) (scroll 0))
-  "Draw a thin thumb at X showing which part of CONTENT units the HEIGHT units below Y hold, when not all of it fits."
+  "Draw a scroll thumb at X and Y for content of the height CONTENT, which is shown in HEIGHT pixels from SCROLL. Nothing is drawn if the content fits."
   (declare (ignore stage))
   (when (and (> content height) (> height 40))
     (let* ((thumb (max 24 (floor (* height height) content)))
@@ -24,7 +24,7 @@
 (-> sheet-paint-choices
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sheet-paint-choices (workbench stage overlay &key x y width height)
-  "Draw the choices of OVERLAY, a picker or a menu, one a row: a check before the current one, the labels in one column and what is said about each in the next."
+  "Draw the choices of the picker or menu OVERLAY, one choice in each row. The labels are drawn in one column and the details in the next. A check mark is drawn before the current choice."
   (let* ((menu-p   (eq (overlay-kind overlay) ':menu))
          (choices  (overlay-shown-choices overlay))
          (count    (length choices))
@@ -63,7 +63,7 @@
               for index from (if menu-p 0 (overlay-scroll overlay))
               while (< row-y (+ y height))
               do (if (null (choice-value choice))
-                     ;; A divider: a short band of dither between two groups of choices.
+                     ;; Draw a divider as a short band of dither.
                      (let ((gap (floor *choice-row-height* 3)))
                        (paint-dither (+ x 8) (+ row-y (floor gap 2) -1) :width (- width 16) :height 2 :step 3)
                        (incf row-y gap))
@@ -112,7 +112,7 @@
 (-> sheet-paint-prompt
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sheet-paint-prompt (workbench stage overlay &key x y width height)
-  "Draw the prompt OVERLAY below its title bar: what is asked, the frame of its field, and the two ways out."
+  "Draw the content of the prompt OVERLAY below the title bar. It consists of the note, the frame of the field, and the OK and Cancel buttons."
   (let* ((note   (overlay-note overlay))
          (field  (overlay-input-box overlay (stage-width stage) (stage-height stage)))
          (bottom (+ y height))
@@ -146,7 +146,7 @@
 (-> sheet-paint-panel
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sheet-paint-panel (workbench stage overlay &key x y width height)
-  "Draw the content of the panel OVERLAY in the box, scrolled, or say that it is being fetched."
+  "Draw the scrolled content of the panel OVERLAY in the box. If there is no content yet, draw a waiting line instead."
   (declare (ignorable workbench))
   (let* ((content (overlay-content overlay))
          (inner   (max 80 (- width 56))))
@@ -188,12 +188,12 @@
   "The width of the column of tabs at the left of a board.")
 
 (defparameter *board-tab-height* 34
-  "The height of one tab of a board.")
+  "The height of a tab of a board.")
 
 (-> sheet-paint-board
     (workbench stage overlay &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sheet-paint-board (workbench stage overlay &key x y width height)
-  "Draw the board OVERLAY in the box: its tabs down the left, each with the count of what it holds, and the chosen tab's blocks beside them, scrolled."
+  "Draw the board OVERLAY in the box. The tabs are drawn down the left side, each with the number of items. The scrolled blocks of the chosen tab are drawn beside them."
   (let* ((tabs   (overlay-tabs overlay))
          (chosen (max 0 (min (overlay-selection overlay) (1- (length tabs)))))
          (bold   (text-style ':label-bold))
@@ -234,7 +234,7 @@
                                        (setf (overlay-selection overlay) tab
                                              (overlay-scroll overlay)    0)
                                        (workbench-redraw workbench)))))
-    ;; A band of dither parts the tabs from what the chosen one shows.
+    ;; Draw a band of dither between the tabs and the content of the chosen tab.
     (paint-dither (- pane-x 4) y :width 3 :height height :step 3)
     (let ((content (third (nth chosen tabs))))
       (when content

@@ -2,19 +2,16 @@
 
 ;;;; -- Links and Files --
 
-;;; Where a link in the conversation leads, and the list of the files an
-;;; agent named. A link to a page goes to the browser. A link to a file of
-;;; this machine is found from the folder the channel works in, whatever form
-;;; the agent gave it (a file URL, a path, a path with a line number after
-;;; it), and handed to the program the system opens such a file with. What
-;;; an answer may name as a file is read here too; the digest gathers those
-;;; names into the list of files a conversation touched.
+;;; The targets of links in the conversation, and the files named by an agent.
+;;; Links to pages are opened in the browser. Links to local files are resolved
+;;; from the folder of the channel and opened in the default program for the
+;;; file. A file link can be a file URL, a path, or a path with a line number.
 
-;;;; -- What a Link Names --
+;;;; -- Link Targets --
 
 (-> link-web-p (string) boolean)
 (defun link-web-p (link)
-  "Return T when LINK leads off this machine: it opens with a scheme other than file, such as https or mailto."
+  "Return T if LINK leads off this machine. Such links start with a scheme other than file, such as https or mailto."
   (let ((colon (position #\: link)))
     (and colon
          (> colon 1)
@@ -29,7 +26,7 @@
 
 (-> link--percent-decode (string) string)
 (defun link--percent-decode (text)
-  "Return TEXT with each percent sign and two hexadecimal digits read as the octet they spell, the octets as UTF-8."
+  "Return TEXT with the percent escapes decoded. The decoded octets are read as UTF-8."
   (if (null (position #\% text))
       text
       (let ((octets (make-array (length text) :element-type '(unsigned-byte 8) :fill-pointer 0)))
@@ -57,7 +54,7 @@
 
 (-> link--without-position (string) string)
 (defun link--without-position (path)
-  "Return PATH without the line and column written after it, as in file.lisp:12:3."
+  "Return PATH without a line and column at the end, such as the :12:3 in file.lisp:12:3."
   (loop repeat 2
         do (let ((colon (position #\: path :from-end t)))
              (if (and colon
@@ -70,13 +67,12 @@
 
 (-> link--candidates (string) list)
 (defun link--candidates (link)
-  "Return the paths LINK may mean, the most literal first.
+  "Return a list of the paths that LINK can mean, with the most literal path first.
 
-A file URL loses its scheme and host, and so does the workspace URI
-Autolith's tools name a file by. After the path as written come the path
-without a fragment and the path without a line number, since an agent often
-points into a file, and then the same with percent signs read, as a link
-spells a space."
+The scheme and the host are removed from file URLs and from workspace URIs.
+The path as written comes first. Then come the path without a fragment and the
+path without a line number. Then come the same paths with the percent escapes
+decoded."
   (let* ((path  (cond
                   ((uiop:string-prefix-p "file://localhost/" link)
                    (subseq link 16))
@@ -97,7 +93,9 @@ spells a space."
 
 (-> link--pathname (string string) (or null pathname))
 (defun link--pathname (path directory)
-  "Return PATH as a pathname, a tilde read as the home folder and a relative path taken from DIRECTORY, or NIL when it cannot be one."
+  "Return PATH as a pathname, or NIL if PATH is not a valid pathname.
+
+A tilde means the home folder. A relative PATH is merged with DIRECTORY."
   (handler-case
       (let ((expanded (cond
                         ((string= path "~")
@@ -113,9 +111,9 @@ spells a space."
 
 (-> link-file (string string) (or null pathname))
 (defun link-file (link directory)
-  "Return the file or folder of this machine that LINK names, or NIL when it leads to a page or to nothing that exists.
+  "Return the local file or folder named by LINK, or NIL if LINK leads to a page or to a missing file.
 
-A relative path is taken from DIRECTORY, the folder the channel works in."
+A relative path is merged with DIRECTORY."
   (unless (link-web-p link)
     (loop for candidate in (link--candidates link)
           for pathname = (link--pathname candidate directory)
@@ -131,7 +129,7 @@ A relative path is taken from DIRECTORY, the folder the channel works in."
 
 (-> system--run (list) boolean)
 (defun system--run (command)
-  "Run COMMAND, a program and its arguments, and return whether it ended well."
+  "Run COMMAND, a list of a program and its arguments. Returns T if the exit code is zero."
   (handler-case
       (eql 0 (nth-value 2 (uiop:run-program command
                                             :input               nil
@@ -143,10 +141,10 @@ A relative path is taken from DIRECTORY, the folder the channel works in."
 
 (-> system-open (string &key (:file-p boolean)) boolean)
 (defun system-open (target &key file-p)
-  "Hand TARGET, a page's address or a file's name, to the program this system opens such a thing with, and return whether one took it.
+  "Open TARGET, the address of a page or the name of a file, in the default program of the system. Returns T on success.
 
-On a Mac a file that no program claims, as source code often is, is opened in
-the text editor instead, and failing that shown in the Finder."
+On a Mac, if FILE-P is true and there is no default program for the file, the
+file is opened in the text editor. If that fails, the file is shown in the Finder."
   (if (uiop:os-macosx-p)
       (or (system--run (list "open" target))
           (and file-p
@@ -156,15 +154,15 @@ the text editor instead, and failing that shown in the Finder."
 
 (-> workbench-open-link (workbench string) null)
 (defun workbench-open-link (workbench link)
-  "Open what LINK leads to: a page in the browser, a file of this machine in the program the system has for it.
+  "Open the target of LINK. Pages are opened in the browser and local files in the default program.
 
-A link that names no file here, and one that no program opened, are reported
-above the composer."
+If LINK names no local file, or if the target cannot be opened, the error is
+reported above the composer."
   (flet ((open-aside (target file-p)
            (workbench-run-aside workbench (list ':open-link target)
                                 (lambda ()
                                   (unless (system-open target :file-p file-p)
-                                    (error 'client-error :message "No program opened it."))))))
+                                    (error 'client-error :message "It could not be opened."))))))
     (if (link-web-p link)
         (open-aside link nil)
         (let ((file (link-file link (workbench-directory workbench))))
@@ -172,16 +170,18 @@ above the composer."
               (open-aside (uiop:native-namestring file) t)
               (progn
                 (setf (workbench-notice workbench)
-                      (format nil "~A is not a file on this machine." link))
+                      (format nil "~A is not a file on this machine" link))
                 (workbench-redraw workbench))))))
   nil)
 
 
-;;;; -- The Files an Agent Named --
+;;;; -- Files Named by an Agent --
 
 (-> files--named (string) list)
 (defun files--named (text)
-  "Return what the Markdown TEXT may name as a file, in the order written: the target of each link, and each run of code that looks like a path."
+  "Return a list of the possible file names in the Markdown TEXT, in the written order.
+
+The list contains the target of each link and each code span that looks like a path."
   (let ((fenced-p nil)
         (names    nil))
     (dolist (line (markdown-lines text))

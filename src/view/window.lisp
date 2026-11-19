@@ -2,29 +2,29 @@
 
 ;;;; -- Window --
 
-;;; The window itself: where each pane goes at the current size, the native
-;;; fields laid over the stage, and what the keys do. Wide windows dock the
-;;; channel list beside the conversation; narrow ones show it as a drawer
-;;; over it, as the terminal does.
+;;; The window. This file contains the layout of the panes, the native fields
+;;; over the stage, and the handling of keys. In wide windows, the channel list
+;;; is docked beside the conversation. In narrow windows, the channel list is a
+;;; drawer over the conversation, as in the terminal.
 
 (defparameter *window-default-size* '(1180 . 820)
-  "The window's (WIDTH . HEIGHT) when the command line names none.")
+  "The default size of the window, as (WIDTH . HEIGHT). It is used if no size is given on the command line.")
 
 (defparameter *window-minimum-size* '(520 . 420)
-  "The smallest (WIDTH . HEIGHT) the window is allowed.")
+  "The smallest size of the window, as (WIDTH . HEIGHT).")
 
 (defparameter *console-minimum-reading* 520
-  "The narrowest the conversation may become for the console to stand beside it.")
+  "The smallest width of the conversation if the console is beside it.")
 
 (defparameter *console-minimum-width* 380
-  "The narrowest the console may become.")
+  "The smallest width of the console.")
 
 (defparameter *console-default-share* 42/100
-  "The part of the width beside the channel list that the console takes until the person drags its edge.")
+  "The default share of the console in the width beside the channel list.")
 
 (-> window-console-share (workbench) real)
 (defun window-console-share (workbench)
-  "Return the part of the width beside the channel list that the console takes: where the person dragged it in this window, else what was remembered, else the default."
+  "Return the share of the console in the width beside the channel list. The share is the value dragged in this window, the saved preference, or the default, in this order."
   (let ((share (or (workbench-console-share workbench)
                    (preference ':console-share))))
     (if (and (realp share) (< 0 share 1))
@@ -33,24 +33,24 @@
 
 (-> (setf window-console-share) (real workbench) real)
 (defun (setf window-console-share) (share workbench)
-  "Take SHARE as the console's part of the width, for this window now and for the next run once the drag ends."
+  "Set the share of the console in the width beside the channel list to SHARE, which is limited to the range from 1/10 to 9/10."
   (setf (workbench-console-share workbench) (max 1/10 (min 9/10 share)))
   (workbench-redraw workbench)
   share)
 
 (-> window--layout (workbench integer integer) list)
 (defun window--layout (workbench width height)
-  "Return where each pane goes in a window WIDTH by HEIGHT, as a property list of (X Y WIDTH HEIGHT) boxes.
+  "Return the layout of a window of the size WIDTH by HEIGHT, as a property list of boxes (X Y WIDTH HEIGHT).
 
-The conversation is a column with the composer at its foot and, under the
-composer, the line that says what the agent is doing. A window wide enough
-sets the console at the right of that column: what the channel is, what runs
-for it, and under that the plan, the files and the messages read from the
-conversation. A narrower one puts the header above the conversation and the
-running things above the composer. :DOCKED-P says the channel list stands
-beside the conversation, :DRAWER-P that it is shown on a window too narrow
-for that, where it takes the whole window, and :SIDE-P that the console
-stands beside the conversation."
+The conversation is a column with the composer at the bottom and the status
+line under the composer. In a wide window, the console is at the right of the
+column, with the header and the activity list at the top. In a narrow window,
+the header is above the conversation and the activity list is above the
+composer.
+
+The property list also contains three flags. :DOCKED-P is true if the channel
+list is beside the conversation. :DRAWER-P is true if the channel list fills a
+narrow window. :SIDE-P is true if the console is beside the conversation."
   (let* ((roomy-p    (>= width *sidebar-docked-minimum*))
          (docked-p   (and roomy-p (workbench-sidebar-shown-p workbench)))
          (drawer-p   (and (not roomy-p) (workbench-drawer-open-p workbench)))
@@ -73,9 +73,9 @@ stands beside the conversation."
          (pending-h  (pending-height workbench))
          (approval-h (approval-height workbench column))
          (below      (+ notice-h pending-h approval-h))
-         ;; The activity takes what it needs: in the console, of the upper
-         ;; half of the room under its head; stacked, a few rows above the
-         ;; composer.
+         ;; Limit the height of the activity list. Beside the conversation,
+         ;; the limit is half of the height under the header. Stacked, the
+         ;; limit is a few rows above the composer.
          (activity-h (if side-p
                          (activity-height workbench :most (max 0 (floor (- height *header-height* 20) 2)))
                          (activity-height workbench :most (+ *activity-heading-height*
@@ -108,19 +108,19 @@ stands beside the conversation."
 
 (-> window--narrow-p (workbench) boolean)
 (defun window--narrow-p (workbench)
-  "Return T when the window is too narrow to hold the channel list beside the conversation."
+  "Return T if the window is too narrow for the channel list beside the conversation."
   (let ((stage (workbench-stage workbench)))
     (and stage (< (stage-width stage) *sidebar-docked-minimum*))))
 
 (-> window-drawer-p (workbench) boolean)
 (defun window-drawer-p (workbench)
-  "Return T when the channel list is open on a window too narrow to set it beside the conversation, where it takes the whole window."
+  "Return T if the channel list is open as a drawer that fills a narrow window."
   (and (window--narrow-p workbench)
        (workbench-drawer-open-p workbench)))
 
 (-> window-show-sidebar (workbench boolean) null)
 (defun window-show-sidebar (workbench shown-p)
-  "Show the channel list when SHOWN-P, or put it away, in the way the window's width calls for, and give the keyboard to what is then in front."
+  "Show the channel list if SHOWN-P is true, or hide it otherwise. In a narrow window, the channel list is a drawer. Give the keyboard focus to the filter field of the drawer or to the composer."
   (if (window--narrow-p workbench)
       (setf (workbench-drawer-open-p workbench) shown-p)
       (setf (workbench-sidebar-shown-p workbench) shown-p))
@@ -133,7 +133,7 @@ stands beside the conversation."
 
 (-> window-toggle-sidebar (workbench) null)
 (defun window-toggle-sidebar (workbench)
-  "Show the channel list when it is put away, or put it away."
+  "Show the channel list if it is hidden, or hide it if it is shown."
   (window-show-sidebar workbench
                        (not (if (window--narrow-p workbench)
                                 (workbench-drawer-open-p workbench)
@@ -144,7 +144,7 @@ stands beside the conversation."
 
 (-> window--paint-console-edge (workbench stage list) null)
 (defun window--paint-console-edge (workbench stage layout)
-  "Draw the band of dither that parts the conversation from the console. The band can be dragged, and where it is left is remembered."
+  "Draw the band of dither between the conversation and the console. The band can be dragged, and the position is saved as a preference at the end of a drag."
   (destructuring-bind (x y width height) (getf layout :divider)
     (paint-dither x y
                   :width  width
@@ -172,7 +172,7 @@ stands beside the conversation."
 
 (-> window--paint-draft (workbench list) null)
 (defun window--paint-draft (workbench box)
-  "Draw what the composer holds in BOX, the place of its editor, while an overlay has the editor put away."
+  "Draw the text of the composer in BOX, which is the box of the editor. The editor itself is hidden while an overlay is shown."
   (destructuring-bind (x y width height) box
     (let* ((text  (composer-text workbench))
            (draft (make-paragraph (if (plusp (length text))
@@ -187,13 +187,13 @@ stands beside the conversation."
 
 (-> window--paint (workbench stage) null)
 (defun window--paint (workbench stage)
-  "Draw the whole window: the channel list alone when it takes the window, else the panes at their places, and the overlay over them."
+  "Draw the whole window. If the channel list fills the window, draw only the channel list. Otherwise, draw all panes. Draw the overlays over everything."
   (let* ((layout (window--layout workbench (stage-width stage) (stage-height stage)))
          (side-p (getf layout :side-p)))
     (flet ((box (name)
              (getf layout name)))
       (cond
-        ;; On a window too narrow for both, the channel list is all there is.
+        ;; In a narrow window, the drawer is the only pane.
         ((getf layout :drawer-p)
          (destructuring-bind (x y width height) (box :sidebar)
            (sidebar-paint workbench stage :x x :y y :width width :height height)))
@@ -206,7 +206,7 @@ stands beside the conversation."
                     (plusp (transcript-length (workbench-transcript workbench))))
                (document-paint (workbench-document workbench) stage :x x :y y :width width :height height)
                (empty-paint workbench stage :x x :y y :width width :height height))
-           ;; The conversation ends on a band of dither above what is written to it.
+           ;; Draw a band of dither at the bottom of the conversation.
            (paint-dither x (+ y height -3) :width width :height 3 :step 3)
            (when (and side-p (not (getf layout :docked-p)))
              (paint-button stage ':toggle-sidebar ""
@@ -264,7 +264,7 @@ stands beside the conversation."
 
 (-> window--place (t list boolean) null)
 (defun window--place (widget box shown-p)
-  "Show WIDGET in BOX, an (X Y WIDTH HEIGHT) list, or hide it when not SHOWN-P."
+  "Show WIDGET in BOX, which is a list (X Y WIDTH HEIGHT). Hide WIDGET if SHOWN-P is false."
   (if shown-p
       (destructuring-bind (x y width height) box
         (lightfast:resize-widget widget :x x :y y :width (max 1 width) :height (max 1 height))
@@ -274,7 +274,7 @@ stands beside the conversation."
 
 (-> window-arrange (workbench) null)
 (defun window-arrange (workbench)
-  "Put the native fields where the current layout has them, hiding those the drawer or an overlay covers."
+  "Put the native fields at the places of the current layout. Hide the fields that are covered by the drawer or an overlay."
   (let* ((stage    (workbench-stage workbench))
          (width    (stage-width stage))
          (height   (stage-height stage))
@@ -298,7 +298,7 @@ stands beside the conversation."
 
 (-> window-focus-composer (workbench) null)
 (defun window-focus-composer (workbench)
-  "Give the composer the keyboard."
+  "Give the keyboard focus to the composer."
   (let ((editor (workbench-editor workbench)))
     (when editor
       (lightfast:take-focus editor)))
@@ -306,7 +306,7 @@ stands beside the conversation."
 
 (-> window-focus-filter (workbench) null)
 (defun window-focus-filter (workbench)
-  "Show the channel list and give its filter field the keyboard."
+  "Show the channel list and give the keyboard focus to the filter field."
   (window-show-sidebar workbench t)
   (lightfast:take-focus (second (stage-natives (workbench-stage workbench))))
   nil)
@@ -316,7 +316,7 @@ stands beside the conversation."
 
 (-> window--shortcut (workbench key-event) boolean)
 (defun window--shortcut (workbench event)
-  "Handle a key that means the same wherever the keyboard is, and return whether it was used."
+  "Handle the key EVENT if it is a shortcut of the window. Return T if the key was used."
   (let ((key       (key-event-key event))
         (command-p (key-event-command-p event)))
     (cond
@@ -335,7 +335,7 @@ stands beside the conversation."
       ((and command-p (eql key #\o))
        (window-focus-filter workbench)
        t)
-      ;; With the channel list over the whole window, the page keys turn its pages.
+      ;; If the drawer fills the window, scroll the channel list by a page.
       ((and (member key '(:page-up :page-down)) (window-drawer-p workbench))
        (let ((page (* *sidebar-row-height*
                       (max 1 (1- (floor (- (stage-height (workbench-stage workbench))
@@ -370,7 +370,7 @@ stands beside the conversation."
 
 (-> window--approval-key (workbench key-event) boolean)
 (defun window--approval-key (workbench event)
-  "Answer the waiting approval when EVENT is the digit of one of its choices, and return whether it was."
+  "Answer the waiting approval if EVENT is the digit of one of the choices. Return T if the approval was answered."
   (let* ((approval (workbench-approval workbench))
          (key      (key-event-key event))
          (digit    (and (characterp key) (digit-char-p key)))
@@ -381,18 +381,18 @@ stands beside the conversation."
 
 (-> window--editor-key (workbench key-event) boolean)
 (defun window--editor-key (workbench event)
-  "Decide what a key pressed in the composer does and return whether the composer should not see it."
+  "Handle the key EVENT pressed in the composer. Return T if the key was used and must not reach the editor."
   (let* ((key     (key-event-key event))
          (empty-p (zerop (length (string-trim '(#\Space #\Newline) (composer-text workbench))))))
     (cond
       ((completion-key workbench event)
        t)
-      ;; The line editor's keys come before the window's, as in the terminal.
+      ;; Handle the keys of the line editor before the shortcuts, as in the terminal.
       ((composer-edit-key workbench event)
        t)
       ((window--shortcut workbench event)
        t)
-      ;; The arrows recall what was sent, from an empty composer or while stepping through.
+      ;; Recall sent messages with the arrows, from an empty composer or during a recall.
       ((and (eq key ':up) (or empty-p (workbench-history-index workbench))
             (composer-recall workbench 1))
        t)
@@ -421,13 +421,13 @@ stands beside the conversation."
        (lightfast:copy-text (document-selected-text (workbench-document workbench)))
        t)
       (t
-       ;; Typing changes the composer's height; draw again once the key has landed.
+       ;; Draw again, because typed text can change the height of the composer.
        (workbench-redraw workbench)
        nil))))
 
 (-> window--stage-key (workbench key-event) boolean)
 (defun window--stage-key (workbench event)
-  "Handle a key pressed while the stage, not a field, has the keyboard."
+  "Handle the key EVENT pressed while the stage has the keyboard focus."
   (cond
     ((workbench-overlay workbench)
      (overlay-key workbench event))
@@ -440,7 +440,7 @@ stands beside the conversation."
        ((workbench-working-p workbench)
         (workbench-stop workbench)))
      t)
-    ;; With the channel list over the whole window there is no composer to type into.
+    ;; If the drawer fills the window, give the keyboard focus to the filter field.
     ((window-drawer-p workbench)
      (lightfast:take-focus (second (stage-natives (workbench-stage workbench))))
      nil)
@@ -452,7 +452,7 @@ stands beside the conversation."
          (lightfast:copy-text text)))
      t)
     (t
-     ;; Anything else is the start of a message: hand the keyboard to the composer.
+     ;; Treat other keys as the start of a message, and give the focus to the composer.
      (window-focus-composer workbench)
      nil)))
 
@@ -460,16 +460,16 @@ stands beside the conversation."
 ;;;; -- Drops --
 
 (defparameter *image-types* '("png" "jpg" "jpeg" "gif" "webp")
-  "The file types the composer takes as image attachments.")
+  "The file types that are attached as images.")
 
 (-> window--drop (workbench string) null)
 (defun window--drop (workbench dropped)
-  "Take what was dropped on the window: image files become attachments, anything else goes into the composer as text."
+  "Handle the text DROPPED on the window. Image files are attached to the next message. Other lines are added to the composer as text."
   (let ((images nil)
         (others nil))
     (dolist (line (markdown-lines dropped))
       (let* ((trimmed (string-trim '(#\Space #\Return) line))
-             ;; A dropped file arrives as a URL, its spaces and the like written as percent escapes.
+             ;; Decode the URLs of dropped files, which contain percent escapes.
              (path    (if (and (> (length trimmed) 7) (string= "file://" trimmed :end2 7))
                           (quri:url-decode (subseq trimmed 7) :lenient t)
                           trimmed)))
@@ -496,7 +496,7 @@ stands beside the conversation."
 
 (-> window--make-natives (workbench t) list)
 (defun window--make-natives (workbench window)
-  "Create the composer's editor, the channel filter and the overlay's query field in WINDOW, and return them in that order."
+  "Create the editor of the composer, the filter field of the channel list and the field of the overlays in WINDOW. Return them in this order."
   (let ((editor (lightfast:make-text-editor :parent window :x 0 :y 0 :width 200 :height 30))
         (filter (lightfast:make-input :parent window :x 0 :y 0 :width 200 :height 30))
         (query  (lightfast:make-input :parent window :x 0 :y 0 :width 200 :height 30)))
@@ -539,7 +539,7 @@ stands beside the conversation."
                       (let* ((key-event (parse-key-event value))
                              (key       (key-event-key key-event)))
                         (cond
-                          ;; Escape empties the filter; from an empty one it leaves the list.
+                          ;; Empty the filter on Escape. If the filter is empty, close the drawer.
                           ((eq key ':escape)
                            (if (plusp (length (workbench-filter workbench)))
                                (setf (lightfast:value filter)     ""
@@ -583,7 +583,7 @@ stands beside the conversation."
 
 (-> window--make-system-menu (workbench t) null)
 (defun window--make-system-menu (workbench window)
-  "Give the application its menus in the system's menu bar. Only a Mac has one; elsewhere the keys alone do the work."
+  "Add the menus of the application to the menu bar of the system. Only macOS has such a menu bar. On other systems, the menu bar is hidden."
   (let ((menu (lightfast:make-menu-bar :parent window :x 0 :y 0 :width 1 :height 1 :system t)))
     (if (lightfast:menu-bar-system-p menu)
         (flet ((item (path shortcut function)
@@ -618,7 +618,7 @@ stands beside the conversation."
 
 (-> window-build (workbench) null)
 (defun window-build (workbench)
-  "Create WORKBENCH's window, its stage and its native fields."
+  "Create the window of WORKBENCH, the stage and the native fields."
   (let* ((launch (workbench-launch workbench))
          (size   (or (launch-size launch) *window-default-size*))
          (window (lightfast:make-window :width  (first size)
@@ -635,8 +635,8 @@ stands beside the conversation."
                                          (workbench-open-link workbench link))
           *entry-channel-opener*       (lambda (identifier)
                                          (workbench-open workbench :channel identifier)))
-    ;; A size given on the command line is pinned, so a tiling compositor
-    ;; floats the window at it and other layouts can be looked at.
+    ;; Fix the size given on the command line, so that a tiling compositor
+    ;; floats the window at that size. This is used to look at other layouts.
     (if (launch-size launch)
         (lightfast:set-size-range window
                                   :min-width  (first size)
@@ -658,8 +658,8 @@ stands beside the conversation."
                            (with-stage-guard ("Resizing the window")
                              (lightfast:refresh-geometry resized)
                              (stage-resize stage (lightfast:widget-width resized) (lightfast:widget-height resized))
-                             ;; A list opened over a narrow window does not come
-                             ;; back when the window is made narrow again.
+                             ;; Close the drawer in a wide window, so that it is
+                             ;; closed if the window becomes narrow again.
                              (unless (window--narrow-p workbench)
                                (setf (workbench-drawer-open-p workbench) nil))
                              (window-arrange workbench))))
@@ -673,11 +673,10 @@ stands beside the conversation."
 
 (-> window-show (workbench) null)
 (defun window-show (workbench)
-  "Show WORKBENCH's window at the size the window system gives it and hand the keyboard to the composer.
+  "Show the window of WORKBENCH at the size given by the window system, and give the keyboard focus to the composer.
 
-A window that is only to be photographed at a given size is never shown: it
-is drawn offscreen at exactly that size, whatever the window system would
-have made of it."
+If a picture is taken at a given size, the window is not shown. It is drawn
+offscreen at that size."
   (let* ((window   (workbench-window workbench))
          (stage    (workbench-stage workbench))
          (launch   (workbench-launch workbench))

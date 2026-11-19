@@ -2,20 +2,20 @@
 
 ;;;; -- Chrome --
 
-;;; What surrounds the conversation: the header naming the channel, the line
-;;; under the composer saying where the agent works and how full its context
-;;; is, the card that asks for an approval, and what the window shows while
-;;; there is no conversation to show.
+;;; The parts of the window around the conversation. They are the header with
+;;; the name of the channel, the status line under the composer, the approval
+;;; card, the list of pending messages, and the empty view that is shown if
+;;; there is no conversation.
 
 (defparameter *header-height* 62
   "The height of the header above the conversation.")
 
 (defparameter *status-height* 30
-  "The height of the line under the composer.")
+  "The height of the status line under the composer.")
 
 (-> workbench-tell (workbench string string) null)
 (defun workbench-tell (workbench channel text)
-  "Send TEXT to CHANNEL as the person, off this thread, reporting a refusal above the composer."
+  "Send TEXT to CHANNEL as the person, on another thread. A refusal is reported above the composer."
   (let ((world (workbench-world workbench)))
     (workbench-run-aside workbench (list ':tell channel)
                          (lambda ()
@@ -24,7 +24,7 @@
 
 (-> workbench-close-channel (workbench string) null)
 (defun workbench-close-channel (workbench channel)
-  "Ask the server to stop serving CHANNEL, off this thread, reporting a refusal above the composer."
+  "Ask the server to close CHANNEL, on another thread. A refusal is reported above the composer."
   (let ((world (workbench-world workbench)))
     (workbench-run-aside workbench (list ':close-channel channel)
                          (lambda ()
@@ -33,7 +33,7 @@
 
 (-> chrome--channel-agent (workbench) (or null string))
 (defun chrome--channel-agent (workbench)
-  "Return the name of the agent residing in the channel shown, or NIL when it has none."
+  "Return the name of the agent that resides in the channel shown, or NIL if there is no such agent."
   (unless (workbench-demo-p workbench)
     (let ((channel (workbench-channel workbench)))
       (loop for participant in (workbench-participants workbench)
@@ -43,7 +43,7 @@
 
 (-> chrome--other-agents (workbench) list)
 (defun chrome--other-agents (workbench)
-  "Return the names of the agents that do not reside in the channel shown, parked ones included."
+  "Return the names of the agents that reside outside the channel shown, including parked agents."
   (unless (workbench-demo-p workbench)
     (let ((channel (workbench-channel workbench)))
       (loop for participant in (workbench-participants workbench)
@@ -54,7 +54,7 @@
 
 (-> chrome--sign-in-to (workbench string) null)
 (defun chrome--sign-in-to (workbench name)
-  "Sign in to the provider NAME: ask for its key when it takes one, else open the browser and say so while Autolith waits for the login there."
+  "Sign in to the provider NAME. Ask for an API key if the provider uses one. Otherwise, open the sign-in page in the browser and show a panel about it while Autolith waits for the login."
   (let ((world (workbench-world workbench)))
     (ecase (world-sign-in-kind world name)
       (:key
@@ -81,7 +81,7 @@
 
 (-> chrome--sign-in (workbench) null)
 (defun chrome--sign-in (workbench)
-  "Offer the providers to sign in to, those of the channel's model list and those this client knows, each with whether a login is stored."
+  "Show a picker of the providers to sign in to. The providers come from the list of models of the channel and from the providers known to Autolith. Each provider is shown as signed in or not signed in."
   (let* ((stored (remove-duplicates
                   (loop for model in (workbench-models workbench)
                         when (portable-true-p (portable-get model "credentialStored"))
@@ -110,7 +110,7 @@
 
 (-> chrome--move-agent-here (workbench) null)
 (defun chrome--move-agent-here (workbench)
-  "Offer the agents that live elsewhere, and move the one chosen into the channel shown."
+  "Show the agents that reside outside the channel shown, and move the chosen agent into the channel."
   (let ((channel (workbench-channel workbench)))
     (workbench-pick
      workbench
@@ -131,7 +131,7 @@
 
 (-> chrome--channel-menu (workbench &key (:x integer) (:y integer)) null)
 (defun chrome--channel-menu (workbench &key (x 0) (y 0))
-  "Open the menu of what can be done with the channel shown and its agent, with its corner at X, Y."
+  "Open the menu of the channel shown and of the agent of the channel, with a corner at X, Y."
   (let ((agent (chrome--channel-agent workbench)))
     (flet ((item (label function &optional detail)
              (make-choice :label label :detail detail :value function)))
@@ -190,12 +190,12 @@
 
 (-> chrome--confirm-stop-server (workbench) null)
 (defun chrome--confirm-stop-server (workbench)
-  "Ask whether the world server is to be stopped, and stop it on a yes."
+  "Ask the person whether to stop the world server, and stop it if the answer is yes."
   (workbench-pick workbench
                   (list (make-choice :label "Keep it running"
                                      :value ':keep)
                         (make-choice :label  "Stop the server"
-                                     :detail "Work in every channel is stopped; channels and histories are kept"
+                                     :detail "All work is stopped. The channels and histories are kept"
                                      :value  ':stop))
                   (lambda (answer)
                     (when (eq answer ':stop)
@@ -206,10 +206,10 @@
 (-> chrome-paint-directory
     (workbench stage t &key (:x integer) (:y integer) (:width integer) (:height integer)) integer)
 (defun chrome-paint-directory (workbench stage identifier &key x y width height)
-  "Draw the folder the channel shown works in, cut at its start to fit WIDTH, and return the width it took.
+  "Draw the folder of the channel shown, cut at the start to fit WIDTH. Return the width of the text drawn.
 
-On an attached channel the folder is a region named IDENTIFIER: a click on it
-asks for another folder."
+If the channel is attached, the folder is a region named IDENTIFIER. A click
+on the region asks for another folder."
   (let* ((meta      (text-style ':meta))
          (text      (text-fit-tail (short-directory (workbench-directory workbench)) meta (max 0 (- width 8))))
          (wide      (+ 8 (text-width text meta)))
@@ -228,12 +228,12 @@ asks for another folder."
                     :width   wide
                     :height  height
                     :action  (lambda () (workbench-change-directory workbench))
-                    :tooltip "Change the folder the agent works in"))
+                    :tooltip "Change the folder that the agent works in"))
     wide))
 
 (-> chrome--agent-name (workbench) (or null string))
 (defun chrome--agent-name (workbench)
-  "Return the name the channel list gives the agent of the channel shown, the name it is mentioned by, or NIL when the list has none."
+  "Return the name of the agent of the channel shown, as given in the channel list. This is the name used in mentions. Return NIL if the channel list does not contain a name."
   (let ((entry (find (workbench-channel workbench) (sidebar-entries workbench)
                      :key  (lambda (entry)
                              (getf entry :id))
@@ -245,10 +245,9 @@ asks for another folder."
                (:band-p boolean))
     null)
 (defun header-paint (workbench stage &key x y width sidebar-toggle-p (band-p t))
-  "Draw the header: the channel's title, under it the agent's name, the channel's identifier and the folder it works in, and the buttons for the settings, the linked files, the commands and the channel's menu.
+  "Draw the header. It contains the title of the channel, a line with the name of the agent, the identifier and the folder of the channel, and the buttons for the settings, the linked files, the commands and the menu of the channel.
 
-BAND-P draws the band of dither that parts the header from a conversation
-beneath it."
+If BAND-P is true, a band of dither is drawn under the header."
   (let* ((left  (+ x 24 (if sidebar-toggle-p 38 0)))
          (right (- (+ x width) 20))
          (title (text-style ':heading-2))
@@ -304,14 +303,14 @@ beneath it."
                               :y      (- (+ y 50) (text-baseline meta))
                               :width  (max 0 (- right cursor -4))
                               :height (text-style-line-height meta)))
-    ;; Over a conversation the header ends on a band of dither, not a rule.
+    ;; Draw a band of dither under the header, which separates it from the conversation.
     (when band-p
       (paint-dither x (+ y *header-height* -3) :width width :height 3 :step 3)))
   nil)
 
 (-> chrome--count (integer) string)
 (defun chrome--count (tokens)
-  "Return TOKENS as a person reads a token count: 950, 40.1K, 1.2M."
+  "Return the token count TOKENS as short text, such as 950, 40.1K or 1.2M."
   (cond
     ((< tokens 1000)
      (princ-to-string tokens))
@@ -328,9 +327,9 @@ beneath it."
 
 (-> status-paint (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
 (defun status-paint (workbench stage &key x y width)
-  "Draw the line under the composer: that the agent works and for how long, or the folder it works in while it is idle, and at the right how full its context is.
+  "Draw the status line under the composer. While the agent works, the line contains the time since the turn started. Otherwise, it contains the folder of the channel. The use of the context is drawn at the right.
 
-A count of context that Autolith estimated instead of measured opens with a tilde."
+Context counts estimated by Autolith start with a tilde."
   (let* ((meta   (text-style ':meta))
          (height *status-height*)
          (right  (+ x width)))
@@ -378,7 +377,7 @@ A count of context that Autolith estimated instead of measured opens with a tild
 
 (-> approval--label (list) string)
 (defun approval--label (option)
-  "Return the words on the button for the approval OPTION."
+  "Return the label of the button for the approval OPTION."
   (let ((value (getf option :value)))
     (cond
       ((equal value "once")
@@ -397,18 +396,18 @@ A count of context that Autolith estimated instead of measured opens with a tild
        (string-capitalize (substitute #\Space #\- (or value "choose")))))))
 
 (defparameter *approval-row-height* 28
-  "The height of one choice in the approval card.")
+  "The height of a choice in the approval card.")
 
 (-> approval--sentence (string) string)
 (defun approval--sentence (text)
-  "Return TEXT opening with a capital, as a sentence does."
+  "Return TEXT with a capital first letter."
   (if (plusp (length text))
       (concatenate 'string (string (char-upcase (char text 0))) (subseq text 1))
       text))
 
 (-> approval-height (workbench integer) integer)
 (defun approval-height (workbench width)
-  "Return the height the approval card needs at WIDTH, zero when nothing waits for approval."
+  "Return the height of the approval card at WIDTH, or zero if there is no request for approval."
   (let ((approval (workbench-approval workbench)))
     (if (null approval)
         0
@@ -422,11 +421,10 @@ A count of context that Autolith estimated instead of measured opens with a tild
 
 (-> approval-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun approval-paint (workbench stage &key x y width height)
-  "Draw the approval card: what is asked in a title bar, the request in the typewriter face, and the choices as a numbered list, what each means beside it.
+  "Draw the approval card. The title bar contains the title of the request, and the request follows in the typewriter face. The choices follow as a numbered list, with a description beside each choice.
 
-The card is the one thing in the window set in paper on ink, so that a
-question waiting for the person is not taken for part of the conversation.
-A choice is taken with its number or a click."
+The card is drawn inverted, as paper on ink, so that it stands apart from the
+conversation."
   (let* ((approval (workbench-approval workbench))
          (options  (getf approval :options))
          (box-h    (- height *shadow-offset* 10))
@@ -437,8 +435,8 @@ A choice is taken with its number or a click."
          (label-w  (loop for option in options
                          maximize (text-width (approval--label option) (text-style ':label-bold))))
          (detail-x (+ x 14 30 label-w 22))
-         ;; A card too narrow for both columns keeps the choices; what each
-         ;; means is then in its tooltip.
+         ;; Only draw the descriptions if there is room for them. The
+         ;; descriptions are also the tooltips of the choices.
          (detail-p (> (- (+ x width) detail-x 14) 220)))
     (paragraph-layout entry (- width 44))
     (paint-dither (+ x *shadow-offset*) (+ y box-h) :width width :height *shadow-offset*)
@@ -466,7 +464,7 @@ A choice is taken with its number or a click."
                &key (:x integer) (:y integer) (:width integer) (:label-w integer) (:detail-x (or null integer)))
     null)
 (defun approval--paint-choices (workbench stage options &key x y width label-w detail-x)
-  "Draw the choices OPTIONS of the approval card from Y down, one to a row: its number, its label LABEL-W wide, and from DETAIL-X what it means, when there is room for that."
+  "Draw the choices OPTIONS of the approval card, one in each row from Y down. Each row contains the number, the label in a column of the width LABEL-W, and the description at DETAIL-X. If DETAIL-X is NIL, the descriptions are left out."
   (let ((bold (text-style ':label-bold))
         (meta (text-style ':meta)))
     (loop for option in options
@@ -512,16 +510,16 @@ A choice is taken with its number or a click."
 ;;;; -- Pending Messages --
 
 (defparameter *pending-shown* 5
-  "How many waiting messages are listed above the composer, the newest ones.")
+  "The number of pending messages listed above the composer. Only the newest messages are listed.")
 
 (-> pending-height (workbench) integer)
 (defun pending-height (workbench)
-  "Return the height the lines for messages not yet taken up need."
+  "Return the height of the lines of pending messages."
   (* 24 (min *pending-shown* (length (workbench-waiting workbench)))))
 
 (-> pending-paint (workbench &key (:x integer) (:y integer) (:width integer)) null)
 (defun pending-paint (workbench &key x y width)
-  "Draw each message the agent has not taken up yet as one line: a filled label saying whether it steers or follows, then the message."
+  "Draw the pending messages, one in each line. Each line starts with an inverted label, which is steering or follow-up, and the message follows."
   (let ((meta (text-style ':meta))
         (bold (text-style ':meta-bold)))
     (loop for (text steer-p) in (last (workbench-waiting workbench) *pending-shown*)
@@ -542,7 +540,7 @@ A choice is taken with its number or a click."
 
 (-> chrome--paint-centered (string text-style &key (:x integer) (:y integer) (:width integer)) integer)
 (defun chrome--paint-centered (text style &key (x 0) (y 0) (width 0))
-  "Draw TEXT in STYLE centered in WIDTH with its line's top at Y, and return the Y below it."
+  "Draw TEXT in STYLE, centered in WIDTH, with the top of the line at Y. Return the Y below the line."
   (paint-text-in (text-fit text style width) style
                  :x      x
                  :y      y
@@ -552,14 +550,14 @@ A choice is taken with its number or a click."
   (+ y (text-style-line-height style)))
 
 (defvar *mascot* nil
-  "The loaded picture of Autolith's mascot, :MISSING when it could not be read, or NIL before it was tried.")
+  "The loaded picture of the mascot of Autolith. The value is :MISSING if the picture could not be read, and NIL before the first try.")
 
 (defparameter *mascot-size* '(250 . 225)
-  "The (WIDTH . HEIGHT) the mascot is drawn at.")
+  "The size of the mascot, as (WIDTH . HEIGHT).")
 
 (-> chrome--paint-mascot (integer integer integer) integer)
 (defun chrome--paint-mascot (x y width)
-  "Draw the mascot centered in WIDTH with its top at Y, and return the Y below it; draw nothing and return Y when its picture is missing."
+  "Draw the mascot centered in WIDTH with the top at Y, and return the Y below it. If the picture is missing, draw nothing and return Y."
   (unless *mascot*
     (setf *mascot*
           (or (lightfast:load-image
@@ -574,12 +572,12 @@ A choice is taken with its number or a click."
 
 (-> empty-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun empty-paint (workbench stage &key x y width height)
-  "Draw what stands in for a conversation: the opening's progress, why it failed, or an invitation to write."
+  "Draw the empty view in place of a conversation. It contains the progress of the opening, the reason of a failure, or an invitation to write."
   (let* ((column  (min 560 (- width 48)))
          (left    (+ x (floor (- width column) 2)))
          (roomy-p (>= height 560))
          (top     (+ y (max 24 (floor (- height (if roomy-p 500 260)) 2)))))
-    ;; With room to spare, the mascot stands above the words.
+    ;; Draw the mascot above the text if there is enough room.
     (when (and roomy-p (member (workbench-attachment workbench) '(:opening :none :attached)))
       (setf top (chrome--paint-mascot left top column)))
     (ecase (workbench-attachment workbench)
@@ -644,7 +642,7 @@ A choice is taken with its number or a click."
                                              :x     left
                                              :y     (+ below 14)
                                              :width column))
-         ;; A path belongs to the typewriter face; in italics its slashes read as bars.
+         ;; Draw the path upright, because slashes in italics look like bars.
          (chrome--paint-centered (format nil "~@[~A in ~]~A"
                                          (workbench-model workbench)
                                          (short-directory (workbench-directory workbench)))

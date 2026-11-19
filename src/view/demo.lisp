@@ -2,10 +2,10 @@
 
 ;;;; -- Demonstration --
 
-;;; A scripted channel that needs no server: a short conversation with every
-;;; kind of entry, a channel tree, and the snapshots a live channel sends.
-;;; aui --demo shows it, which is how the interface is looked at and
-;;; photographed where no Autolith runs, on a build machine for one.
+;;; A scripted channel without a server. It contains a short conversation with
+;;; every kind of entry, a channel tree, and the snapshots sent by a live channel.
+;;; It is shown by the command aui --demo. It is used to look at the window and
+;;; take pictures of it on machines without Autolith, such as a build machine.
 
 (defparameter *demo-answer*
   "The build fails for **two reasons**, both in the `Makefile`:
@@ -30,11 +30,11 @@
 
 - [x] Portable Makefile
 - [ ] Run the smoke tests on a Mac"
-  "The answer the demonstration's agent gives.")
+  "The answer of the agent in the demonstration.")
 
 (-> demo--entries () list)
 (defun demo--entries ()
-  "Return the demonstration's conversation, oldest first."
+  "Return the entries of the demonstration conversation, with the oldest first."
   (list
    (make-instance 'user-entry
                   :text (format nil "Why does the build fail on macOS?~2%- have a look at the `Makefile`~%- fix it, and tell me what you changed"))
@@ -87,7 +87,7 @@
 
 (-> demo--tree () list)
 (defun demo--tree ()
-  "Return the demonstration's channel tree in the shape of Autolith's sidebar entries."
+  "Return the channel tree of the demonstration in the shape of the sidebar entries of Autolith."
   (list (list :kind ':inbox :id "home" :unread 2)
         (list :kind ':workspace :key "/home/you/lightfast/" :name "lightfast" :path "~/lightfast"
               :indent 2 :children-p t :open-p t)
@@ -111,7 +111,7 @@
 
 (-> demo--operations () list)
 (defun demo--operations ()
-  "Return a few operations in the shape a channel sends them."
+  "Return a few operations in the shape used by channels."
   (flet ((command (name description &optional hint)
            (portable-object "name" name "kind" "command" "description" description
                             "argumentHint" hint "terminalOwning" ':false "choices" '(:array))))
@@ -128,7 +128,7 @@
 
 (-> demo--settings () list)
 (defun demo--settings ()
-  "Return a few settings in the shape a channel sends them."
+  "Return a few settings in the shape used by channels."
   (flet ((setting (name label group type value documentation &optional options)
            (portable-object "name" name "label" label "group" group "type" type "value" value
                             "documentation" documentation "adjustable" t "source" "saved" "scope" "durable"
@@ -146,7 +146,7 @@
 
 (-> demo-agenda () list)
 (defun demo-agenda ()
-  "Return an agenda in the shape the workspace reader gives one."
+  "Return an agenda in the shape returned by the workspace reader."
   (list (list :id "a-7Hq2" :status ':done :text "Make the Makefile portable" :memories nil)
         (list :id "a-9Kd4" :status ':doing :text "Guard the fontconfig code behind the platform" :memories '("m-1"))
         (list :id "a-2Xp8" :status ':todo :text "Run the smoke tests on a Mac" :memories nil)
@@ -155,7 +155,7 @@
 
 (-> demo-memories () list)
 (defun demo-memories ()
-  "Return memories in the shape the workspace reader gives them."
+  "Return a list of memories in the shape returned by the workspace reader."
   (list (list :id "m-4Tq9" :title "The bridge library is named per platform" :status ':stale
               :summary "Makefile changed since this was written"
               :content "`liblightfast.so` on Linux and `liblightfast.dylib` on macOS; the name comes from `LIGHTFAST_LIBRARY` when that is set."
@@ -170,7 +170,7 @@
 
 (-> demo-install (workbench) null)
 (defun demo-install (workbench)
-  "Fill WORKBENCH with the demonstration: a conversation, a channel tree and a working agent."
+  "Fill WORKBENCH with the demonstration, which has a conversation, a channel tree and a working agent."
   (workbench--reset-channel workbench)
   (dolist (entry (demo--entries))
     (transcript-append (workbench-transcript workbench) entry))
@@ -207,7 +207,7 @@
 
 (-> demo-approval () list)
 (defun demo-approval ()
-  "Return an approval as a channel asks for one, for showing the approval card."
+  "Return an approval request in the shape used by channels."
   (list :id      "demo-approval"
         :kind    ':command
         :title   "run gh run watch"

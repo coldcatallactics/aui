@@ -2,28 +2,29 @@
 
 ;;;; -- Workbench --
 
-;;; The window's state and its dealings with the client layer: which channel
-;;; is shown, what it last said about itself, what waits for the person's
-;;; answer, and how each event that crosses from a client thread changes
-;;; that. The panes in the other files of this directory only read this
-;;; state and call the actions here. Everything runs on the interface thread.
+;;; The state of the window and the interaction with the client layer. The
+;;; state contains the channel shown, the last state reported by the channel
+;;; and the requests that wait for an answer by the person. The functions here
+;;; apply the events posted by client threads to that state. The panes in the
+;;; other files of this directory only read the state and call the functions
+;;; here. All of this runs on the interface thread.
 
 (defclass workbench ()
   ((launch
     :initarg       :launch
     :reader        workbench-launch
     :type          launch
-    :documentation "What the command line asked for.")
+    :documentation "The options given on the command line.")
    (world
     :initarg       :world
     :reader        workbench-world
     :type          world
-    :documentation "The world of channels the window looks onto.")
+    :documentation "The world of channels shown in the window.")
    (queue
     :initarg       :queue
     :reader        workbench-queue
     :type          ui-queue
-    :documentation "Where the client threads post what happened.")
+    :documentation "The queue to which the client threads post events.")
    (window
     :initform      nil
     :accessor      workbench-window
@@ -31,12 +32,12 @@
    (stage
     :initform      nil
     :accessor      workbench-stage
-    :documentation "The window's drawing surface.")
+    :documentation "The drawing surface of the window.")
    (generation
     :initform      0
     :accessor      workbench-generation
     :type          integer
-    :documentation "Counts channel attachments; events of an earlier one are dropped.")
+    :documentation "The number of channel attachments so far. Events of an earlier attachment are dropped.")
    (session
     :initform      nil
     :accessor      workbench-session
@@ -45,11 +46,11 @@
     :initform      (make-transcript)
     :accessor      workbench-transcript
     :type          transcript
-    :documentation "The shown channel's history.")
+    :documentation "The history of the channel shown.")
    (projector
     :initform      nil
     :accessor      workbench-projector
-    :documentation "Turns the shown channel's records and events into the transcript.")
+    :documentation "The projector used to convert the records and events of the channel shown into the transcript.")
    (document
     :initform      nil
     :accessor      workbench-document
@@ -58,194 +59,195 @@
     :initform      ':none
     :accessor      workbench-attachment
     :type          (member :none :opening :attached :failed :closed)
-    :documentation "Where the attachment to the shown channel stands.")
+    :documentation "The state of the attachment to the channel shown.")
    (progress
     :initform      nil
     :accessor      workbench-progress
     :type          list
-    :documentation "The (STEP DESCRIPTION) of the opening under way, or NIL.")
+    :documentation "The progress of the opening, as a list (STEP DESCRIPTION), or NIL.")
    (failure
     :initform      nil
     :accessor      workbench-failure
     :type          (or null string)
-    :documentation "Why the last opening failed or the channel went away, or NIL.")
+    :documentation "The reason why the last opening failed or the channel closed, or NIL.")
    (status
     :initform      nil
     :accessor      workbench-status
     :type          list
-    :documentation "The channel's status as it last reported it: a property list with :STATE, :MODEL, :CWD and so on.")
+    :documentation "The last status reported by the channel, as a property list with :STATE, :MODEL, :CWD and other keys.")
    (state
     :initform      nil
     :accessor      workbench-state
-    :documentation "The channel's richer state in portable form: usage, title, plan presence.")
+    :documentation "The detailed state of the channel in portable form, such as the usage, the title and the plan.")
    (working-p
     :initform      nil
     :accessor      workbench-working-p
     :type          boolean
-    :documentation "Whether the channel is doing work the person may stop.")
+    :documentation "True while the channel does work that the person can stop.")
    (working-since
     :initform      nil
     :accessor      workbench-working-since
     :type          (or null integer)
-    :documentation "The universal time the current work began, for the elapsed clock.")
+    :documentation "The universal time at which the current work began.")
    (approval
     :initform      nil
     :accessor      workbench-approval
     :type          list
-    :documentation "The approval waiting for an answer as a property list of :ID, :KIND, :TITLE, :ENTRY and :OPTIONS, or NIL.")
+    :documentation "The approval that waits for an answer, as a property list of :ID, :KIND, :TITLE, :ENTRY and :OPTIONS, or NIL.")
    (pending
     :initform      nil
     :accessor      workbench-pending
     :type          list
-    :documentation "Messages sent and not yet taken up by the agent, oldest first, each (IDENTIFIER TEXT STEER-P).")
+    :documentation "The messages sent and not yet taken up by the agent, the oldest first. Each message is a list (IDENTIFIER TEXT STEER-P).")
    (operations
     :initform      nil
     :accessor      workbench-operations
     :type          list
-    :documentation "The channel's commands and tools as portable rows, once fetched.")
+    :documentation "The commands and tools of the channel as portable rows, once fetched.")
    (settings
     :initform      nil
     :accessor      workbench-settings
     :type          list
-    :documentation "The channel's settings as portable rows, once fetched.")
+    :documentation "The settings of the channel as portable rows, once fetched.")
    (models
     :initform      nil
     :accessor      workbench-models
     :type          list
-    :documentation "The models on offer as portable rows, once fetched.")
+    :documentation "The available models as portable rows, once fetched.")
    (refreshes
     :initform      nil
     :accessor      workbench--refreshes
     :type          list
-    :documentation "The snapshots being fetched, each as (METHOD . AGAIN-P), AGAIN-P once it was asked for again meanwhile.")
+    :documentation "The snapshots that are being fetched, each as (METHOD . AGAIN-P). AGAIN-P is true if the snapshot was asked for again in the meantime.")
    (jobs
     :initform      nil
     :accessor      workbench-jobs
     :type          list
-    :documentation "The channel's background jobs as portable rows, as last fetched.")
+    :documentation "The background jobs of the channel as portable rows, as last fetched.")
    (jobs-fetched-at
     :initform      0
     :accessor      workbench-jobs-fetched-at
     :type          integer
-    :documentation "The universal time the jobs were last asked for.")
+    :documentation "The universal time at which the jobs were last asked for.")
    (notice
     :initform      nil
     :reader        workbench-notice
     :type          (or null string)
-    :documentation "A line telling the person something did not work, shown above the composer until the next action.")
+    :documentation "The text of the line above the composer about something that did not work, or NIL.")
    (sidebar-shown-p
     :initform      t
     :accessor      workbench-sidebar-shown-p
     :type          boolean
-    :documentation "Whether the person wants the channel list beside the conversation, on a window wide enough for both.")
+    :documentation "True if the person wants the channel list beside the conversation in a wide window.")
    (drawer-open-p
     :initform      nil
     :accessor      workbench-drawer-open-p
     :type          boolean
-    :documentation "Whether the channel list is open on a window too narrow to hold it beside the conversation, where it takes the whole window.")
+    :documentation "True if the channel list is open as a drawer that fills a narrow window.")
    (sidebar-scroll
     :initform      0
     :accessor      workbench-sidebar-scroll
     :type          integer
-    :documentation "How far the channel list is scrolled.")
+    :documentation "The scroll position of the channel list.")
    (filter
     :initform      ""
     :accessor      workbench-filter
     :type          string
-    :documentation "What the person typed to narrow the channel list.")
+    :documentation "The text typed by the person to narrow the channel list.")
    (editor
     :initform      nil
     :accessor      workbench-editor
-    :documentation "The composer's native text editor.")
+    :documentation "The native text editor of the composer.")
    (attachments
     :initform      nil
     :accessor      workbench-attachments
     :type          list
-    :documentation "Namestrings of the images that go with the next message.")
+    :documentation "The namestrings of the images attached to the next message.")
    (overlay
     :initform      nil
     :accessor      workbench-overlay
-    :documentation "The view laid over the window, such as the command list, or NIL.")
+    :documentation "The view drawn over the window, such as the list of commands, or NIL.")
    (completion-index
     :initform      0
     :accessor      workbench-completion-index
     :type          integer
-    :documentation "Which of the composer's completions is highlighted.")
+    :documentation "The index of the highlighted completion.")
    (completion-dismissed
     :initform      nil
     :accessor      workbench-completion-dismissed
     :type          (or null string)
-    :documentation "The draft for which the person put the completions away, or NIL.")
+    :documentation "The draft for which the person closed the list of completions, or NIL.")
    (history
     :initform      nil
     :accessor      workbench-history
     :type          list
-    :documentation "What the person sent from this window, newest first, for recall with the arrow keys.")
+    :documentation "The texts sent by the person from this window, the newest first. They can be recalled with the arrow keys.")
    (history-index
     :initform      nil
     :accessor      workbench-history-index
     :type          (or null integer)
-    :documentation "Which sent text the composer is showing while the person steps through them, or NIL.")
+    :documentation "The index in the history of the text shown in the composer during a recall, or NIL.")
    (demo-entries
     :initform      nil
     :accessor      workbench-demo-entries
     :type          list
-    :documentation "The channel tree shown by the scripted demonstration, in place of a world's.")
+    :documentation "The channel tree of the scripted demonstration, used in place of the tree of a world.")
    (waiting
     :initform      nil
     :accessor      workbench--waiting
     :type          list
-    :documentation "What the channel's own snapshot says it has not taken up yet, each as (TEXT STEER-P).")
+    :documentation "The messages that the channel has not taken up yet, as read from the snapshot of the channel. Each message is a list (TEXT STEER-P).")
    (waiting-pathname
     :initform      nil
     :accessor      workbench--waiting-pathname
-    :documentation "The file of the channel's snapshot of waiting messages, or NIL while the channel has none.")
+    :documentation "The file of the snapshot of waiting messages of the channel, or NIL if the channel has no such file yet.")
    (waiting-read-at
     :initform      0
     :accessor      workbench--waiting-read-at
     :type          integer
-    :documentation "When the snapshot of waiting messages was last read, in internal time units.")
+    :documentation "The internal time at which the snapshot of waiting messages was last read.")
    (participants
     :initform      nil
     :accessor      workbench--participants
     :type          list
-    :documentation "The world's participants as last read, each a property list of :NAME, :KIND, :IDENTIFIER and :RESIDENCE.")
+    :documentation "The participants of the world as last read. Each participant is a property list of :NAME, :KIND, :IDENTIFIER and :RESIDENCE.")
    (participants-asked-at
     :initform      nil
     :accessor      workbench--participants-asked-at
     :type          (or null integer)
-    :documentation "When the participants were last asked for, in internal time units, or NIL before the first time.")
+    :documentation "The internal time at which the participants were last asked for, or NIL before the first time.")
    (digest
     :initform      nil
     :accessor      workbench--digest
-    :documentation "What was read from the conversation shown for the console: its plan, files and messages, or NIL before the first reading.")
+    :documentation "The digest of the conversation shown, with the plan, the files and the messages for the console, or NIL before the first reading.")
    (goal-record
     :initform      nil
     :accessor      workbench--goal-record
     :type          list
-    :documentation "The newest goal record seen of the channel shown, or NIL when none was seen.")
+    :documentation "The newest goal record seen for the channel shown, or NIL.")
    (goal-layout
     :initform      nil
     :accessor      workbench--goal-layout
     :type          list
-    :documentation "The goal's objective as last laid out for the console, as (OBJECTIVE WIDTH BLOCK), or NIL.")
+    :documentation "The last layout of the goal objective for the console, as (OBJECTIVE WIDTH BLOCK), or NIL.")
    (console-scroll
     :initform      0
     :accessor      workbench-console-scroll
     :type          integer
-    :documentation "How far the console's sections are scrolled.")
+    :documentation "The scroll position of the console parts.")
    (console-share
     :initform      nil
     :accessor      workbench-console-share
     :type          (or null real)
-    :documentation "The part of the width beside the channel list that the console takes, as the person left it, or NIL for what was remembered."))
-  (:documentation "One AUI window and everything it knows."))
+    :documentation "The share of the console in the width beside the channel list, as dragged by the person, or NIL to use the saved preference."))
+  (:documentation "The state of one AUI window."))
 
 (-> notice-text (string) string)
 (defun notice-text (text)
-  "Return TEXT as a line of the interface reads: one line, begun with a small letter, without a closing period.
+  "Return the first line of TEXT in the voice of the interface, with a lowercase first letter and without a closing period.
 
-A first word written in capitals, such as a name, keeps them."
+The first letter is only lowercased if the second letter is lowercase, so that
+names in capitals are kept."
   (let* ((line  (string-right-trim '(#\Space #\Newline #\.)
                                    (subseq text 0 (or (position #\Newline text) (length text)))))
          (small (and (> (length line) 1)
@@ -257,42 +259,42 @@ A first word written in capitals, such as a name, keeps them."
 
 (-> (setf workbench-notice) ((or null string) workbench) (or null string))
 (defun (setf workbench-notice) (text workbench)
-  "Tell the person TEXT above the composer, or with NIL take the line away."
+  "Set the line above the composer to TEXT, or remove the line if TEXT is NIL."
   (setf (slot-value workbench 'notice) (and text (notice-text text))))
 
 (-> workbench-redraw (workbench) null)
 (defun workbench-redraw (workbench)
-  "Ask for WORKBENCH's window to be drawn again."
+  "Ask for the window of WORKBENCH to be drawn again."
   (when (workbench-stage workbench)
     (stage-redraw (workbench-stage workbench)))
   nil)
 
 (-> workbench-demo-p (workbench) boolean)
 (defun workbench-demo-p (workbench)
-  "Return T when WORKBENCH shows the scripted demonstration."
+  "Return T if WORKBENCH shows the scripted demonstration."
   (launch-demo-p (workbench-launch workbench)))
 
 (-> workbench-attached-p (workbench) boolean)
 (defun workbench-attached-p (workbench)
-  "Return T when WORKBENCH is attached to a channel and can talk to it."
+  "Return T if WORKBENCH is attached to a channel."
   (and (eq (workbench-attachment workbench) ':attached) t))
 
 (-> workbench-channel (workbench) (or null string))
 (defun workbench-channel (workbench)
-  "Return the identifier of the channel WORKBENCH shows, or NIL."
+  "Return the identifier of the channel shown in WORKBENCH, or NIL."
   (let ((session (workbench-session workbench)))
     (or (and session (session-identifier session))
         (getf (workbench-status workbench) :session-id))))
 
 
-;;;; -- What the Channel Says About Itself --
+;;;; -- Channel State --
 
 (-> workbench-title (workbench) string)
 (defun workbench-title (workbench)
-  "Return the shown channel's title, or words for a channel that has none yet."
+  "Return the title of the channel shown, or a placeholder if the channel has no title yet."
   (or (portable-string (getf (workbench-status workbench) :conversation-title))
       (portable-string (portable-get (workbench-state workbench) "title"))
-      ;; The channel tree hears of a first turn's title before the turn ends.
+      ;; The channel tree has the title of a first turn before the turn ends.
       (and (not (workbench-demo-p workbench))
            (world-channel-title (workbench-world workbench) (workbench-channel workbench)))
       (case (workbench-attachment workbench)
@@ -305,36 +307,36 @@ A first word written in capitals, such as a name, keeps them."
 
 (-> workbench-model (workbench) (or null string))
 (defun workbench-model (workbench)
-  "Return the shown channel's model, or NIL when unknown."
+  "Return the model of the channel shown, or NIL if the model is not known."
   (or (portable-string (portable-get (workbench-state workbench) "model"))
       (portable-string (getf (workbench-status workbench) :model))))
 
 (-> workbench-effort (workbench) (or null string))
 (defun workbench-effort (workbench)
-  "Return the shown channel's reasoning effort, or NIL when unknown."
+  "Return the reasoning effort of the channel shown, or NIL if the effort is not known."
   (or (portable-string (portable-get (workbench-state workbench) "effort"))
       (portable-string (getf (workbench-status workbench) :reasoning-effort))))
 
 (-> workbench-permission-mode (workbench) keyword)
 (defun workbench-permission-mode (workbench)
-  "Return the shown channel's permission mode."
+  "Return the permission mode of the channel shown."
   (let ((mode (getf (workbench-status workbench) :permission-mode)))
     (if (keywordp mode) mode ':ask)))
 
 (-> workbench-directory (workbench) string)
 (defun workbench-directory (workbench)
-  "Return the folder the shown channel works in, or the launch directory before a channel is attached.
+  "Return the folder of the channel shown, or the launch directory if no channel is attached.
 
-The channel's state, fetched after each piece of work, names the folder it
-works in now; the status it sends by itself can be older than a change of
-folder."
+The folder in the state of the channel is used first, because the state is
+fetched after each piece of work. The status sent by the channel can be older
+than a change of folder."
   (or (portable-string (portable-get (workbench-state workbench) "workspace"))
       (portable-string (getf (workbench-status workbench) :cwd))
       (world-working-directory (workbench-world workbench))))
 
 (-> workbench-context (workbench) (values (or null integer) (or null integer) boolean))
 (defun workbench-context (workbench)
-  "Return the tokens of context used and the context limit, each NIL when unknown, and whether Autolith estimated the use instead of measuring it."
+  "Return three values: the tokens of context used, the context limit, and T if Autolith estimated the use instead of measuring it. The first two values are NIL if they are not known."
   (let ((usage (portable-get (workbench-state workbench) "usage")))
     (values (let ((used (portable-get usage "contextUsed")))
               (and (integerp used) used))
@@ -344,12 +346,11 @@ folder."
 
 (-> workbench-goal (workbench) list)
 (defun workbench-goal (workbench)
-  "Return the goal of the channel shown as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT, or NIL when it has none.
+  "Return the goal of the channel shown as a property list of :OBJECTIVE, :STATUS, :KIND and :CREATED-AT, or NIL if there is no goal.
 
-A channel whose state names its goal is taken at its word. One served by an
-Autolith that does not name it there has the goal of the newest goal record
-seen: the one at the head of the newest part of its history, those on the
-pages of history read so far, and those that arrive while the window looks."
+The goal is taken from the state of the channel, if the state contains a goal.
+Older versions of Autolith do not put the goal into the state. For them, the
+goal comes from the newest goal record seen in the history and in live events."
   (let ((state (workbench-state workbench)))
     (if (portable-member-p state "goal")
         (portable-goal (portable-get state "goal"))
@@ -358,7 +359,7 @@ pages of history read so far, and those that arrive while the window looks."
 
 (-> short-directory (string) string)
 (defun short-directory (directory)
-  "Return DIRECTORY with the home directory written as a tilde and no trailing slash."
+  "Return DIRECTORY with the home directory written as a tilde and without a trailing slash."
   (let* ((home    (namestring (user-homedir-pathname)))
          (trimmed (string-right-trim "/" directory)))
     (if (and (> (length home) 1)
@@ -372,7 +373,7 @@ pages of history read so far, and those that arrive while the window looks."
 
 (-> workbench--reset-channel (workbench) null)
 (defun workbench--reset-channel (workbench)
-  "Forget everything about the channel shown and start an empty transcript."
+  "Clear the state of the channel shown and start an empty transcript."
   (images-forget)
   (let ((transcript (make-transcript)))
     (setf (workbench-transcript workbench)    transcript
@@ -403,7 +404,7 @@ pages of history read so far, and those that arrive while the window looks."
                                    (:images list))
     null)
 (defun workbench-open (workbench &key channel directory new-p images)
-  "Leave the channel shown and attach to CHANNEL, or to the latest or a NEW-P channel for DIRECTORY."
+  "Leave the channel shown and attach to CHANNEL. Without CHANNEL, attach to the latest channel for DIRECTORY, or to a new channel if NEW-P is true."
   (let ((old (workbench-session workbench)))
     (when old
       (session-close old)))
@@ -426,10 +427,10 @@ pages of history read so far, and those that arrive while the window looks."
 
 (-> workbench-run-aside (workbench t function) null)
 (defun workbench-run-aside (workbench request function)
-  "Call FUNCTION on a thread of its own and post what it returns, or why it failed, as the result of REQUEST.
+  "Call FUNCTION on a new thread, and post the value or the error report as the result of REQUEST.
 
-Such a request is about the world, not the channel shown, so its result is
-stamped as it arrives and reaches the window whichever channel it shows then."
+The result is stamped with the generation at the time when it is posted. It is
+therefore applied even if another channel is shown by then."
   (bordeaux-threads:make-thread
    (lambda ()
      (multiple-value-bind (outcome value report)
@@ -447,11 +448,11 @@ stamped as it arrives and reaches the window whichever channel it shows then."
   nil)
 
 (defparameter *participants-seconds* 3
-  "How long the participants last read are taken for the world's before they are read again.")
+  "The number of seconds for which the participants last read are used before they are read again.")
 
 (-> workbench-participants (workbench) list)
 (defun workbench-participants (workbench)
-  "Return the world's participants as last read, and have them read again, off this thread, when that was a while ago."
+  "Return the participants of the world as last read. If the last reading is older than *PARTICIPANTS-SECONDS*, read them again on another thread."
   (let ((now   (get-internal-real-time))
         (asked (workbench--participants-asked-at workbench)))
     (when (and (not (workbench-demo-p workbench))
@@ -464,7 +465,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-leave (workbench) null)
 (defun workbench-leave (workbench)
-  "Leave the channel shown without attaching to another."
+  "Leave the channel shown without attaching to another channel."
   (let ((old (workbench-session workbench)))
     (when old
       (session-close old)))
@@ -478,14 +479,14 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-delete-channel (workbench string) null)
 (defun workbench-delete-channel (workbench channel)
-  "Delete CHANNEL, the channels nested in it and their histories, leaving it first when it is the one shown."
+  "Delete CHANNEL, the channels nested in it and their histories. If CHANNEL is the channel shown, leave it first."
   (when (equal channel (workbench-channel workbench))
     (workbench-leave workbench))
   (let ((world (workbench-world workbench)))
     (workbench-run-aside
      workbench (list ':delete-channel channel)
      (lambda ()
-       ;; A channel just left is released by its host a moment later.
+       ;; A channel that was just left is released a moment later, so retry a few times.
        (loop for attempt from 1
              do (handler-case (return (world-delete-channel world channel))
                   (client-error (condition)
@@ -496,7 +497,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-new-channel (workbench &key (:directory (or null string))) null)
 (defun workbench-new-channel (workbench &key directory)
-  "Open a new channel in DIRECTORY, by default the directory of the channel shown."
+  "Open a new channel in DIRECTORY. The default DIRECTORY is the folder of the channel shown."
   (workbench-open workbench :directory (or directory (workbench-directory workbench)) :new-p t))
 
 (-> workbench-new-channel-elsewhere (workbench) null)
@@ -511,7 +512,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-change-directory (workbench) null)
 (defun workbench-change-directory (workbench)
-  "Let the person choose the folder the channel shown works in, and tell the channel to work there."
+  "Let the person choose a new folder for the channel shown, and ask the channel to work there."
   (when (workbench-attached-p workbench)
     (let ((directory (lightfast:choose-directory :title       "A folder for the agent to work in"
                                                  :preset-path (workbench-directory workbench))))
@@ -522,7 +523,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-goal-request (workbench keyword) null)
 (defun workbench-goal-request (workbench action)
-  "Do ACTION with the goal of the channel shown: :PAUSE, :RESUME or :CLEAR it, or :UPDATE it to what the person then types."
+  "Apply ACTION to the goal of the channel shown. ACTION is :PAUSE, :RESUME or :CLEAR, or :UPDATE to ask the person for a new objective."
   (when (workbench-attached-p workbench)
     (if (eq action ':update)
         (workbench-ask workbench "Change the goal"
@@ -536,7 +537,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-stop-server (workbench) null)
 (defun workbench-stop-server (workbench)
-  "Stop the world server, and with it the work in every channel. The channel shown closes with it; opening a channel starts a server again."
+  "Stop the world server on another thread. This stops the work in all channels and closes the channel shown."
   (unless (workbench-demo-p workbench)
     (let ((world (workbench-world workbench)))
       (workbench-run-aside workbench ':stop-server
@@ -555,7 +556,7 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-close (workbench) null)
 (defun workbench-close (workbench)
-  "Leave the channel shown and stop watching the world, before the window goes away."
+  "Leave the channel shown and stop watching the world."
   (let ((session (workbench-session workbench)))
     (when session
       (session-close session)
@@ -569,11 +570,10 @@ stamped as it arrives and reaches the window whichever channel it shows then."
 
 (-> workbench-refresh (workbench &rest string) null)
 (defun workbench-refresh (workbench &rest methods)
-  "Fetch the channel's snapshots named by METHODS again, such as _autolith/state.
+  "Fetch the snapshots of the channel named by METHODS again, such as _autolith/state.
 
-A snapshot asked for while it is being fetched is fetched once more when that
-answer arrives, however often it was asked for: a turn asks after every tool
-call, and only the last answer matters."
+If a snapshot is asked for while it is being fetched, it is fetched only once
+more after the answer arrives, because only the last answer matters."
   (let ((session (workbench-session workbench)))
     (when (and session (workbench-attached-p workbench))
       (dolist (method methods)
@@ -587,7 +587,7 @@ call, and only the last answer matters."
 
 (-> workbench--refreshed (workbench string) null)
 (defun workbench--refreshed (workbench method)
-  "Note that the snapshot METHOD arrived, and fetch it again when it was asked for meanwhile."
+  "Note that the snapshot METHOD arrived. Fetch it again if it was asked for in the meantime."
   (let ((under-way (assoc method (workbench--refreshes workbench) :test #'string=)))
     (setf (workbench--refreshes workbench) (remove under-way (workbench--refreshes workbench)))
     (when (rest under-way)
@@ -615,11 +615,11 @@ call, and only the last answer matters."
         (cons "delete" (lambda (workbench)
                          (when (workbench-channel workbench)
                            (sidebar-confirm-delete workbench (workbench-channel workbench))))))
-  "The commands that, given no argument, open a picker or a page in the terminal and a view of its own in the window, each with what shows that view, called with the workbench.")
+  "A list of the commands that open a view of the window if they are given no argument. Each entry is (NAME . FUNCTION). FUNCTION is called with the workbench and opens the view. In the terminal, these commands open a picker or a page.")
 
 (defparameter *terminal-only-commands*
   '("onboard" "close" "exit" "detach" "rollback" "auth" "complain" "wtf")
-  "Commands that need a terminal and have no counterpart in the window yet; they are not offered.")
+  "The commands that need a terminal and have no counterpart in the window yet. These commands are left out of the lists.")
 
 (-> command-text-name (string) (values (or null string) boolean))
 (defun command-text-name (text)
@@ -640,28 +640,28 @@ TEXT is a Lisp form such as (model). The name is NIL if TEXT is not a form."
 
 (-> workbench-run-interface-command (workbench string) boolean)
 (defun workbench-run-interface-command (workbench name)
-  "Show the window's own view for the command NAME and return whether it has one."
+  "Open the view of the window for the command NAME. Return T if there is such a view."
   (let ((command (assoc name *interface-commands* :test #'string=)))
     (when command
       (funcall (rest command) workbench)
       t)))
 
 (defparameter *history-recall-limit* 200
-  "How many of the texts sent from the window are kept for recall with the arrow keys.")
+  "The number of sent texts kept for recall with the arrow keys.")
 
 (-> workbench-submit (workbench string &key (:steer-p boolean) (:images list)) boolean)
 (defun workbench-submit (workbench text &key steer-p images)
-  "Send TEXT with IMAGES to the channel and return whether it went.
+  "Send TEXT with IMAGES to the channel. Return T if the text was sent or handled by the window.
 
-A message sent while the agent works either steers the running turn, when
-STEER-P, or waits as a follow-up; it is shown above the composer until the
-agent takes it up."
+While the agent works, a message steers the running turn if STEER-P is true.
+Otherwise, the message waits as a follow-up. The message is shown above the
+composer until the agent takes it up."
   (let ((session (workbench-session workbench))
         (trimmed (string-trim '(#\Space #\Newline #\Tab #\Return) text)))
     (cond
       ((and (zerop (length trimmed)) (null images))
        nil)
-      ;; A command that would open a terminal picker opens the window's view instead.
+      ;; Open the view of the window for commands that open a picker in the terminal.
       ((multiple-value-bind (name arguments-p) (command-text-name trimmed)
          (and name
               (not arguments-p)
@@ -676,7 +676,7 @@ agent takes it up."
          (unless (workbench--command-p trimmed)
            (setf (workbench-pending workbench)
                  (append (workbench-pending workbench) (list (list identifier trimmed steer-p)))))
-         ;; What a command prints is shown under the command.
+         ;; Show the output of a command under the command.
          (setf (projector-invocation (workbench-projector workbench))
                (and (workbench--command-p trimmed) trimmed))
          (setf (workbench-notice workbench)        nil
@@ -696,7 +696,7 @@ agent takes it up."
 
 (-> workbench-stop (workbench) null)
 (defun workbench-stop (workbench)
-  "Stop the channel's running turn."
+  "Stop the running turn of the channel."
   (let ((session (workbench-session workbench)))
     (when (and session (workbench-attached-p workbench))
       (session-cancel session)))
@@ -715,7 +715,7 @@ agent takes it up."
 
 (-> workbench-set-mode (workbench keyword) null)
 (defun workbench-set-mode (workbench mode)
-  "Select the channel's permission MODE."
+  "Select the permission MODE of the channel."
   (let ((session (workbench-session workbench)))
     (when (and session (workbench-attached-p workbench))
       (session-set-mode session mode)))
@@ -749,11 +749,11 @@ agent takes it up."
 ;;;; -- Jobs --
 
 (defparameter *jobs-poll-seconds* 3
-  "How often the jobs are fetched again while any of them is live.")
+  "The interval in seconds between fetches of the jobs while any job is live.")
 
 (-> workbench-live-jobs (workbench) list)
 (defun workbench-live-jobs (workbench)
-  "Return the jobs that are waiting or running, as portable rows."
+  "Return the live jobs, which are pending, running, blocked or yielded, as portable rows."
   (remove-if-not (lambda (job)
                    (member (portable-get job "state") '("pending" "running" "blocked" "yielded")
                            :test #'equal))
@@ -761,17 +761,17 @@ agent takes it up."
 
 (-> workbench-refresh-jobs (workbench) null)
 (defun workbench-refresh-jobs (workbench)
-  "Fetch the channel's jobs again."
+  "Fetch the jobs of the channel again."
   (setf (workbench-jobs-fetched-at workbench) (get-universal-time))
   (workbench-refresh workbench "_autolith/jobs")
   nil)
 
 (-> workbench-poll-jobs (workbench) null)
 (defun workbench-poll-jobs (workbench)
-  "Fetch the jobs again when some are live, or the channel says some are, and the last answer is old."
+  "Fetch the jobs again if some jobs are live and the last fetch is older than *JOBS-POLL-SECONDS*. Jobs are live if the last fetch contains live jobs or if the status of the channel counts live jobs."
   (when (and (workbench-attached-p workbench)
              (or (workbench-live-jobs workbench)
-                 ;; Autolith called the count of live jobs :TASK-LIVE-COUNT before 0.67.39.
+                 ;; Before Autolith 0.67.39, the count of live jobs was named :TASK-LIVE-COUNT.
                  (let ((count (or (getf (workbench-status workbench) :job-live-count)
                                   (getf (workbench-status workbench) :task-live-count))))
                    (and (integerp count) (plusp count))))
@@ -794,8 +794,8 @@ agent takes it up."
 
 (-> workbench--note-status (workbench list) null)
 (defun workbench--note-status (workbench status)
-  "Take the channel's STATUS property list as its current one and derive whether it works."
-  ;; A folder that changed under the window makes the fetched state stale.
+  "Store STATUS as the current status of the channel, and update whether the channel works. Set the title of the window."
+  ;; A change of folder makes the fetched state stale, so fetch the state again.
   (let ((known (getf (workbench-status workbench) :cwd)))
     (when (and known (not (equal known (getf status :cwd))))
       (workbench-refresh workbench "_autolith/state")))
@@ -810,14 +810,15 @@ agent takes it up."
   nil)
 
 (defparameter *waiting-poll-seconds* 3/2
-  "How often the channel's snapshot of waiting messages is read again.")
+  "The interval in seconds between readings of the snapshot of waiting messages.")
 
 (-> workbench-waiting (workbench) list)
 (defun workbench-waiting (workbench)
-  "Return the messages the channel has not taken up yet, each as (TEXT STEER-P), oldest first.
+  "Return the messages that the channel has not taken up yet, the oldest first. Each message is a list (TEXT STEER-P).
 
-They are what the channel's own snapshot lists, whoever sent them and from
-where, followed by what this window sent that the snapshot does not show yet."
+The list contains the messages in the snapshot of the channel from all
+senders. The messages sent from this window that are missing from the
+snapshot follow."
   (let ((known (workbench--waiting workbench)))
     (append known
             (loop for (nil text steer-p) in (workbench-pending workbench)
@@ -826,7 +827,7 @@ where, followed by what this window sent that the snapshot does not show yet."
 
 (-> workbench-poll-waiting (workbench &key (:now-p boolean)) null)
 (defun workbench-poll-waiting (workbench &key now-p)
-  "Have the channel's snapshot of waiting messages read again, off this thread, when the last reading is old, or at once when NOW-P."
+  "Read the snapshot of waiting messages of the channel again on another thread. Only read it if the last reading is old or if NOW-P is true."
   (let ((channel (workbench-channel workbench))
         (now     (get-internal-real-time)))
     (when (and channel
@@ -841,16 +842,17 @@ where, followed by what this window sent that the snapshot does not show yet."
         (workbench-run-aside
          workbench (list ':waiting channel)
          (lambda ()
-           ;; A channel has no snapshot until it has a history; look again until it has.
+           ;; A channel only has a snapshot after it has a history. Look for the
+           ;; file until it exists.
            (let ((pathname (or known (history-pending-pathname configuration channel))))
              (list pathname (and pathname (history-pending-inputs pathname channel)))))))))
   nil)
 
 (-> workbench--take-waiting (workbench string list) boolean)
 (defun workbench--take-waiting (workbench channel reading)
-  "Take READING, the snapshot file of CHANNEL and the messages waiting in it, and return whether what waits changed.
+  "Store READING, which is a list of the snapshot file of CHANNEL and the messages waiting in it. Return T if the waiting messages changed.
 
-A reading of a channel the window has left is dropped."
+A reading for a channel other than the channel shown is dropped."
   (when (equal channel (workbench-channel workbench))
     (destructuring-bind (pathname waiting) reading
       (setf (workbench--waiting-pathname workbench) pathname)
@@ -860,7 +862,7 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench--drop-pending (workbench t) null)
 (defun workbench--drop-pending (workbench submission)
-  "Forget the pending message that SUBMISSION, a property list with an :ID, names."
+  "Remove the pending message identified by SUBMISSION, which is a property list with an :ID."
   (let ((identifier (and (listp submission) (getf submission :id))))
     (when identifier
       (setf (workbench-pending workbench)
@@ -869,7 +871,7 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench--channel-event (workbench list) null)
 (defun workbench--channel-event (workbench payload)
-  "Apply one event of the structured client protocol to WORKBENCH."
+  "Apply PAYLOAD, which is one event of the structured client protocol, to WORKBENCH."
   (let ((fields (rest payload)))
     (projector-apply (workbench-projector workbench) payload)
     (case (first payload)
@@ -902,7 +904,7 @@ A reading of a channel the window has left is dropped."
        (let ((record (getf fields :record)))
          (when (eq (first record) ':message)
            (workbench--drop-pending workbench (getf (rest record) :submission))
-           ;; A job that reports back is no longer running.
+           ;; A job that reports back has finished, so fetch the jobs again.
            (when (getf (rest record) :job-completion)
              (workbench-refresh-jobs workbench)))
          (when (eq (first record) ':goal)
@@ -918,7 +920,7 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench--attachment-event (workbench attachment-event) null)
 (defun workbench--attachment-event (workbench event)
-  "Follow the attachment to the shown channel through EVENT."
+  "Update the state of the attachment to the channel shown from EVENT."
   (let ((detail (attachment-event-detail event)))
     (ecase (attachment-event-state event)
       (:opening
@@ -934,13 +936,13 @@ A reading of a channel the window has left is dropped."
                (workbench--goal-record workbench) (records-newest-goal
                                                    (list (getf detail :goal-record))
                                                    (workbench--goal-record workbench))
-               ;; A request under way at attachment is shown from its records.
+               ;; Show a request that is in progress at the attachment from the records.
                (projector-catch-up-p projector)   (and (getf (getf detail :status) :active-turn-p) t)))
        (workbench--note-status workbench (getf detail :status))
        (setf (world-current-channel (workbench-world workbench)) (ui-event-channel event))
        (workbench-refresh workbench "_autolith/state" "_autolith/operations" "_autolith/settings"
                           "_autolith/models")
-       ;; What the command line asked to send goes out once, to the first channel that attaches.
+       ;; Send the prompt from the command line once, to the first channel that attaches.
        (let ((prompt (shiftf (launch-prompt (workbench-launch workbench)) nil)))
          (when prompt
            (workbench-submit workbench prompt))))
@@ -957,7 +959,7 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench--result-event (workbench result-event) boolean)
 (defun workbench--result-event (workbench event)
-  "Take the outcome of a request WORKBENCH made, and return whether it changed what the window shows."
+  "Apply the result EVENT of a request made by WORKBENCH. Return T if the window needs to be drawn again."
   (let ((request   (result-event-request event))
         (value     (result-event-value event))
         (ok-p      (eq (result-event-outcome event) ':ok))
@@ -997,8 +999,9 @@ A reading of a channel the window has left is dropped."
          (cond
            (ok-p
             (workbench-refresh workbench "_autolith/state" "_autolith/settings"))
-           ;; A choice whose values are keywords is refused as a string by the
-           ;; structured setter; the settings command reads it as it is spelled.
+           ;; The structured setter refuses strings for choices with keyword
+           ;; values. The settings command reads the value as it is spelled, so
+           ;; retry with that command.
            ((and (stringp choice) (not again-p) (workbench-session workbench))
             (session-operation (workbench-session workbench) "_autolith/invoke"
                                :params  (portable-object
@@ -1013,7 +1016,7 @@ A reading of a channel the window has left is dropped."
        (unless ok-p
          (setf (workbench-notice workbench)
                (or (result-event-report event) "The channel could not be deleted."))))
-      ;; What is read again and again says the same most of the time.
+      ;; Repeated readings usually return the same value. Only redraw if it changed.
       ((eq request ':participants)
        (setf changed-p (and ok-p (not (equal value (workbench--participants workbench)))))
        (when changed-p
@@ -1023,7 +1026,7 @@ A reading of a channel the window has left is dropped."
       ((and (consp request) (eq (first request) ':read))
        (panel-take-read workbench request
                         :value  value
-                        :report (and (not ok-p) (or (result-event-report event) "It could not be read."))))
+                        :report (and (not ok-p) (or (result-event-report event) "The content could not be read."))))
       ((eq request ':stop-server)
        (unless ok-p
          (setf (workbench-notice workbench)
@@ -1058,7 +1061,7 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench-apply (workbench ui-event) null)
 (defun workbench-apply (workbench event)
-  "Apply EVENT, which a client thread posted, to WORKBENCH; an event of a channel already left is dropped."
+  "Apply EVENT, which was posted by a client thread, to WORKBENCH. Events of a channel that was left are dropped."
   (when (and (= (ui-event-generation event) (workbench-generation workbench))
              (etypecase event
                (channel-event
@@ -1082,8 +1085,8 @@ A reading of a channel the window has left is dropped."
 
 (-> workbench-drain (workbench) null)
 (defun workbench-drain (workbench)
-  "Apply every event waiting in WORKBENCH's queue, and take what changed in the world's channel tree."
-  ;; Each event is guarded by itself: one that fails must not take the rest with it.
+  "Apply all events waiting in the queue of WORKBENCH, and update the channel tree of the world."
+  ;; Guard each event by itself, so that a failed event does not stop the rest.
   (dolist (event (ui-queue-drain (workbench-queue workbench)))
     (with-stage-guard ("Applying what the channel said")
       (workbench-apply workbench event)))

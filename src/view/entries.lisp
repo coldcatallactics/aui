@@ -2,27 +2,26 @@
 
 ;;;; -- Entries as Blocks --
 
-;;; How each kind of transcript entry is drawn. A message from the person is
-;;; a framed box at the right, as in any chat; an answer is plain prose at the
-;;; full measure; what the agent did, thought and was told are quiet one-line
-;;; rows that open on a click.
+;;; The drawing of each kind of transcript entry. A message from the person is
+;;; a framed box at the right. An answer is prose at the full width. Tool calls,
+;;; reasoning and notices are one-line rows that open on a click.
 
 (defparameter *tool-preview-keys*
   '("command" "forms" "form" "uri" "path" "query" "pattern" "patterns" "url" "system" "name" "task" "text")
-  "The argument names tried, in order, for a tool call's one-line preview.")
+  "A list of the argument names that are tried in order for the one-line preview of a tool call.")
 
 (defparameter *output-preview-lines* 14
-  "How many lines of what a notice has to add are shown when it is opened.")
+  "The number of lines shown from the detail of an opened notice.")
 
 (defparameter *output-open-lines* 200
-  "How many lines of a tool's result are shown once a person opened the call.")
+  "The number of lines shown from the result of an opened tool call.")
 
 (defgeneric entry-blocks (entry toggle)
-  (:documentation "Return the blocks that draw ENTRY. TOGGLE is a function of no arguments that opens or closes the entry's detail."))
+  (:documentation "Return the blocks that draw ENTRY. TOGGLE is a function of no arguments that opens or closes the detail of the entry."))
 
 (-> entries--value-text (t) string)
 (defun entries--value-text (value)
-  "Return the decoded JSON VALUE as it reads on one line."
+  "Return the decoded JSON VALUE as text on one line."
   (cond
     ((stringp value)
      value)
@@ -44,7 +43,7 @@
 
 (-> entries--one-line (string) string)
 (defun entries--one-line (text)
-  "Return TEXT with every run of whitespace, line breaks included, as one space."
+  "Return TEXT with every run of whitespace replaced by one space. Line breaks count as whitespace."
   (let ((result  (make-string-output-stream))
         (space-p nil))
     (loop for character across (string-trim '(#\Space #\Newline #\Tab #\Return) text)
@@ -59,7 +58,7 @@
 
 (-> tool-entry-preview (tool-entry) string)
 (defun tool-entry-preview (entry)
-  "Return the one line that says what ENTRY's call is about: its command, path, query or first argument."
+  "Return the one-line preview of the tool call ENTRY. The preview is the command, path, query or first argument."
   (let* ((arguments (tool-entry-arguments entry))
          (member    (or (loop for key in *tool-preview-keys*
                               for found = (assoc key arguments :test #'string=)
@@ -72,7 +71,7 @@
 
 (-> entries--duration (real) string)
 (defun entries--duration (seconds)
-  "Return SECONDS as a person reads a duration: 0.4s, 12s, 3m 05s."
+  "Return SECONDS as a readable duration, such as 0.4s, 12s or 3m 05s."
   (cond
     ((< seconds 10)
      (format nil "~,1Fs" seconds))
@@ -93,11 +92,15 @@
 ;;;; -- Messages --
 
 (defvar *entry-channel-opener* nil
-  "Called with a channel's identifier to show that channel. The window sets it; without one a message does not lead to the channel it came from.")
+  "A function that takes the identifier of a channel and shows that channel, or NIL.
+
+If it is NIL, messages and notices do not lead to the channel they came from.")
 
 (-> entries--message-body (user-entry) list)
 (defun entries--message-body (entry)
-  "Return the blocks of what ENTRY's message holds: its images, then its text, which is Markdown whose line breaks are meant."
+  "Return the blocks of the message ENTRY. The images come first, then the text.
+
+The text is Markdown, and the line breaks in it are kept."
   (let ((text (user-entry-text entry)))
     (append
      (mapcar (lambda (pathname)
@@ -112,7 +115,10 @@
 
 (-> entries--participant-blocks (user-entry list) list)
 (defun entries--participant-blocks (entry body)
-  "Return the blocks of a message from another participant: its name in large letters, BODY, and a button that leads to the channel it wrote from."
+  "Return the blocks of the message ENTRY from another participant.
+
+The blocks are the name of the sender in large letters, BODY, and a button that
+leads to the channel the message came from."
   (let ((origin (user-entry-origin entry))
         (opener *entry-channel-opener*)
         (name   (text-style ':heading-2)))
@@ -135,7 +141,9 @@
            :margin-bottom 22))))
 
 (defmethod entry-blocks ((entry user-entry) toggle)
-  "The person's message in a framed box at the right, as in any chat. A message from another participant stands at the left without a frame, under its name."
+  "Draw a message from the person in a framed box at the right.
+
+Draw a message from another participant at the left without a frame, under the name of the sender."
   (declare (ignore toggle))
   (let ((body (entries--message-body entry)))
     (if (user-entry-sender entry)
@@ -150,14 +158,16 @@
                              :margin-bottom 22)))))
 
 (defvar *answers-under-way* (make-hash-table :test #'eq :weakness ':key)
-  "For each answer still streaming, how much of its text is set in blocks already and those blocks, as (END . BLOCKS).")
+  "A table of the answers that are still streaming. The value for each answer is (END . BLOCKS).
+
+BLOCKS are the finished blocks of the answer, and END is the position in the text where they end.")
 
 (-> entries--streaming-blocks (assistant-entry) list)
 (defun entries--streaming-blocks (entry)
-  "Return the blocks of ENTRY's text so far, typesetting only what came after the last settled part.
+  "Return the blocks of the text of ENTRY so far.
 
-An answer grows by a few words at a time, and all of it but the paragraph
-being written reads the same as it did, so its blocks are kept."
+The blocks of the settled part of the text are kept between calls. Only the text
+after the settled part is typeset again."
   (let* ((text    (assistant-entry-text entry))
          (known   (gethash entry *answers-under-way*))
          (from    (if known (first known) 0))
@@ -167,7 +177,7 @@ being written reads the same as it did, so its blocks are kept."
     (append settled (prose-blocks (subseq text end)))))
 
 (defmethod entry-blocks ((entry assistant-entry) toggle)
-  "The agent's answer as prose; one that has finished is read whole."
+  "Draw the answer of the agent as prose. A finished answer is typeset whole."
   (declare (ignore toggle))
   (let ((blocks (if (assistant-entry-streaming-p entry)
                     (entries--streaming-blocks entry)
@@ -179,7 +189,7 @@ being written reads the same as it did, so its blocks are kept."
     blocks))
 
 (defmethod entry-blocks ((entry reasoning-entry) toggle)
-  "A closed row saying the agent thought, opening to its reasoning in small italics."
+  "Draw the reasoning of the agent as a closed row. The reasoning is shown in small italics in the opened row."
   (let* ((text       (reasoning-entry-text entry))
          (expanded-p (entry-expanded-p entry))
          (label      (text-style ':label :face ':mono-italic))
@@ -192,7 +202,7 @@ being written reads the same as it did, so its blocks are kept."
                                                    ':open)
                                                   (t
                                                    ':closed))
-                                    ;; The summary's own emphasis shows; its markers do not.
+                                    ;; The emphasis of the summary is drawn without the Markdown markers.
                                     :title      (cons (make-span (if (reasoning-entry-streaming-p entry)
                                                                      "thinking  "
                                                                      "thought  ")
@@ -220,7 +230,9 @@ being written reads the same as it did, so its blocks are kept."
 
 (-> entries--plan-steps (tool-entry) list)
 (defun entries--plan-steps (entry)
-  "Return the blocks of what a plan update holds: its explanation, then its steps as a checklist with the one in hand set apart."
+  "Return the blocks of the plan update ENTRY.
+
+The explanation comes first. The steps follow as a checklist, and the current step is bold blue."
   (let* ((arguments   (tool-entry-arguments entry))
          (explanation (rest (assoc "explanation" arguments :test #'string=)))
          (steps       (rest (or (assoc "plan" arguments :test #'string=)
@@ -252,7 +264,7 @@ being written reads the same as it did, so its blocks are kept."
 
 (-> entries--plan-blocks (tool-entry) list)
 (defun entries--plan-blocks (entry)
-  "Return the blocks of a plan update in the conversation: a framed box headed Plan."
+  "Return the blocks of the plan update ENTRY, which are a framed box with the heading plan."
   (list
    (make-instance
     'box-block
@@ -265,13 +277,13 @@ being written reads the same as it did, so its blocks are kept."
                          (entries--plan-steps entry)))))
 
 (defparameter *diff-preview-lines* 40
-  "How many lines of each side of an edit an opened row shows.")
+  "The number of lines shown from each side of an edit in an opened row.")
 
 (-> entries--diff-spans (string string) list)
 (defun entries--diff-spans (old new)
-  "Return the spans of an edit as a diff: the lines of OLD marked removed, then the lines of NEW marked added.
+  "Return the spans of an edit as a diff. The lines of OLD are marked as removed, then the lines of NEW are marked as added.
 
-What is removed is red and what is added green, marks and text alike."
+Removed lines are red and added lines are green."
   (let ((removed (text-style ':code :color *red*))
         (added   (text-style ':code :color *green*))
         (spans   nil))
@@ -293,7 +305,7 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--argument (tool-entry &rest string) t)
 (defun entries--argument (entry &rest names)
-  "Return the value of the first of ENTRY's arguments named by one of NAMES, or NIL."
+  "Return the value of the first argument of ENTRY that has one of NAMES, or NIL."
   (loop for name in names
         for member = (assoc name (tool-entry-arguments entry) :test #'string=)
         when member
@@ -301,7 +313,7 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--preview (string &key (:lines integer)) string)
 (defun entries--preview (text &key (lines *output-preview-lines*))
-  "Return the first LINES lines of TEXT, by default as many as a result shows at a glance, and how many more there are."
+  "Return the first LINES lines of TEXT and the number of lines that are left out."
   (let* ((limit lines)
          (lines (markdown-lines (string-right-trim '(#\Newline #\Space) text)))
          (shown (if (> (length lines) limit)
@@ -311,11 +323,11 @@ What is removed is red and what is added green, marks and text alike."
             (and (> (length lines) (length shown)) (- (length lines) (length shown))))))
 
 (defparameter *lisp-argument-names* '("forms" "form" "definition" "source" "expression" "code")
-  "The argument names under which a tool that evaluates Lisp takes its source.")
+  "A list of the argument names that hold the source for tools that evaluate Lisp.")
 
 (-> entries--lisp-tool-p (tool-entry) boolean)
 (defun entries--lisp-tool-p (entry)
-  "Return T when ENTRY's tool takes and returns Lisp: the evaluators of the workspace's image and of Autolith's own."
+  "Return T if the tool of ENTRY takes and returns Lisp. These tools are the evaluators of the workspace image and of Autolith."
   (let ((name (tool-entry-name entry)))
     (and (or (uiop:string-prefix-p "lisp." name)
              (uiop:string-prefix-p "self." name))
@@ -323,7 +335,10 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--lisp-source (tool-entry) (values (or null string) (or null string)))
 (defun entries--lisp-source (entry)
-  "Return the Lisp source ENTRY's call carries, one form a line and set out where it came on one long line, and the argument it came under; NIL twice when it carries none."
+  "Return the Lisp source of the tool call ENTRY and the name of the argument that contains it.
+
+The source has one form on each line, and long one-line forms are laid out on
+several lines. Return NIL twice if the call has no Lisp source."
   (loop for name in *lisp-argument-names*
         for value = (entries--argument entry name)
         when value
@@ -335,7 +350,7 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--lisp-output (string) string)
 (defun entries--lisp-output (text)
-  "Return TEXT, what a Lisp tool printed, with each long one-line form in it set out on several lines."
+  "Return TEXT, the output of a Lisp tool, with each long one-line form laid out on several lines."
   (format nil "~{~A~^~%~}"
           (mapcar (lambda (line)
                     (let ((trimmed (string-left-trim '(#\Space) line)))
@@ -346,7 +361,10 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--result-blocks (tool-entry string) list)
 (defun entries--result-blocks (entry output)
-  "Return the blocks of what ENTRY's call returned: a shell command's captures without the bookkeeping, a patch as a patch, Lisp as Lisp."
+  "Return the blocks of OUTPUT, the result of the tool call ENTRY.
+
+The output of a shell command is split into the captured streams. Patches and
+Lisp are highlighted."
   (let ((failed-p (eq (tool-entry-status entry) ':failed))
         (lisp-p   (entries--lisp-tool-p entry)))
     (multiple-value-bind (sections status) (tool-result-sections (tool-entry-name entry) output)
@@ -357,7 +375,7 @@ What is removed is red and what is added green, marks and text alike."
                                                          :lines *output-open-lines*)))
                             (make-code-block
                              shown
-                             ;; One section is the result; several go by what they captured.
+                             ;; One section is labelled as the result. Several are labelled by stream.
                              :label         (format nil "~A~@[ · ~A~]"
                                                     (cond
                                                       ((not alone-p)
@@ -375,13 +393,15 @@ What is removed is red and what is added green, marks and text alike."
                                               (t
                                                nil))
                              :margin-bottom 8)))
-            ;; A command that printed nothing still says how it ended.
+            ;; A command without output is shown with the status line.
             (and status
                  (list (make-code-block status :label (if failed-p "failed" "result")))))))))
 
 (-> entries--argument-blocks (list) list)
 (defun entries--argument-blocks (arguments)
-  "Return the blocks that list ARGUMENTS, an association list of names and decoded values, one to a line; none when there are none."
+  "Return the blocks that list ARGUMENTS, one on each line, or NIL if there are no arguments.
+
+ARGUMENTS is an association list of names and decoded values."
   (when arguments
     (list (make-code-block
            (format nil "~{~A~^~%~}"
@@ -393,7 +413,10 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--tool-detail (tool-entry) flow-block)
 (defun entries--tool-detail (entry)
-  "Return the opened detail of ENTRY's call: what it was asked, as a command, Lisp source, a diff or its arguments, and what it returned."
+  "Return the opened detail of the tool call ENTRY.
+
+The detail contains the input of the call and the result. The input is shown as a
+command, Lisp source, a diff or a list of arguments."
   (let* ((arguments (tool-entry-arguments entry))
          (output    (tool-entry-output entry))
          (command   (entries--argument entry "command"))
@@ -411,8 +434,8 @@ What is removed is red and what is added green, marks and text alike."
        :children
        (append
         (cond
-          ;; A command, and whatever else the call was given, such as the
-          ;; shell session it runs in.
+          ;; A command and the other arguments of the call, such as the
+          ;; shell session.
           ((stringp command)
            (cons (make-code-block command
                                   :label         "command"
@@ -441,7 +464,9 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--preview-spans (tool-entry) list)
 (defun entries--preview-spans (entry)
-  "Return the spans of ENTRY's one-line preview: a command colored as shell, Lisp as Lisp, anything else plain."
+  "Return the spans of the one-line preview of ENTRY.
+
+Commands are highlighted as shell, Lisp is highlighted as Lisp, and the rest is plain."
   (let* ((preview  (tool-entry-preview entry))
          (language (cond
                      ((stringp (entries--argument entry "command"))
@@ -454,7 +479,7 @@ What is removed is red and what is added green, marks and text alike."
     (if parts
         (loop for (role . text) in parts
               collect (let ((style (code-role-style role)))
-                        ;; The row is set smaller than a code block; the ink carries over.
+                        ;; The row is smaller than a code block. However, it has the same inks.
                         (make-span text (if style
                                             (text-style ':label
                                                         :face  (text-style-face style)
@@ -463,7 +488,9 @@ What is removed is red and what is added green, marks and text alike."
         (list (make-span preview (text-style ':label))))))
 
 (defmethod entry-blocks ((entry tool-entry) toggle)
-  "One row naming the tool and what it was asked, opening to its arguments and result; a plan update is drawn as the plan."
+  "Draw a tool call as one row that contains the name of the tool and the preview.
+
+The arguments and the result are shown in the opened row. A plan update is drawn as the plan."
   (if (string= (tool-entry-name entry) "plan.update")
       (entries--plan-blocks entry)
       (let* ((status     (tool-entry-status entry))
@@ -496,17 +523,17 @@ What is removed is red and what is added green, marks and text alike."
 
 (-> entries--detail-sections (string) (values list (or null string)))
 (defun entries--detail-sections (detail)
-  "Return the sections a notice's DETAIL shows and the status line it opens with.
+  "Return the sections of DETAIL, the detail of a notice, and the status line.
 
-What a finished job reports is a shell result, read as a tool's is; anything
-else is one section."
+The detail of a finished job is split like the result of a shell command.
+Any other detail is one section."
   (if (and (> (length detail) 5) (string= "exit " detail :end2 5))
       (tool-result-sections "shell.run" detail)
       (values (list (cons "detail" detail)) nil)))
 
 (-> entries--last-line (string) string)
 (defun entries--last-line (text)
-  "Return the last line of TEXT that says anything."
+  "Return the last nonblank line of TEXT."
   (or (find-if (lambda (line)
                  (plusp (length (string-trim '(#\Space #\Tab) line))))
                (markdown-lines text)
@@ -514,7 +541,9 @@ else is one section."
       ""))
 
 (defmethod entry-blocks ((entry notice-entry) toggle)
-  "A quiet line in the interface's voice. What it has to add stays closed behind the line, which shows its last word and opens on a click."
+  "Draw a notice as a quiet row in the voice of the window.
+
+If the notice has detail, the last line of the detail is shown in the closed row. The row opens on a click."
   (let* ((tone       (notice-entry-tone entry))
          (detail     (notice-entry-detail entry))
          (expanded-p (and detail (entry-expanded-p entry)))
@@ -556,8 +585,8 @@ else is one section."
                                                                    (text-style ':label :face ':mono-italic))))
                                      :trailing   (and (entry-time entry) (entries--clock (entry-time entry)))
                                      :style      (text-style ':label)
-                                     ;; A notice with more to say opens; one about
-                                     ;; another channel leads there.
+                                     ;; A notice with detail opens. A notice about
+                                     ;; another channel leads to that channel.
                                      :action     (cond
                                                    (detail
                                                     toggle)
@@ -584,7 +613,7 @@ else is one section."
             (list row))))))
 
 (defmethod entry-blocks ((entry schemas-entry) toggle)
-  "A quiet line naming the groups of tools the agent looked up."
+  "Draw a quiet row that lists the groups of tools looked up by the agent."
   (declare (ignore toggle))
   (list (make-instance 'row-block
                        :identifier (list ':entry (entry-identifier entry))
@@ -599,7 +628,7 @@ else is one section."
                        :margin-top 4)))
 
 (defmethod entry-blocks ((entry output-entry) toggle)
-  "What a command printed, in the typewriter face under the form that printed it."
+  "Draw the output of a command in the typewriter face, under the form that printed it."
   (declare (ignore toggle))
   (list (make-code-block (output-entry-text entry)
                          :label         (output-entry-invocation entry)
@@ -607,7 +636,7 @@ else is one section."
                          :margin-bottom 12)))
 
 (defmethod entry-blocks ((entry marker-entry) toggle)
-  "A rule across the column carrying the marker's words."
+  "Draw the marker as a rule across the column, with the label of the marker."
   (declare (ignore toggle))
   (list (make-instance 'rule-block
                        :label         (string-downcase (marker-entry-label entry))

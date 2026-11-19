@@ -2,16 +2,14 @@
 
 ;;;; -- Sidebar --
 
-;;; The world's channels at the window's left: home, then beneath it each
-;;; group with its channels, children under their parents. A group is a
-;;; repository with all its worktrees, or a folder that belongs to none. The
-;;; tree is Autolith's own sidebar model, the one its terminal draws, and the
-;;; grouping is its own too; this file only gives it a face. The current
-;;; channel is inverted, a working agent carries the green dot, and unread
-;;; counts sit at the right as small inverted badges. A new channel and the
-;;; deletion of the one shown are at the list's foot, where the terminal has
-;;; them. On a window too narrow to hold the list beside the conversation it
-;;; takes the whole window.
+;;; The list of the channels of the world at the left of the window. Home comes
+;;; first. Below home come the groups with their channels, and child channels
+;;; are below their parents. A group is a repository with all its worktrees, or
+;;; a folder outside any repository. The tree and the groups come from the
+;;; sidebar model of Autolith, which is also used by the terminal. The current
+;;; channel is inverted, and a working agent has a green dot. Unread counts are
+;;; small inverted badges at the right. The buttons for a new channel and for
+;;; deleting the shown channel are at the bottom of the list.
 
 (defparameter *sidebar-width* 292
   "The width of the docked channel list.")
@@ -20,37 +18,38 @@
   "The height of one channel row.")
 
 (defparameter *sidebar-docked-minimum* 980
-  "The narrowest window that still docks the channel list beside the conversation.")
+  "The minimum width of a window that has the channel list beside the conversation.")
 
 (defparameter *sidebar-home-indent* 12
-  "How far the workspaces and channels beneath home are set in from it.")
+  "The indentation of the workspaces and channels below home.")
 
 (defparameter *sidebar-list-top* 106
-  "How far below the channel list's top edge its rows begin, under the heading and the filter.")
+  "The distance from the top edge of the channel list to the first row. The heading and the filter are above the rows.")
 
 (defparameter *sidebar-footer-height* 56
-  "The room at the channel list's foot for the buttons that make and delete a channel.")
+  "The height of the space at the bottom of the channel list for the buttons that create and delete channels.")
 
 (-> sidebar--indent (list) integer)
 (defun sidebar--indent (entry)
-  "Return how far ENTRY's row is set in for standing beneath home."
+  "Return the indentation of the row of ENTRY if the entry is below home, or zero."
   (if (plusp (or (getf entry :indent) 0))
       *sidebar-home-indent*
       0))
 
 (-> sidebar-entries (workbench) list)
 (defun sidebar-entries (workbench)
-  "Return the channel tree to show: the world's, or the demonstration's."
+  "Return the channel tree of the world, or the channel tree of the demonstration."
   (if (workbench-demo-p workbench)
       (workbench-demo-entries workbench)
       (world-entries (workbench-world workbench))))
 
 (-> sidebar--visible-entries (workbench) list)
 (defun sidebar--visible-entries (workbench)
-  "Return the entries to list: the whole tree, or with a filter typed the channels that match it, best first.
+  "Return the entries of the list. Without a filter, return the whole tree. With a filter, return the matching channels, with the best match first.
 
-A filter matches a channel's agent name, identifier, title or folder loosely,
-its letters in order, in open and closed groups alike."
+The filter is matched loosely against the agent name, identifier, title and
+folder of each channel. The letters of the filter must appear in order.
+Channels in open and closed groups are searched."
   (let ((filter (string-trim " " (workbench-filter workbench))))
     (if (zerop (length filter))
         (sidebar-entries workbench)
@@ -66,7 +65,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--channel-label (list) (values string (or null string)))
 (defun sidebar--channel-label (entry)
-  "Return the name the channel ENTRY goes by and its title, the title NIL when it has none."
+  "Return the name and the title of the channel ENTRY. The title is NIL if the channel has none."
   (let ((name  (portable-string (getf entry :name)))
         (title (portable-string (getf entry :title))))
     (values (or name (channel-display-name (getf entry :id)))
@@ -74,7 +73,9 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--entry-label (workbench string) string)
 (defun sidebar--entry-label (workbench identifier)
-  "Return what the channel IDENTIFIER goes by in the list: its title, else its agent's name, else its identifier as people read it."
+  "Return the label of the channel IDENTIFIER in the list.
+
+The label is the title, or the name of the agent, or the readable identifier."
   (let ((entry (find identifier (sidebar-entries workbench)
                      :key  (lambda (entry)
                              (getf entry :id))
@@ -85,9 +86,9 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar-confirm-delete (workbench string) null)
 (defun sidebar-confirm-delete (workbench identifier)
-  "Ask whether the channel IDENTIFIER is to be deleted, and delete it on a yes."
+  "Ask the person whether to delete the channel IDENTIFIER, and delete it if the answer is yes."
   (workbench-pick workbench
-                  ;; Enter takes the first choice, so the one that loses nothing comes first.
+                  ;; The first choice is taken on Enter, so the safe choice comes first.
                   (list (make-choice :label "Keep"
                                      :value ':keep)
                         (make-choice :label  "Delete"
@@ -101,13 +102,13 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--close-drawer (workbench) null)
 (defun sidebar--close-drawer (workbench)
-  "Put the channel list away when it takes the whole window, so that what was chosen in it is seen."
+  "Close the channel list if it fills the whole window."
   (setf (workbench-drawer-open-p workbench) nil)
   nil)
 
 (-> sidebar--open (workbench string) null)
 (defun sidebar--open (workbench identifier)
-  "Show the channel IDENTIFIER, chosen in the list, and give the keyboard to the composer."
+  "Show the channel IDENTIFIER and move the keyboard focus to the composer."
   (sidebar--close-drawer workbench)
   (unless (equal identifier (workbench-channel workbench))
     (workbench-open workbench :channel identifier))
@@ -118,7 +119,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--home-p (workbench (or null string)) boolean)
 (defun sidebar--home-p (workbench identifier)
-  "Return T when IDENTIFIER names home, the channel every other one stands beneath, which is never deleted."
+  "Return T if IDENTIFIER names home. Home is the channel above all other channels, and it cannot be deleted."
   (and identifier
        (find-if (lambda (entry)
                   (and (eq (getf entry :kind) ':inbox)
@@ -128,7 +129,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--channel-menu (workbench list) null)
 (defun sidebar--channel-menu (workbench entry)
-  "Offer what can be done with the channel ENTRY in a menu at the pointer, and do what is chosen."
+  "Open the menu of the channel ENTRY at the pointer, and do the chosen action."
   (let ((identifier (getf entry :id))
         (stage      (workbench-stage workbench)))
     (workbench-menu
@@ -155,12 +156,15 @@ its letters in order, in open and closed groups alike."
 
 (-> paint-channel-state (t integer integer &key (:waiting-for-jobs-p boolean)) null)
 (defun paint-channel-state (state x y &key waiting-for-jobs-p)
-  "Draw the mark of a channel in STATE in the 12 by 12 box at X, Y: the green dot for one at work, a ring for one that rests, with a green point in it when WAITING-FOR-JOBS-P, and a speck for one the server does not hold."
+  "Draw the mark of a channel in STATE in the 12 by 12 box at X, Y.
+
+A working channel has a green dot. An idle channel has a ring, with a green point
+in it if WAITING-FOR-JOBS-P is true. A channel that is absent from the server has a speck."
   (case state
     ((:active :working :cancelling)
      (paint-mark ':dot x y :size 12 :color (accent-color)))
     ((:idle :paused)
-     ;; Idle with jobs still out: the ring keeps a point of the working green.
+     ;; An idle channel that waits for jobs has a green point in the ring.
      (paint-mark ':ring x y :size 12)
      (when waiting-for-jobs-p
        (paint-mark ':point x y :size 12 :color (accent-color))))
@@ -172,7 +176,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--paint-channel (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
 (defun sidebar--paint-channel (workbench stage entry &key x y width)
-  "Draw one channel row: its state mark, its agent's name and title, and what is unread."
+  "Draw one channel row. The row contains the state mark, the name of the agent, the title and the unread counts."
   (let* ((identifier (getf entry :id))
          (region     (list ':channel identifier))
          (current-p  (or (getf entry :current-p)
@@ -229,7 +233,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--paint-workspace (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
 (defun sidebar--paint-workspace (workbench stage entry &key x y width)
-  "Draw a workspace heading: its open or closed mark, its name, its path, and what a closed one hides."
+  "Draw a workspace heading. The heading contains the open or closed mark, the name, the path and, if it is closed, the count of hidden channels."
   (let* ((key    (getf entry :key))
          (region (list ':workspace key))
          (height *sidebar-row-height*)
@@ -273,7 +277,7 @@ its letters in order, in open and closed groups alike."
 
 (-> sidebar--paint-home (workbench stage list &key (:x integer) (:y integer) (:width integer)) null)
 (defun sidebar--paint-home (workbench stage entry &key x y width)
-  "Draw the row of home, the channel every other one stands beneath, with the count of what waits there unread."
+  "Draw the row of home with the unread count. Home is the channel above all other channels."
   (let* ((identifier (getf entry :id))
          (region     (list ':channel identifier))
          (height     *sidebar-row-height*)
@@ -298,12 +302,12 @@ its letters in order, in open and closed groups alike."
                   :width   width
                   :height  height
                   :action  (lambda () (sidebar--open workbench identifier))
-                  :tooltip "Home: what was sent to you, with every channel beneath it"))
+                  :tooltip "Home, with the messages sent to you"))
   nil)
 
 (-> sidebar--paint-footer (workbench stage &key (:x integer) (:y integer) (:width integer)) null)
 (defun sidebar--paint-footer (workbench stage &key x y width)
-  "Draw the two buttons at the list's foot: a new channel, and the deletion of the channel shown."
+  "Draw the two buttons at the bottom of the list. The buttons are used to create a new channel and to delete the shown channel."
   (let* ((channel  (workbench-channel workbench))
          (delete-w 104)
          (new-w    (- width 28 8 delete-w)))
@@ -320,7 +324,7 @@ its letters in order, in open and closed groups alike."
                                (workbench-new-channel workbench)
                                (window-arrange workbench)
                                (window-focus-composer workbench))
-                  :tooltip   (format nil "A new channel in ~A (Ctrl+N)"
+                  :tooltip   (format nil "Create a new channel in ~A (Ctrl+N)"
                                      (short-directory (workbench-directory workbench))))
     (paint-button stage ':delete-channel "Delete…"
                   :x         (+ x 14 new-w 8)
@@ -331,12 +335,15 @@ its letters in order, in open and closed groups alike."
                   :enabled-p (and channel (not (sidebar--home-p workbench channel)))
                   :action    (lambda ()
                                (sidebar-confirm-delete workbench channel))
-                  :tooltip   "Delete the channel shown, the channels nested in it and their histories"))
+                  :tooltip   "Delete the shown channel, the channels nested in it and their histories"))
   nil)
 
 (-> sidebar-paint (workbench stage &key (:x integer) (:y integer) (:width integer) (:height integer)) null)
 (defun sidebar-paint (workbench stage &key x y width height)
-  "Draw the channel list in the box: the wordmark with the button that puts the list away, the field that narrows it, its rows, and at its foot the buttons for a new channel and for deleting the one shown."
+  "Draw the channel list in the box.
+
+The list contains the wordmark, the button used to hide the list, the filter field,
+the rows, and the buttons for a new channel and for deleting the shown channel."
   (let* ((entries     (sidebar--visible-entries workbench))
          (top         (+ y *sidebar-list-top*))
          (bottom      (- (+ y height) *sidebar-footer-height*))
@@ -354,8 +361,8 @@ its letters in order, in open and closed groups alike."
                   :mark    ':panel
                   :action  (lambda () (window-toggle-sidebar workbench))
                   :tooltip "Hide the channels (Ctrl+S)")
-    ;; The filter field is a native input laid over this frame; while an
-    ;; overlay has it put away, what it holds is drawn in its place.
+    ;; The filter field is a native input over this frame. While an overlay
+    ;; is open, the input is hidden and its text is drawn here instead.
     (paint-frame (+ x 14) (+ y 58) :width (- width 28) :height 34)
     (when (workbench-overlay workbench)
       (let ((filter (workbench-filter workbench)))
@@ -388,7 +395,7 @@ its letters in order, in open and closed groups alike."
                     (sidebar--paint-channel workbench stage entry :x x :y row-y :width width)))))
       (when (null entries)
         (paint-text-in (if (plusp (length (workbench-filter workbench)))
-                           "No channel matches."
+                           "No matching channels."
                            "No channels yet.") (text-style ':small :face ':serif-italic)
                        :x      (+ x 14)
                        :y      top

@@ -2,19 +2,18 @@
 
 ;;;; -- Digest --
 
-;;; What a conversation holds that is worth seeing beside it: the plan its
-;;; agent keeps, the files the agent changed, linked or named, and the
-;;; messages that were sent to the agent. All three are read from the
-;;; transcript. Reading a long conversation again for every drawing would
-;;; cost too much, so a digest is kept until an entry arrives or the agent
-;;; starts or stops working, and it remembers what each answer names and
-;;; which of those names are files.
+;;; The digest is a summary of a conversation, and it is shown beside the
+;;; conversation. It contains the plan of the agent, the files that the agent
+;;; changed, linked or named, and the messages sent to the agent. All three are
+;;; read from the transcript. The digest is read again only if an entry arrives
+;;; or if the agent starts or stops working. The file names in each answer are
+;;; cached.
 
 (defparameter *file-changing-tools* '("resource.edit")
-  "The tools whose call changes the file its uri names.")
+  "A list of the tools that change the file named by the uri argument.")
 
 (defstruct digest
-  "A reading of one transcript at one length, holding the plan in force, the files touched, the messages sent, and what was learned on the way."
+  "A summary of one transcript at one length. It contains the current plan, the touched files, the sent messages and caches of file names."
   (transcript  nil)
   (length      -1  :type integer)
   (working-p   nil :type boolean)
@@ -29,11 +28,11 @@
 
 (-> digest-create (transcript string) digest)
 (defun digest-create (transcript directory)
-  "Return an unread digest of TRANSCRIPT for a channel that works in DIRECTORY.
+  "Return an unread digest of TRANSCRIPT for a channel with the folder DIRECTORY.
 
-The folder's true name is found once and kept as the digest's root. Files
-are known by their true names, and a folder reached through a link, as the
-temporary folder of a Mac is, has another than the one it goes by."
+The root of the digest is the true name of DIRECTORY. Files are compared by
+their true names, which can differ from the given names if a folder is a link,
+such as the temporary folder of a Mac."
   (make-digest :transcript transcript
                :directory  directory
                :root       (handler-case
@@ -45,7 +44,7 @@ temporary folder of a Mac is, has another than the one it goes by."
 
 (-> digest--names (digest assistant-entry) list)
 (defun digest--names (digest entry)
-  "Return what ENTRY's answer may name as a file, read once for each state of the answer."
+  "Return the possible file names in the answer ENTRY. The names are read once for each revision of the answer."
   (let ((known (gethash entry (digest-named digest))))
     (if (and known (= (first known) (entry-revision entry)))
         (rest known)
@@ -55,7 +54,9 @@ temporary folder of a Mac is, has another than the one it goes by."
 
 (-> digest--file (digest string) (or null pathname))
 (defun digest--file (digest name)
-  "Return the file of this machine that NAME names from the digest's folder, or NIL when it names none. Each name is looked up once."
+  "Return the local file named by NAME, relative to the folder of DIGEST, or NIL if there is no such file.
+
+Each name is looked up once."
   (multiple-value-bind (known known-p) (gethash name (digest-resolved digest))
     (if known-p
         known
@@ -65,12 +66,13 @@ temporary folder of a Mac is, has another than the one it goes by."
 
 (-> digest--read (digest) null)
 (defun digest--read (digest)
-  "Fill DIGEST from its transcript.
+  "Fill DIGEST from the transcript.
 
-The plan is the latest update of it. The files are (PATHNAME . CHANGED-P),
-the one touched last first, each once; a file a tool changed stays marked
-changed when an answer names it later. The messages are the entries sent to
-the agent, by the person and by other participants, oldest first."
+The plan is the latest plan update. The files are a list of (PATHNAME . CHANGED-P)
+pairs, with the last touched file first and each file once. If a file was changed
+by a tool, it is marked as changed even if an answer names it later. The messages
+are the entries sent to the agent by the person and by other participants, with
+the oldest first."
   (let ((plan     nil)
         (files    nil)
         (messages nil))
@@ -104,7 +106,10 @@ the agent, by the person and by other participants, oldest first."
 
 (-> workbench-digest (workbench) digest)
 (defun workbench-digest (workbench)
-  "Return the digest of the conversation shown, read again when an entry arrived, when the agent started or stopped working, or when the channel's folder changed."
+  "Return the digest of the shown conversation.
+
+The digest is read again if an entry arrived, if the agent started or stopped
+working, or if the folder of the channel changed."
   (let* ((transcript (workbench-transcript workbench))
          (length     (transcript-length transcript))
          (working-p  (workbench-working-p workbench))
@@ -117,7 +122,7 @@ the agent, by the person and by other participants, oldest first."
             (workbench--digest workbench) digest))
     (unless (and (= length (digest-length digest))
                  (eq working-p (digest-working-p digest)))
-      ;; A name that was no file while the agent worked may be one now.
+      ;; The agent can create files while it works, so the names are looked up again.
       (when (and (digest-working-p digest) (not working-p))
         (clrhash (digest-resolved digest)))
       (setf (digest-length digest)    length
@@ -127,7 +132,7 @@ the agent, by the person and by other participants, oldest first."
 
 (-> digest-plan-progress (digest) (values integer integer))
 (defun digest-plan-progress (digest)
-  "Return how many steps of DIGEST's plan are done and how many it has."
+  "Return the number of done steps in the plan of DIGEST and the total number of steps."
   (let* ((arguments (and (digest-plan digest) (tool-entry-arguments (digest-plan digest))))
          (steps     (rest (or (assoc "plan" arguments :test #'string=)
                               (assoc "steps" arguments :test #'string=)))))
@@ -141,16 +146,22 @@ the agent, by the person and by other participants, oldest first."
         (values 0 0))))
 
 
-;;;; -- The Files, Listed --
+;;;; -- File List --
 
 (-> files-linked (workbench) list)
 (defun files-linked (workbench)
-  "Return the files of this machine that the agent changed, linked or named in the conversation shown, the one touched last first, each once, as pathnames."
+  "Return a list of the local files that the agent changed, linked or named in the shown conversation.
+
+The last touched file comes first, and each file is in the list once."
   (mapcar #'first (digest-files (workbench-digest workbench))))
 
 (-> file-place (pathname string) string)
 (defun file-place (file root)
-  "Return where FILE lies as a person reads it: its folder from ROOT, the true name of the channel's folder, when it lies beneath that, else from the home folder or the top. A file in ROOT itself lies nowhere to speak of."
+  "Return the folder of FILE as a short, readable path.
+
+If FILE is below ROOT, the path is relative to ROOT. Otherwise, the path is
+relative to the home folder or to the root of the file system. For a file in
+ROOT, the path is empty."
   (let ((folder (uiop:native-namestring (uiop:pathname-directory-pathname file)))
         (root   (uiop:native-namestring (uiop:ensure-directory-pathname root))))
     (if (uiop:string-prefix-p root folder)
@@ -159,13 +170,13 @@ the agent, by the person and by other participants, oldest first."
 
 (-> files-show (workbench) null)
 (defun files-show (workbench)
-  "Offer the files the agent changed, linked or named in the conversation shown; the one chosen is opened."
+  "Show a list of the files that the agent changed, linked or named in the shown conversation. Open the chosen file."
   (let* ((digest (workbench-digest workbench))
          (files  (digest-files digest))
          (root   (digest-root digest)))
     (if (null files)
         (workbench-show-panel workbench "Files"
-                              (panel--empty "The agent has changed or linked no file of this machine in this conversation yet."))
+                              (panel--empty "No local files were changed or linked in this conversation yet."))
         (workbench-pick workbench
                         (loop for (file . changed-p) in files
                               collect (make-choice :label  (file-namestring file)

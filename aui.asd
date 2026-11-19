@@ -1,7 +1,7 @@
 ;;;; -- AUI Systems --
 
 (asdf:defsystem #:aui
-  :description "A native graphical client for Autolith's world of channels, built on Lightfast and FLTK."
+  :description "A native graphical client for Autolith, built on Lightfast and FLTK."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:autolith
@@ -68,7 +68,7 @@
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
 (asdf:defsystem #:aui/tests
-  :description "Tests for AUI, run in one process without a display or credentials."
+  :description "Tests for AUI"
   :depends-on  (#:aui
                 #:fiveam)
   :serial      t

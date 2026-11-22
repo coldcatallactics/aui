@@ -2,11 +2,7 @@
 
 ;;;; -- Lisp Formatting --
 
-;;; Forms on one long line are hard to read. Here, such forms are set out on
-;;; several lines with Lisp indentation. Only the text is changed. All atoms
-;;; keep their spelling, so nothing changes that the reader would resolve,
-;;; drop or rename. Source with line breaks or with a comment is returned
-;;; unchanged.
+;;; Reformat long Lisp forms without changing atoms, comments or reader-visible text.
 
 (defparameter *lisp-format-width* 86
   "The line width used to set out reformatted forms.")

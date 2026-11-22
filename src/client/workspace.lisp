@@ -1,11 +1,5 @@
 (in-package #:aui)
 
-;;;; -- Workspace Records --
-
-;;; The records of a workspace in Autolith other than the conversations: the
-;;; agenda and the memories. They are read with the readers of Autolith, as
-;;; history is, and drawn by AUI.
-
 (-> workspace--configuration (string) t)
 (defun workspace--configuration (directory)
   "Return an immutable Autolith configuration for the workspace at DIRECTORY."

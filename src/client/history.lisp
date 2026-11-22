@@ -1,14 +1,5 @@
 (in-package #:aui)
 
-;;;; -- History --
-
-;;; Read the newest part of the durable history of a channel without reading
-;;; all of it. Long conversations can be hundreds of megabytes. Only the last
-;;; few hundred records are shown at first. Earlier pages are read on request,
-;;; as with (history) in the terminal. Records are parsed by the log reader of
-;;; Autolith. The code below only chooses the position in a segment at which
-;;; the reader starts.
-
 (defparameter *history-page-records* 400
   "The maximum number of durable records in one page of history.")
 
@@ -229,7 +220,6 @@ without reading the whole log."
         (and (consp record) (eq (first record) ':goal) record))
     (error ()
       nil)))
-
 
 ;;;; -- What Waits --
 

@@ -34,7 +34,7 @@ The folder has a file for each of NAMES, and it is deleted after BODY."
   (fiveam:is (not (link-web-p "/tmp/notes.md")))
   (fiveam:is (not (link-web-p "C:notes"))))
 
-(fiveam:test a-link-finds-its-file-from-the-channel's-folder
+(fiveam:test resolve-relative-links-from-the-channel-directory
   (with-test-folder (directory "src/window.lisp" "notes on fonts.md")
     (flet ((found (link)
              (let ((file (link-file link directory)))

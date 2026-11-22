@@ -1,15 +1,5 @@
 (in-package #:aui)
 
-;;;; -- Installation --
-
-;;; The location of the Autolith used to build this client, and the command
-;;; that starts it. Autolith is installed from a release or from source.
-;;; A release directory contains the launcher at bin/autolith, the source at
-;;; libexec/autolith and the native libraries in lib. A source checkout
-;;; contains bin/autolith itself. The launcher prepares the image and the
-;;; helpers that Autolith needs. For this reason, AUI starts all parts of
-;;; Autolith through that command.
-
 (-> installation--release-root (pathname) (or null pathname))
 (defun installation--release-root (source)
   "Return the release directory that contains the Autolith source directory SOURCE.

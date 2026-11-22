@@ -103,7 +103,7 @@
   (let ((broken "(this form is never closed (and is long enough to be worth formatting (if it were whole)"))
     (fiveam:is (eq broken (lisp-format broken)))))
 
-(fiveam:test a-link's-label-keeps-its-own-marks
+(fiveam:test preserve-markup-in-link-labels
   (fiveam:is (equal '(("the notes" :bold t :link "notes.md")
                       (" and ")
                       ("bold" :link "x.md" :bold t)

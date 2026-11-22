@@ -2,10 +2,7 @@
 
 ;;;; -- Interface Events --
 
-;;; Immutable messages from the client threads to the interface thread, and
-;;; the queue for these messages. Reader and worker threads push events to the
-;;; queue. The interface thread takes the events from the queue and applies
-;;; them.
+;;; Messages from worker threads to the interface thread and their queue.
 
 (defclass ui-event ()
   ((channel

@@ -2,9 +2,7 @@
 
 ;;;; -- Preferences --
 
-;;; The settings of the window that are kept between runs, such as the width
-;;; of the console. They are stored as one property list in one file in the
-;;; configuration directory of the person.
+;;; Window settings stored between runs.
 
 (defvar *preferences-pathname* nil
   "The file in which the preferences are stored, or NIL.

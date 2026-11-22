@@ -2,21 +2,11 @@
 
 ;;;; -- Markdown --
 
-;;; A small, deterministic reader for the Markdown written by agents. The
-;;; result is a list of block nodes. The text of each block is a list of inline
-;;; nodes. These are pure functions without fonts or widgets. The typography
-;;; of the nodes is chosen by the prose view.
+;;; Deterministic Markdown reader. It returns block and inline nodes; the view supplies typography.
 ;;;
-;;; A block node is one of the following lists.
-;;;   (:heading LEVEL INLINES)
-;;;   (:paragraph INLINES)
-;;;   (:item DEPTH MARKER INLINES)   MARKER is "•", a number such as "2.", or :DONE / :OPEN for a task
-;;;   (:quote INLINES)
-;;;   (:code LANGUAGE TEXT)
-;;;   (:table HEADER-CELLS ROWS)     each cell is a list of inline nodes
-;;;   (:rule)
-;;; An inline node is (TEXT . PROPERTIES). The properties are :BOLD, :ITALIC,
-;;; :CODE, :STRIKE and :LINK.
+;;; Blocks are (:heading LEVEL INLINES), (:paragraph INLINES),
+;;; (:item DEPTH MARKER INLINES), (:quote INLINES), (:code LANGUAGE TEXT),
+;;; (:table HEADER-CELLS ROWS), or (:rule). Inline nodes are (TEXT . PROPERTIES).
 
 (-> markdown--blank-p (string) boolean)
 (defun markdown--blank-p (line)

@@ -1,12 +1,5 @@
 (in-package #:aui)
 
-;;;; -- Portable Values --
-
-;;; The structured client protocol of Autolith sends JSON data as readable forms.
-;;; An object is (:OBJECT KEY VALUE ...), and an array is (:ARRAY VALUE ...).
-;;; False is :FALSE, and null is :NULL. The functions below read and build
-;;; these forms.
-
 (-> portable-object-p (t) boolean)
 (defun portable-object-p (value)
   "Return T if VALUE is a portable object form."

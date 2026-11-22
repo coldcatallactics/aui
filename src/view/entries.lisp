@@ -2,10 +2,6 @@
 
 ;;;; -- Entries as Blocks --
 
-;;; The drawing of each kind of transcript entry. A message from the person is
-;;; a framed box at the right. An answer is prose at the full width. Tool calls,
-;;; reasoning and notices are one-line rows that open on a click.
-
 (defparameter *tool-preview-keys*
   '("command" "forms" "form" "uri" "path" "query" "pattern" "patterns" "url" "system" "name" "task" "text")
   "A list of the argument names that are tried in order for the one-line preview of a tool call.")
@@ -361,41 +357,39 @@ several lines. Return NIL twice if the call has no Lisp source."
 
 (-> entries--result-blocks (tool-entry string) list)
 (defun entries--result-blocks (entry output)
-  "Return the blocks of OUTPUT, the result of the tool call ENTRY.
-
-The output of a shell command is split into the captured streams. Patches and
-Lisp are highlighted."
-  (let ((failed-p (eq (tool-entry-status entry) ':failed))
-        (lisp-p   (entries--lisp-tool-p entry)))
-    (multiple-value-bind (sections status) (tool-result-sections (tool-entry-name entry) output)
-      (let ((alone-p (null (rest sections))))
-        (or (loop for (label . text) in sections
-                  for first-p = t then nil
-                  collect (let ((shown (entries--preview (if lisp-p (entries--lisp-output text) text)
-                                                         :lines *output-open-lines*)))
-                            (make-code-block
-                             shown
-                             ;; One section is labelled as the result. Several are labelled by stream.
-                             :label         (format nil "~A~@[ · ~A~]"
-                                                    (cond
-                                                      ((not alone-p)
-                                                       label)
-                                                      (failed-p
-                                                       "failed")
-                                                      (t
-                                                       "result"))
-                                                    (and first-p status))
-                             :spans         (cond
-                                              (lisp-p
-                                               (code-spans shown "lisp"))
-                                              ((patch-p shown)
-                                               (patch-spans shown))
-                                              (t
-                                               nil))
-                             :margin-bottom 8)))
-            ;; A command without output is shown with the status line.
-            (and status
-                 (list (make-code-block status :label (if failed-p "failed" "result")))))))))
+  "Render tool output, with separate blocks for captured shell streams."
+  (let* ((details (and (string= (tool-entry-name entry) "shell.run") (tool-entry-details entry)))
+         (streams (getf details :output-streams))
+         (log     (first (getf details :shell-logs)))
+         (exit    (or (getf details :exit-code) (getf log :exit-code)))
+         (status  (remove nil (list (and exit (format nil "exit ~D" exit))
+                                    (and (or (getf details :timed-out-p) (getf log :timed-out-p)) "timed out")
+                                    (and (or (getf details :cancelled-p) (getf log :cancelled-p)) "cancelled")
+                                    (and (getf details :capture-diagnostic) "output capture problem"))))
+         (lisp-p  (entries--lisp-tool-p entry)))
+    (flet ((block-for (text label)
+             (let ((shown (entries--preview (if lisp-p (entries--lisp-output text) text)
+                                            :lines *output-open-lines*)))
+               (make-code-block shown :label label :margin-bottom 8
+                                :spans (cond (lisp-p
+                                              (code-spans shown "lisp"))
+                                             ((patch-p shown)
+                                              (patch-spans shown)))))))
+      (append (when status (list (block-for (format nil "~{~A~^ · ~}" status) "status")))
+              (if streams
+                  (loop for section in streams
+                        for stream = (getf section :stream)
+                        for label = (if (member stream '(:stdout :stderr)) (string-downcase stream) "output")
+                        collect (block-for (concatenate 'string (or (getf section :head) "")
+                                                        (if (getf section :omitted-p) (format nil "~%…~%") "")
+                                                        (or (getf section :tail) ""))
+                                           (cond ((getf section :unavailable-p)
+                                                  (format nil "~A · unavailable" label))
+                                                 ((not (getf section :complete-p))
+                                                  (format nil "~A · incomplete" label))
+                                                 (t
+                                                  label))))
+                  (list (block-for output (if (eq (tool-entry-status entry) ':failed) "failed" "result"))))))))
 
 (-> entries--argument-blocks (list) list)
 (defun entries--argument-blocks (arguments)
@@ -523,13 +517,8 @@ The arguments and the result are shown in the opened row. A plan update is drawn
 
 (-> entries--detail-sections (string) (values list (or null string)))
 (defun entries--detail-sections (detail)
-  "Return the sections of DETAIL, the detail of a notice, and the status line.
-
-The detail of a finished job is split like the result of a shell command.
-Any other detail is one section."
-  (if (and (> (length detail) 5) (string= "exit " detail :end2 5))
-      (tool-result-sections "shell.run" detail)
-      (values (list (cons "detail" detail)) nil)))
+  "Return DETAIL as one raw section for legacy notices."
+  (values (list (cons "detail" detail)) nil))
 
 (-> entries--last-line (string) string)
 (defun entries--last-line (text)

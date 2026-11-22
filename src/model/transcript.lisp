@@ -2,10 +2,7 @@
 
 ;;;; -- Transcript Model --
 
-;;; The history of a channel as an ordered sequence of entries. The records
-;;; and the live events of Autolith are converted into the mutations below in
-;;; src/client/records.lisp. Entries with a new revision are drawn again. A
-;;; transcript is only used on the interface thread.
+;;; Ordered channel history. Client records become entry mutations; the transcript is interface-thread state.
 
 (deftype tool-status ()
   "The progress of a tool call."
@@ -135,6 +132,12 @@ The result of the call contains the same identifier.")
     :accessor      tool-entry-output
     :type          (or null string)
     :documentation "The output of the tool, or NIL before the tool returned.")
+   (details
+     :initarg       :details
+     :initform      nil
+     :accessor      tool-entry-details
+     :type          t
+     :documentation "The structured details of the result, or NIL for legacy results.")
    (seconds
     :initarg       :seconds
     :initform      nil

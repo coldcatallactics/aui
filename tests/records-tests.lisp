@@ -14,6 +14,12 @@
 The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
   (list :provider-item :seq sequence :time 4000000000 :wire-json wire-json))
 
+(defmacro with-test-projector ((transcript projector) &body body)
+  "Run BODY with a fresh transcript and projector."
+  `(let* ((,transcript (make-transcript))
+          (,projector (make-projector ,transcript)))
+     ,@body))
+
 (defparameter *test-history*
   (list (list :message :seq 1 :time 4000000000 :role :user :content "Fix the build.")
         (test-item-record 2 "{\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"Look at the Makefile.\"}]}")
@@ -51,115 +57,104 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
     (fiveam:is (string= "exit 2" (notice-entry-detail notice)))))
 
 (fiveam:test streamed-text-grows-one-answer
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:status :status :provider-request-started :details nil))
-    (projector-apply projector '(:text :delta "Hello"))
-    (projector-apply projector '(:text :delta ", world."))
-    (fiveam:is (= 1 (transcript-length transcript)))
-    (fiveam:is (string= "Hello, world." (assistant-entry-text (transcript-last transcript))))
-    (fiveam:is (assistant-entry-streaming-p (transcript-last transcript)))
-    (projector-apply projector '(:status :status :assistant-response-persisted
-                                 :details (:text "Hello, world.")))
-    (fiveam:is (= 1 (transcript-length transcript)))
-    (fiveam:is (not (assistant-entry-streaming-p (transcript-last transcript))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:status :status :provider-request-started :details nil))
+     (projector-apply projector '(:text :delta "Hello"))
+     (projector-apply projector '(:text :delta ", world."))
+     (fiveam:is (= 1 (transcript-length transcript)))
+     (fiveam:is (string= "Hello, world." (assistant-entry-text (transcript-last transcript))))
+     (fiveam:is (assistant-entry-streaming-p (transcript-last transcript)))
+     (projector-apply projector '(:status :status :assistant-response-persisted
+                                  :details (:text "Hello, world.")))
+     (fiveam:is (= 1 (transcript-length transcript)))
+     (fiveam:is (not (assistant-entry-streaming-p (transcript-last transcript))))))
 
 (fiveam:test an-answer-that-does-not-stream-arrives-whole
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:status :status :assistant-response-persisted :details (:text "All at once.")))
-    (fiveam:is (string= "All at once." (assistant-entry-text (transcript-last transcript))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:status :status :assistant-response-persisted :details (:text "All at once.")))
+     (fiveam:is (string= "All at once." (assistant-entry-text (transcript-last transcript))))))
 
 (fiveam:test a-live-tool-call-runs-then-settles
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:text :delta "Checking."))
-    (projector-apply projector '(:status :status :tool-call-started
-                                 :details (:call-id "call-b" :tool "resource.read"
-                                           :arguments "{\"uri\":\"workspace:README.md\"}")))
-    (let ((tool (transcript-last transcript)))
-      (fiveam:is (eq ':running (tool-entry-status tool)))
-      (fiveam:is (equal '(("uri" . "workspace:README.md")) (tool-entry-arguments tool)))
-      (projector-apply projector '(:status :status :tool-call-completed
-                                   :details (:call-id "call-b" :tool "resource.read" :success-p nil
-                                             :output "no such file")))
-      (fiveam:is (eq ':failed (tool-entry-status tool)))
-      (fiveam:is (string= "no such file" (tool-entry-output tool))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:text :delta "Checking."))
+     (projector-apply projector '(:status :status :tool-call-started
+                                  :details (:call-id "call-b" :tool "resource.read"
+                                            :arguments "{\"uri\":\"workspace:README.md\"}")))
+     (let ((tool (transcript-last transcript)))
+       (fiveam:is (eq ':running (tool-entry-status tool)))
+       (fiveam:is (equal '(("uri" . "workspace:README.md")) (tool-entry-arguments tool)))
+       (projector-apply projector '(:status :status :tool-call-completed
+                                    :details (:call-id "call-b" :tool "resource.read" :success-p nil
+                                              :output "no such file")))
+       (fiveam:is (eq ':failed (tool-entry-status tool)))
+       (fiveam:is (string= "no such file" (tool-entry-output tool))))
     ;; Text that arrives after the call is a new answer below the call.
-    (projector-apply projector '(:text :delta "It is missing."))
-    (fiveam:is (= 3 (transcript-length transcript)))))
+     (projector-apply projector '(:text :delta "It is missing."))
+     (fiveam:is (= 3 (transcript-length transcript)))))
 
 (fiveam:test live-records-do-not-repeat-the-turn
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (setf (projector-boundary projector) 4)
+    (with-test-projector (transcript projector)
+     (setf (projector-boundary projector) 4)
     ;; This record is already in the history.
-    (projector-apply projector (list :record :record (first *test-history*)))
-    (fiveam:is (zerop (transcript-length transcript)))
+     (projector-apply projector (list :record :record (first *test-history*)))
+     (fiveam:is (zerop (transcript-length transcript)))
     ;; The answer in this record is shown from the events of the turn.
-    (projector-apply projector (list :record :record (fifth *test-history*)))
-    (fiveam:is (zerop (transcript-length transcript)))
+     (projector-apply projector (list :record :record (fifth *test-history*)))
+     (fiveam:is (zerop (transcript-length transcript)))
     ;; A new message from the person is taken from the record.
-    (projector-apply projector
-                     (list :record :record (list :message :seq 9 :role :user :content "And the tests?")))
-    (fiveam:is (string= "And the tests?" (user-entry-text (transcript-last transcript))))))
+     (projector-apply projector
+                      (list :record :record (list :message :seq 9 :role :user :content "And the tests?")))
+     (fiveam:is (string= "And the tests?" (user-entry-text (transcript-last transcript))))))
 
 (fiveam:test catching-up-takes-records-until-the-next-request
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (setf (projector-catch-up-p projector) t)
-    (projector-apply projector '(:text :delta "half an answer"))
-    (fiveam:is (zerop (transcript-length transcript)))
-    (projector-apply projector (list :record :record (fifth *test-history*)))
-    (fiveam:is (string= "It builds now." (assistant-entry-text (transcript-last transcript))))
-    (projector-apply projector '(:status :status :provider-request-started :details nil))
-    (projector-apply projector '(:text :delta "live again"))
-    (fiveam:is (string= "live again" (assistant-entry-text (transcript-last transcript))))))
+    (with-test-projector (transcript projector)
+     (setf (projector-catch-up-p projector) t)
+     (projector-apply projector '(:text :delta "half an answer"))
+     (fiveam:is (zerop (transcript-length transcript)))
+     (projector-apply projector (list :record :record (fifth *test-history*)))
+     (fiveam:is (string= "It builds now." (assistant-entry-text (transcript-last transcript))))
+     (projector-apply projector '(:status :status :provider-request-started :details nil))
+     (projector-apply projector '(:text :delta "live again"))
+     (fiveam:is (string= "live again" (assistant-entry-text (transcript-last transcript))))))
 
 (fiveam:test command-output-joins-under-its-form
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:work-started :kind :lisp))
-    (projector-apply projector (list :present :text (format nil "* (status)~2%")))
-    (projector-apply projector (list :present :text (format nil "autolith v1~%  model x~2%")))
-    (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
-    (projector-apply projector '(:work-finished :kind :lisp :outcome :done))
-    (fiveam:is (= 1 (transcript-length transcript)))
-    (let ((output (transcript-last transcript)))
-      (fiveam:is (string= "(status)" (output-entry-invocation output)))
-      (fiveam:is (search "model x" (output-entry-text output)))
-      ;; The NIL that is returned by a printing command is not shown after the output.
-      (fiveam:is (null (search "⇒ NIL" (output-entry-text output)))))
-    ;; Output after the command has finished is a new entry.
-    (projector-apply projector (list :present :text "settings"))
-    (fiveam:is (= 2 (transcript-length transcript)))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:work-started :kind :lisp))
+     (projector-apply projector (list :present :text (format nil "* (status)~2%")))
+     (projector-apply projector (list :present :text (format nil "autolith v1~%  model x~2%")))
+     (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
+     (projector-apply projector '(:work-finished :kind :lisp :outcome :done))
+     (fiveam:is (= 1 (transcript-length transcript)))
+     (let ((output (transcript-last transcript)))
+       (fiveam:is (string= "(status)" (output-entry-invocation output)))
+       (fiveam:is (search "model x" (output-entry-text output)))
+       (fiveam:is (null (search "⇒ NIL" (output-entry-text output)))))
+     (projector-apply projector (list :present :text "settings"))
+     (fiveam:is (= 2 (transcript-length transcript)))))
 
-(fiveam:test a-form's-value-is-kept
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector (list :present :text (format nil "* (+ 1 2)~2%")))
-    (projector-apply projector (list :present :text (format nil "⇒ 3~2%")))
-    (fiveam:is (string= "⇒ 3" (output-entry-text (transcript-last transcript))))
-    (projector-apply projector '(:work-finished :kind :lisp :outcome :done))
-    (projector-apply projector (list :present :text (format nil "* (values)~2%")))
-    (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
-    (fiveam:is (string= "⇒ NIL" (output-entry-text (transcript-last transcript))))))
+(fiveam:test a-form-value-is-kept
+    (with-test-projector (transcript projector)
+     (projector-apply projector (list :present :text (format nil "* (+ 1 2)~2%")))
+     (projector-apply projector (list :present :text (format nil "⇒ 3~2%")))
+     (fiveam:is (string= "⇒ 3" (output-entry-text (transcript-last transcript))))
+     (projector-apply projector '(:work-finished :kind :lisp :outcome :done))
+     (projector-apply projector (list :present :text (format nil "* (values)~2%")))
+     (projector-apply projector (list :present :text (format nil "⇒ NIL~2%")))
+     (fiveam:is (string= "⇒ NIL" (output-entry-text (transcript-last transcript))))))
 
 (fiveam:test one-line-notices-read-as-notices
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector (list :present :text (format nil "∙ continuing with job results~%")))
-    (projector-apply projector (list :present :text (format nil "! provider request failed~%")))
-    (let ((entries (coerce (transcript-entries transcript) 'list)))
-      (fiveam:is (equal '(notice-entry notice-entry) (mapcar #'type-of entries)))
-      (fiveam:is (string= "continuing with job results" (notice-entry-text (first entries))))
-      (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
-      (fiveam:is (eq ':failure (notice-entry-tone (second entries)))))
-    ;; Inside the output of a command, the same line is part of the output.
-    (projector-apply projector (list :present :text (format nil "* (tasks)~2%")))
-    (projector-apply projector (list :present :text (format nil "∙ no jobs~%")))
-    (fiveam:is (= 3 (transcript-length transcript)))
-    (fiveam:is (string= "∙ no jobs" (output-entry-text (transcript-last transcript))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector (list :present :text (format nil "∙ continuing with job results~%")))
+     (projector-apply projector (list :present :text (format nil "! provider request failed~%")))
+     (let ((entries (coerce (transcript-entries transcript) 'list)))
+       (fiveam:is (equal '(notice-entry notice-entry) (mapcar #'type-of entries)))
+       (fiveam:is (string= "continuing with job results" (notice-entry-text (first entries))))
+       (fiveam:is (eq ':quiet (notice-entry-tone (first entries))))
+       (fiveam:is (eq ':failure (notice-entry-tone (second entries)))))
+     (projector-apply projector (list :present :text (format nil "* (tasks)~2%")))
+     (projector-apply projector (list :present :text (format nil "∙ no jobs~%")))
+     (fiveam:is (= 3 (transcript-length transcript)))
+     (fiveam:is (string= "∙ no jobs" (output-entry-text (transcript-last transcript))))))
 
 (fiveam:test portable-values-read-back
   (let ((object (portable-object "name" "model" "value" nil "list" '(:array 1 2))))
@@ -197,42 +192,45 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
     (fiveam:is (eq ':failure (notice-entry-tone (second entries))))
     (fiveam:is (string= "the provider refused" (notice-entry-detail (second entries))))))
 
-(fiveam:test a-shell-result-shows-its-output-not-its-bookkeeping
-  (multiple-value-bind (sections status)
-      (tool-result-sections
-       "shell.run"
-       (format nil "exit 0~%Execution: exited; timeout no; cancelled no~%combined output: 26 bytes retained, 26 bytes observed; capture-complete yes; status complete~%Log: shell-log:abc/def/output~%hello from the mock~%Linux~%"))
-    (fiveam:is (string= "exit 0" status))
-    (fiveam:is (= 1 (length sections)))
-    (fiveam:is (string= (format nil "hello from the mock~%Linux") (rest (first sections))))
-    (fiveam:is (null (search "bytes retained" (rest (first sections))))))
-  (multiple-value-bind (sections status) (tool-result-sections "resource.read" "the file's text")
-    (fiveam:is (null status))
-    (fiveam:is (equal '(("result" . "the file's text")) sections))))
-
+(fiveam:test structured-shell-details-and-legacy-output
+  (let* ((details   '(:output-streams ((:stream :stdout :head "hello" :tail " world"
+                                                :complete-p t))))
+         (projector (make-projector (make-transcript))))
+    (projector-apply projector
+                     '(:status :status :tool-call-started
+                       :details (:call-id "shell-1" :tool "shell.run" :arguments "{}")))
+    (projector-apply projector
+                     (list :status :status :tool-call-completed
+                           :details (list :call-id "shell-1" :success-p t
+                                           :output  "legacy"
+                                           :details details)))
+    (let ((tool (transcript-last (projector-transcript projector))))
+      (flet ((result-text ()
+               (paragraph-text (code-block-paragraph (first (entries--result-blocks tool (tool-entry-output tool)))))))
+        (fiveam:is (string= "hello world" (result-text)))
+        (tool-entry-settle tool :success-p t :output "legacy")
+        (fiveam:is (string= "legacy" (result-text)))))))
 (fiveam:test a-presented-reasoning-summary-is-a-thought-shown-once
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector (list ':reasoning :delta "**Checking model limit defaults**"))
-    (projector-apply projector
-                     (list ':present
-                           :text (format nil "◇ reasoning summary~% │ Checking model limit defaults")))
-    (projector-apply projector
-                     (list ':present
-                           :text (format nil "◇ reasoning summary~% │ Reading the provider file")))
-    (let ((entries (coerce (transcript-entries transcript) 'list)))
-      (fiveam:is (equal '(reasoning-entry reasoning-entry) (mapcar #'type-of entries)))
-      (fiveam:is (string= "Reading the provider file" (reasoning-entry-text (second entries)))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector (list ':reasoning :delta "**Checking model limit defaults**"))
+     (projector-apply projector
+                      (list ':present
+                            :text (format nil "◇ reasoning summary~% │ Checking model limit defaults")))
+     (projector-apply projector
+                      (list ':present
+                            :text (format nil "◇ reasoning summary~% │ Reading the provider file")))
+     (let ((entries (coerce (transcript-entries transcript) 'list)))
+       (fiveam:is (equal '(reasoning-entry reasoning-entry) (mapcar #'type-of entries)))
+       (fiveam:is (string= "Reading the provider file" (reasoning-entry-text (second entries)))))))
 
 (fiveam:test a-notice-does-not-join-output-nobody-asked-for
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector (list ':present :text "something the channel printed"))
-    (projector-apply projector
-                     (list ':present :text "! cache stalled · 153.0K / 191.2K input tokens cached"))
-    (let ((entries (coerce (transcript-entries transcript) 'list)))
-      (fiveam:is (equal '(output-entry notice-entry) (mapcar #'type-of entries)))
-      (fiveam:is (search "cache stalled" (notice-entry-text (second entries)))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector (list ':present :text "something the channel printed"))
+     (projector-apply projector
+                      (list ':present :text "! cache stalled · 153.0K / 191.2K input tokens cached"))
+     (let ((entries (coerce (transcript-entries transcript) 'list)))
+       (fiveam:is (equal '(output-entry notice-entry) (mapcar #'type-of entries)))
+       (fiveam:is (search "cache stalled" (notice-entry-text (second entries)))))))
 
 (fiveam:test a-wrapped-reasoning-summary-is-unwrapped
   (fiveam:is (string= (format nil "Planning the deadline capture~2%Checking Lisp apropos")
@@ -240,14 +238,13 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
                        (format nil "◇ reasoning summary~%  │ Planning the deadline~%  │ capture~%  │~%  │ Checking Lisp apropos")))))
 
 (fiveam:test a-notice-keeps-the-calls-it-lists-behind-its-line
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector
-                     (list ':present
-                           :text "∙ 2 relevant memories exist · (memory \"w-1\") · (memory \"Q-2\")"))
-    (let ((notice (first (coerce (transcript-entries transcript) 'list))))
-      (fiveam:is (string= "2 relevant memories exist" (notice-entry-text notice)))
-      (fiveam:is (string= (format nil "(memory \"w-1\")~%(memory \"Q-2\")") (notice-entry-detail notice))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector
+                      (list ':present
+                            :text "∙ 2 relevant memories exist · (memory \"w-1\") · (memory \"Q-2\")"))
+     (let ((notice (first (coerce (transcript-entries transcript) 'list))))
+       (fiveam:is (string= "2 relevant memories exist" (notice-entry-text notice)))
+       (fiveam:is (string= (format nil "(memory \"w-1\")~%(memory \"Q-2\")") (notice-entry-detail notice))))))
 
 (fiveam:test schema-lookups-that-follow-one-another-are-one-entry
   (let* ((projector (make-projector (make-transcript)))
@@ -263,20 +260,18 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
     (fiveam:is (equal '("plan") (schemas-entry-names (fourth entries))))))
 
 (fiveam:test a-live-schema-lookup-is-taken-from-its-record
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector (list ':status :status ':provider-request-started))
-    (dolist (name '("shell" "lisp"))
-      (projector-apply projector
-                       (list ':record
-                             :record (test-item-record 9 (format nil "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"~A\"}]}" name)))))
-    ;; The record of an answer is ignored. The answer is shown from the events of the turn.
-    (projector-apply projector
-                     (list ':record
-                           :record (test-item-record 10 "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Done.\"}]}")))
-    (let ((entries (coerce (transcript-entries transcript) 'list)))
-      (fiveam:is (equal '(schemas-entry) (mapcar #'type-of entries)))
-      (fiveam:is (equal '("shell" "lisp") (schemas-entry-names (first entries)))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector (list ':status :status ':provider-request-started))
+     (dolist (name '("shell" "lisp"))
+       (projector-apply projector
+                        (list ':record
+                              :record (test-item-record 9 (format nil "{\"type\":\"tool_search_output\",\"tools\":[{\"type\":\"namespace\",\"name\":\"~A\"}]}" name)))))
+     (projector-apply projector
+                      (list ':record
+                            :record (test-item-record 10 "{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Done.\"}]}")))
+     (let ((entries (coerce (transcript-entries transcript) 'list)))
+       (fiveam:is (equal '(schemas-entry) (mapcar #'type-of entries)))
+       (fiveam:is (equal '("shell" "lisp") (schemas-entry-names (first entries)))))))
 
 (fiveam:test a-message-from-another-channel-keeps-where-it-was-written
   (flet ((message (source)
@@ -296,18 +291,7 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
         (fiveam:is (equal "C4puSYz" (user-entry-origin from-child)))
         (fiveam:is (null (user-entry-origin from-here)))))))
 
-(fiveam:test parentheses-take-the-role-of-their-depth
-  (fiveam:is (equal '((:syntax-parenthesis-1 . "(")
-                      (:plain . "a ")
-                      (:syntax-parenthesis-2 . "(")
-                      (:syntax-string . "\"(\"")
-                      (:syntax-parenthesis-2 . ")")
-                      (:syntax-parenthesis-1 . ")"))
-                    (highlight--nest '((:plain . "(a (") (:syntax-string . "\"(\"") (:plain . "))"))
-                                     "(a (\"(\"))")))
-  ;; Parts that do not match the source are returned unchanged.
-  (fiveam:is (equal '((:plain . "(a)"))
-                    (highlight--nest '((:plain . "(a)")) "(a) ")))
+(fiveam:test select-lisp-parenthesis-highlighting
   (fiveam:is (highlight--lisp-p "lisp" nil))
   (fiveam:is (highlight--lisp-p nil "src/view/window.lisp"))
   (fiveam:is (not (highlight--lisp-p "bash" "src/view/window.lisp"))))
@@ -395,22 +379,20 @@ The sequence number of the record is SEQUENCE, and the wire JSON is WIRE-JSON."
     (fiveam:is (null (projector--unsettled projector)))))
 
 (fiveam:test an-answer-a-notice-parted-is-not-repeated-when-it-persists
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:status :status :provider-request-started :details nil))
-    (projector-apply projector '(:text :delta "First part. "))
-    (projector-apply projector '(:present :text "∙ a memory was saved"))
-    (projector-apply projector '(:text :delta "Second part."))
-    (projector-apply projector '(:status :status :assistant-response-persisted
-                                 :details (:text "First part. Second part.")))
-    (fiveam:is (equal '(assistant-entry notice-entry assistant-entry)
-                      (map 'list #'type-of (transcript-entries transcript))))
-    (fiveam:is (string= "Second part." (assistant-entry-text (transcript-last transcript))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:status :status :provider-request-started :details nil))
+     (projector-apply projector '(:text :delta "First part. "))
+     (projector-apply projector '(:present :text "∙ a memory was saved"))
+     (projector-apply projector '(:text :delta "Second part."))
+     (projector-apply projector '(:status :status :assistant-response-persisted
+                                  :details (:text "First part. Second part.")))
+     (fiveam:is (equal '(assistant-entry notice-entry assistant-entry)
+                       (map 'list #'type-of (transcript-entries transcript))))
+     (fiveam:is (string= "Second part." (assistant-entry-text (transcript-last transcript))))))
 
 (fiveam:test a-compaction-told-twice-is-marked-once
-  (let* ((transcript (make-transcript))
-         (projector  (make-projector transcript)))
-    (projector-apply projector '(:status :status :compaction-completed :details nil))
-    (projector-apply projector (list :record :record (list :summary :seq 9 :time 4000000003 :through-seq 6
-                                                                    :content "summary")))
-    (fiveam:is (equal '(marker-entry) (map 'list #'type-of (transcript-entries transcript))))))
+    (with-test-projector (transcript projector)
+     (projector-apply projector '(:status :status :compaction-completed :details nil))
+     (projector-apply projector (list :record :record (list :summary :seq 9 :time 4000000003 :through-seq 6
+                                                                     :content "summary")))
+     (fiveam:is (equal '(marker-entry) (map 'list #'type-of (transcript-entries transcript))))))

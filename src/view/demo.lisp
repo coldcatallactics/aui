@@ -2,22 +2,16 @@
 
 ;;;; -- Demonstration --
 
-;;; A scripted channel without a server. It contains a short conversation with
-;;; every kind of entry, a channel tree, and the snapshots sent by a live channel.
-;;; It is shown by the command aui --demo. It is used to look at the window and
-;;; take pictures of it on machines without Autolith, such as a build machine.
-
 (defparameter *demo-answer*
-  "The build fails for **two reasons**, both in the `Makefile`:
+    "The build fails for two reasons:
 
-1. The library name is hardcoded as `liblightfast.so`, but macOS wants a *dynamic library* with the `.dylib` suffix.
-2. The link line asks `pkg-config` for Pango and fontconfig, which FLTK does not use there.
+1. The Makefile uses `liblightfast.so`; macOS uses `liblightfast.dylib`.
+2. The link line asks `pkg-config` for Pango and fontconfig, which this FLTK build does not use.
 
-## What I changed
+## Changes
 
 ```lisp
 (defun library-name ()
-  ;; The bridge is a dylib on macOS.
   (if (uiop:os-macosx-p) \"liblightfast.dylib\" \"liblightfast.so\"))
 ```
 
@@ -26,10 +20,10 @@
 | Linux | `.so` | Pango and Cairo |
 | macOS | `.dylib` | CoreText |
 
-> Nothing else needed to change; see https://www.fltk.org for the details.
+`fltk-config --ldflags` already names the frameworks, so remove the duplicate flags.
 
 - [x] Portable Makefile
-- [ ] Run the smoke tests on a Mac"
+- [ ] Run the smoke tests on macOS"
   "The answer of the agent in the demonstration.")
 
 (-> demo--entries () list)
@@ -39,7 +33,7 @@
    (make-instance 'user-entry
                   :text (format nil "Why does the build fail on macOS?~2%- have a look at the `Makefile`~%- fix it, and tell me what you changed"))
    (make-instance 'reasoning-entry
-                  :text "**Reading the Makefile** It hardcodes a .so suffix and asks pkg-config for Pango, neither of which exists on macOS.")
+                    :text "It hardcodes a .so suffix and adds Pango and fontconfig flags that this FLTK build does not need.")
    (make-instance 'tool-entry
                   :call-identifier "demo-1" :name "resource.read" :status ':completed :seconds 2/5
                   :arguments '(("uri" . "workspace:Makefile"))
@@ -49,9 +43,9 @@
                   :arguments '(("command" . "make native && make check"))
                   :output    (format nil "c++: error: unrecognized option~%make: *** [Makefile:39] Error 1"))
    (make-instance 'notice-entry
-                  :tone   ':failure
-                  :text   "Job failed · exec:117"
-                  :detail (format nil "exit 127~%Execution: exited; timeout no; cancelled no~%combined output: 813 bytes retained, 813 bytes observed; capture-complete yes; status complete~%Log: shell-log:g4P5Hsc/g6Axa8d/2D7765C629A661F4/output~%Source checks passed.~%Running 3 cases in 3 isolated workers.~%PASS 0.086s test-agent-compaction-missing-summary~%3 cases, 14 checks, 0 failed cases.~%/bin/sh: line 1: ./script/autolith: No such file or directory"))
+                  :tone     ':failure
+                    :text   "job failed · exec:117"
+                    :detail (format nil "exit 127~%Execution: exited; timeout no; cancelled no~%combined output: 164 bytes retained, 164 bytes observed; capture-complete yes; status complete~%make: c++: command not found~%make: *** [Makefile:39] Error 127"))
    (make-instance 'tool-entry
                   :call-identifier "demo-3" :name "fs.edit" :status ':completed :seconds 3/10
                   :expanded-p t
@@ -117,8 +111,8 @@
                             "argumentHint" hint "terminalOwning" ':false "choices" '(:array))))
     (list (command "status" "Show the version, model, usage and limits.")
           (command "compact" "Compact the context now.")
-          (command "model" "Choose the model that answers." "[MODEL]")
-          (command "goal" "Set or show the channel's goal." "[OBJECTIVE]")
+          (command "model" "Choose the model for replies." "[MODEL]")
+          (command "goal" "Set or show the channel goal." "[OBJECTIVE]")
           (command "agenda" "Show the workspace agenda.")
           (command "skills" "List the skills the agent can load.")
           (command "tasks" "List the channel's jobs." "[list|get|cancel]")
@@ -133,16 +127,16 @@
            (portable-object "name" name "label" label "group" group "type" type "value" value
                             "documentation" documentation "adjustable" t "source" "saved" "scope" "durable"
                             "options" (cons ':array options))))
-    (list (setting "model" "Model" "model" "choice" "gpt-6.1-sol" "The model that answers."
-                   '("gpt-6.1-sol" "gpt-6.1-terra"))
-          (setting "reasoning-effort" "Reasoning effort" "model" "choice" "high"
-                   "How much the model reasons before it answers." '("low" "medium" "high"))
-          (setting "reasoning-traces-p" "Reasoning traces" "transcript" "boolean" t
-                   "Show the model's reasoning summaries.")
-          (setting "turn-timestamps-p" "Timestamps" "transcript" "boolean" ':false
-                   "Show when each turn was sent.")
-          (setting "channel-idle-minutes" "Idle minutes" "behavior" "integer" 30
-                   "How long an unused channel stays in memory."))))
+      (list (setting "model" "Model" "model" "choice" "gpt-6.1-sol" "Model used for replies."
+                     '("gpt-6.1-sol" "gpt-6.1-terra"))
+            (setting "reasoning-effort" "Reasoning effort" "model" "choice" "high"
+                     "How much reasoning to use before replying." '("low" "medium" "high"))
+            (setting "reasoning-traces-p" "Reasoning traces" "transcript" "boolean" t
+                     "Show reasoning summaries.")
+            (setting "turn-timestamps-p" "Timestamps" "transcript" "boolean" ':false
+                     "Show when turns were sent.")
+            (setting "channel-idle-minutes" "Idle minutes" "behavior" "integer" 30
+                     "Minutes before an unused channel leaves memory."))))
 
 (-> demo-agenda () list)
 (defun demo-agenda ()

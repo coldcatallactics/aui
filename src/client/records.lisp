@@ -1,14 +1,5 @@
 (in-package #:aui)
 
-;;;; -- Record Projection --
-
-;;; The conversion of channel records and events into transcript entries.
-;;; Durable conversation records become entries when history is read. Live
-;;; events of the structured client protocol add and update entries during a
-;;; turn. A live turn is shown from the text, reasoning and status events
-;;; of the turn. Only the records without matching events are added, so
-;;; nothing is shown twice.
-
 (defclass projector ()
   ((transcript
     :initarg       :transcript
@@ -76,7 +67,6 @@ The output that follows is labelled with this command.")
 (defun make-projector (transcript &key image-root)
   "Return a projector that writes to TRANSCRIPT. Image artifacts are looked up below IMAGE-ROOT."
   (make-instance 'projector :transcript transcript :image-root image-root))
-
 
 ;;;; -- JSON --
 
@@ -346,56 +336,31 @@ Return T if the names were added."
   (let ((microseconds (getf properties :real-microseconds)))
     (and (realp microseconds) (/ microseconds 1000000))))
 
-(-> tool-result-sections (string string) (values list (or null string)))
-(defun tool-result-sections (name output)
-  "Return the sections of the result OUTPUT of the tool NAME, and the status line of the result.
-
-The first value is a list of (LABEL . TEXT). Results of shell commands are
-split with the reader used by the Autolith terminal. Each capture that
-contains lines becomes a section, without the byte counts and log references
-for the model. The notes of the result, such as a timeout, become a last
-section. The second value is the exit line. Results of other tools are one
-section, and the second value is NIL."
-  (let ((parts (and (string= name "shell.run")
-                    (fboundp 'autolith::application--shell-result-parts)
-                    (handler-case (autolith::application--shell-result-parts output)
-                      (error ()
-                        nil)))))
-    (if (null parts)
-        (values (list (cons "result" output)) nil)
-        (let* ((execution (getf parts :execution))
-               (notes     (append (and execution
-                                       (autolith::application--shell-execution-rows execution)
-                                       (list execution))
-                                  (getf parts :notes)))
-               (sections  (loop for section in (getf parts :sections)
-                                when (getf section :lines)
-                                  collect (cons (getf section :label)
-                                                (format nil "~{~A~^~%~}" (getf section :lines))))))
-          (values (append sections
-                          (and notes (list (cons "note" (format nil "~{~A~^~%~}" notes)))))
-                  (getf parts :exit))))))
-
-(-> tool-entry-settle (tool-entry &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
-(defun tool-entry-settle (entry &key success-p output seconds)
-  "Set the status, the output and the duration of the tool call ENTRY."
+(-> tool-entry-settle (tool-entry &key (:success-p boolean) (:output t)
+                                      (:details t) (:seconds (or null real))) null)
+(defun tool-entry-settle (entry &key success-p output details seconds)
+  "Set the status, output, structured details and duration of ENTRY."
   (setf (tool-entry-status entry)  (if success-p ':completed ':failed)
         (tool-entry-output entry)  (and output (princ-to-string output))
+        (tool-entry-details entry) details
         (tool-entry-seconds entry) seconds)
   nil)
 
 (-> record--result (list) list)
 (defun record--result (properties)
-  "Return the outcome in the tool result PROPERTIES as the keyword arguments of `tool-entry-settle'."
+  "Return the outcome in tool result PROPERTIES as tool-entry-settle arguments."
   (list :success-p (and (member (getf properties :status) '(:ok :success)) t)
         :output    (getf properties :output)
+        :details   (getf properties :details)
         :seconds   (record--seconds properties)))
 
 (-> projector--settle-tool
-    (projector (or null string) &rest t &key (:success-p boolean) (:output t) (:seconds (or null real))) null)
-(defun projector--settle-tool (projector call-identifier &rest result &key success-p output seconds)
-  "Store the result of the tool call CALL-IDENTIFIER in the transcript of PROJECTOR."
-  (declare (ignore success-p output seconds))
+    (projector (or null string) &rest t &key (:success-p boolean) (:output t)
+                                      (:details t) (:seconds (or null real))) null)
+(defun projector--settle-tool (projector call-identifier &rest result
+                               &key success-p output details seconds)
+  "Store RESULT of tool call CALL-IDENTIFIER in PROJECTOR's transcript."
+  (declare (ignore success-p output details seconds))
   (let* ((transcript (projector-transcript projector))
          (entry      (and call-identifier (transcript-find-tool transcript call-identifier))))
     (when entry
@@ -568,7 +533,7 @@ Do nothing if the last entry is already that marker."
 
 (-> projector--status (projector t list) null)
 (defun projector--status (projector status details)
-  "Apply the provider or tool lifecycle STATUS and the DETAILS of the status to PROJECTOR."
+  "Apply the provider or tool lifecycle STATUS and DETAILS to PROJECTOR."
   (case status
     (:provider-request-started
      (setf (projector-catch-up-p projector) nil
@@ -588,6 +553,7 @@ Do nothing if the last entry is already that marker."
      (projector--settle-tool projector (getf details :call-id)
                              :success-p (and (getf details :success-p) t)
                              :output    (getf details :output)
+                             :details   (getf details :details)
                              :seconds   (record--seconds details)))
     (:provider-request-completed
      (projector--close-stream projector))

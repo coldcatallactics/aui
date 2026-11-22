@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Build the native bridge of Lightfast, and then build the saved image of
-# unslop in build/unslop. The image only contains the toolkit and unslop.
+# Build the native bridge and the saved unslop image.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -10,8 +9,7 @@ source "$root/script/lightfast.sh"
 aui_require_lightfast
 mkdir -p "$root/build"
 aui_build_bridge
-# The new image is saved beside the image in use. It is only moved over the old
-# image after it was saved. If the build fails, the last good image is kept.
+# Save beside the current image, then replace it only after a successful build.
 rm -f "$root/build/unslop.new"
 AUI_HEAP=1GB "$root/script/lisp" \
   --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui/unslop))' \

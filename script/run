@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Start AUI from source: script/run [aui arguments]. The native bridge of
-# Lightfast is built first if it is stale. To start the saved image, use bin/aui.
+# Run AUI from source after building the native bridge.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

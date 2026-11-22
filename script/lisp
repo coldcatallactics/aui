@@ -1,16 +1,5 @@
 #!/usr/bin/env bash
-# Run SBCL with the dependencies of AUI set up: script/lisp [SBCL toplevel options].
-#
-# AUI loads Autolith, so AUI runs on the same SBCL as Autolith. This is the
-# first of these:
-#   - AUTOLITH_SBCL, if it is set
-#   - the SBCL in the Autolith release
-#   - the SBCL recorded by the Autolith bootstrap
-#   - sbcl on the path
-# The Autolith and the SBCL of Autolith are found by script/autolith.sh.
-#
-# AUI_HEAP is the maximum heap size. The default is 4GB, because a large heap is
-# needed to compile Autolith.
+# Usage: script/lisp [SBCL options]. Set AUI_HEAP to override the build heap size.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -25,8 +14,6 @@ if [[ -n "$autolith_source" ]]; then
   export AUI_AUTOLITH_ROOT=$autolith_source
 fi
 
-# Muffle warnings from the definitions in the libraries. Those warnings are for
-# the authors of the libraries.
 exec "$sbcl" --noinform --dynamic-space-size "${AUI_HEAP:-4GB}" --non-interactive \
   --eval '(handler-bind ((warning (function muffle-warning))) (load "'"$root"'/script/setup.lisp"))' \
   "$@"

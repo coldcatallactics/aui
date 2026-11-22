@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Drive the unslop window offscreen against a throwaway checkout: write in a
-# passage, wait for the save, mark a file completed and change a file from
-# outside. Git and a display are needed. The display is used to measure text.
-# Set AUI_EXERCISE_SHOTS to a directory to keep pictures of the exercise.
+# Run the unslop exercise against a throwaway checkout.
+# Set AUI_EXERCISE_SHOTS to keep screenshots.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

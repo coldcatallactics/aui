@@ -1,12 +1,5 @@
-# Find Lightfast and build the native bridge of Lightfast. Source this file
-# instead of running it. The variable root must contain the directory of AUI.
-#
-# This file sets this variable:
-#   lightfast               the Lightfast checkout: AUI_LIGHTFAST_ROOT, or else
-#                           the checkout beside AUI
-# This file defines these functions:
-#   aui_require_lightfast   print the expected place of Lightfast if it is missing
-#   aui_build_bridge        build the native bridge if it is stale
+# Locate Lightfast and provide helpers for building its native bridge.
+# The caller sets root to the AUI directory.
 
 lightfast=${AUI_LIGHTFAST_ROOT:-$root/../lightfast}
 
@@ -20,8 +13,7 @@ aui_require_lightfast() {
 aui_build_bridge() {
   local make
   aui_require_lightfast || return
-  # The Makefile of Lightfast needs GNU make. On the BSDs, GNU make is installed
-  # as gmake.
+    # BSD systems commonly provide GNU make as gmake.
   make=$(command -v gmake || command -v make) || {
     echo "AUI needs GNU make to build the native bridge of Lightfast." >&2
     return 64

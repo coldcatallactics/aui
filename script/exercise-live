@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# Drive real turns offscreen against a separate world server and a scripted
-# model: send, queue, approve a command, stop, steer, run a command and reopen
-# the channel. The exercise needs no account and no network, and it does not
-# use the world of the person. A display is needed to measure text.
-#
-# Set AUI_EXERCISE_SHOTS to a directory to keep pictures of the exercise. Set
-# AUI_EXERCISE_KEEP to a directory to keep the state of the world if the
-# exercise fails.
+# Run the live exercise against a temporary world and scripted model.
+# Set AUI_EXERCISE_SHOTS to keep screenshots and AUI_EXERCISE_KEEP to keep failed state.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

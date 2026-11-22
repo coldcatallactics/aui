@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Install AUI for this user. Build AUI and unslop, and put the aui and unslop
-# commands on the path. On macOS, also make an application that can be started
-# from the Dock and from Spotlight.
+# Build AUI and unslop, then link both commands into the user's path.
+# On macOS, also install an application for the Dock and Spotlight.
 #
 # Requirements:
-#   - Autolith, installed from a release or from source. The autolith command
-#     must be on the path, or AUI_AUTOLITH_ROOT must be set to the release
-#     directory or the checkout of Autolith.
-#   - FLTK 1.4 with fltk-config
-#   - a C++17 compiler
-#   - Lightfast, checked out beside AUI
+#   - Autolith on PATH or AUI_AUTOLITH_ROOT pointing to its release or checkout.
+#   - FLTK 1.4 with fltk-config.
+#   - A C++17 compiler.
+#   - A Lightfast checkout beside AUI.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -48,9 +45,7 @@ if [[ $(uname -s) == Darwin ]]; then
 </dict>
 </plist>
 PLIST
-  # Applications started from the Dock get a bare PATH and start in the root
-  # directory. Add the usual tool directories to PATH, start in the home
-  # directory, and let the person pick the channel.
+    # Dock launches have a minimal PATH and start at the filesystem root.
   cat > "$application/Contents/MacOS/Autolith" <<LAUNCHER
 #!/bin/bash
 export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:\$PATH"
@@ -58,7 +53,7 @@ cd "\$HOME"
 exec "$root/bin/aui" open
 LAUNCHER
   chmod +x "$application/Contents/MacOS/Autolith"
-  # Make the icon of the application in the sizes used by the Dock.
+    # Create the icon in the sizes used by the Dock.
   if command -v sips >/dev/null 2>&1 && command -v iconutil >/dev/null 2>&1; then
     iconset=$(mktemp -d)/Autolith.iconset
     mkdir -p "$iconset"

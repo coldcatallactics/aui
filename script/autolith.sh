@@ -1,25 +1,5 @@
-# Find the Autolith that AUI is built against. Source this file instead of
-# running it.
-#
-# Autolith can be installed in two ways, and AUI can be built against both:
-#
-#   from a release   The release directory contains bin/autolith, the source
-#                    in libexec/autolith and a separate SBCL in runtime.
-#   from source      The checkout contains autolith.asd and bin/autolith. The
-#                    SBCL chosen by the bootstrap is recorded in the data
-#                    directory.
-#
-# Set AUI_AUTOLITH_ROOT or AUTOLITH_SOURCE_ROOT to the release directory or the
-# checkout. AUI_AUTOLITH_ROOT is used first. If neither is set, the Autolith
-# behind the autolith command on the path is used, or else the Autolith behind
-# ~/.local/bin/autolith.
-#
-# This file sets these variables:
-#   autolith_source   the directory that contains autolith.asd, or empty
-#   autolith_release  the release directory, or empty for a source checkout
-#   autolith_sbcl     the SBCL that Autolith runs on, or empty
-#   autolith_identity one line with the source directory and the version of
-#                     this Autolith
+# Source this file to find the Autolith source, release directory and SBCL.
+# Compare autolith_identity (source path and version) to the saved image stamp.
 
 aui_follow_links() {
   local path=$1 directory
@@ -38,8 +18,6 @@ autolith_identity=
 
 autolith_home=${AUI_AUTOLITH_ROOT:-${AUTOLITH_SOURCE_ROOT:-}}
 if [[ -z "$autolith_home" ]]; then
-  # The Autolith installer links the command into ~/.local/bin. That directory
-  # is not always on the path of a login.
   autolith_command=$(command -v autolith 2>/dev/null) || autolith_command=$HOME/.local/bin/autolith
   if [[ -e "$autolith_command" ]]; then
     autolith_command=$(aui_follow_links "$autolith_command")

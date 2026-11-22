@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Drive the demonstration offscreen: click, scroll, select and type, and check
-# the result of each action. A display is needed to measure text.
+# Run the interface exercise offscreen. A display is needed for text measurement.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

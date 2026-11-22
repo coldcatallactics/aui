@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Build the native bridge of Lightfast, and then build the saved image of AUI
-# in build/aui. Run this script again after you update AUI, Lightfast or
-# Autolith. The build uses the Autolith release or checkout found by
-# script/autolith.sh.
+# Build Lightfast's native bridge and the saved AUI image.
 
 set -euo pipefail
 root=$(CDPATH= cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -13,18 +10,11 @@ aui_require_lightfast
 mkdir -p "$root/build"
 # shellcheck source=autolith.sh
 source "$root/script/autolith.sh"
-# The file build/failed is a mark of a build that did not finish. It contains
-# the Autolith that the build was tried against. It is read by bin/aui, so that
-# the same sources are not tried again on every start.
+# Record the Autolith used by this attempt so bin/aui can avoid repeating a failed build.
 printf '%s\n' "$autolith_identity" > "$root/build/failed"
 aui_build_bridge
-# The new image is saved beside the image in use. It is only moved over the old
-# image after it was saved. If the build fails, the last good image is kept.
+# Save beside the current image, then replace it only after a successful build.
 rm -f "$root/build/aui.new"
-# Everything is compiled first, in a large heap. The image is then saved from
-# a process with a small heap. An image has the heap size of the process that
-# saved it. SBCL keeps tables for the whole heap, and the tables of a large heap
-# would cost each window about fifteen megabytes.
 "$root/script/lisp" \
   --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system :aui))' \
   >"$root/build/build.log" 2>&1 || { tail -40 "$root/build/build.log" >&2; exit 1; }

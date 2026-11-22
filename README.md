@@ -1,8 +1,7 @@
 # AUI
 
-AUI is a native window for [Autolith](https://github.com/lambda-symbolics/autolith).
-It runs on Linux, macOS and NetBSD. In AUI, you see the same channels as in the
-Autolith terminal, and you can do the same things with them.
+Use AUI to open your [Autolith](https://github.com/lambda-symbolics/autolith)
+channels in a native window on Linux, macOS or NetBSD.
 
 ![A conversation in AUI](assets/pictures/conversation.png)
 
@@ -10,7 +9,7 @@ Autolith terminal, and you can do the same things with them.
 
 You need Autolith, FLTK 1.4 and a C++17 compiler.
 
-| System | FLTK |
+| System | Packages |
 |---|---|
 | macOS | `brew install fltk` |
 | Arch | `pacman -S fltk` |
@@ -25,10 +24,9 @@ git clone https://github.com/lambda-symbolics/aui.git
 cd aui && script/install
 ```
 
-After the install, `aui` and `unslop` are in `~/.local/bin`. On macOS, the Autolith
-application is in `~/Applications`. After you update AUI or Autolith, run `aui`
-as before. The first start after an update takes a minute, because the program
-is built again.
+Run `aui` or `unslop` from `~/.local/bin`. On macOS you can also open Autolith
+from `~/Applications`. Allow time for a rebuild the first time you run `aui`
+after an update.
 
 ## Run
 
@@ -39,7 +37,7 @@ aui open ID             # open the channel with this ID
 aui -C ~/work/project   # start as if in that directory
 ```
 
-You can give `aui` the same options and sub-commands as `autolith`.
+Use the usual Autolith options. Commands such as `aui auth` run in the terminal.
 
 ## Keys
 
@@ -61,16 +59,18 @@ On macOS, use Command instead of Ctrl.
 
 ## Unslop
 
-`unslop` is a second program in this repository. Run `unslop DIRECTORY` to
-rewrite the comments, strings and docstrings of a Common Lisp checkout, file by
-file. Your text is saved when you stop typing. You commit the changes yourself.
+Run `unslop DIRECTORY` to edit comments, strings and docstrings in Common Lisp
+source files. Changes are saved in place when you pause typing. Review the diff
+before you commit.
 
 ## Develop
 
+The three interface exercises need a display, even when the window is hidden.
 ```sh
 script/check            # run the tests and the source checks
 script/exercise         # drive the demonstration offscreen
 script/exercise-live    # drive real turns against a scripted model (no account needed)
+script/exercise-unslop  # edit files in a temporary checkout
 script/run --demo --size 1400x900 --shot /tmp/aui.png
 ```
 

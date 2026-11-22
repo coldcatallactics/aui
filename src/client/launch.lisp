@@ -2,17 +2,8 @@
 
 ;;;; -- Launch --
 
-;;; The command line of aui is the command line of Autolith. The options are
-;;; the option objects defined by the top-level command of Autolith. They are
-;;; parsed by the same library and read by the same functions, so each flag
-;;; has the same meaning as in autolith. Options for the channel (--model,
-;;; --provider, --permissions, --immutable, --image, --site-config-root) are
-;;; sent to the world server in the same way as from a terminal. A channel
-;;; that autolith would open in a terminal is opened in a window. For all
-;;; other commands (auth, models, status, update, data, usage, replay, an
-;;; unattended or a rescue start), this process becomes autolith. This is
-;;; because the private definitions of the person are only loaded in the image
-;;; of Autolith.
+;;; Delegate windowless commands to the Autolith executable so they can use
+;;; the user's private definitions.
 
 (defclass launch ()
   ((world
@@ -33,12 +24,6 @@ If it is NIL, the channel is chosen by directory.")
     :reader        launch-pick-p
     :type          boolean
     :documentation "True if the person asked to pick a channel instead of opening one, as with aui open without an identifier.")
-   (images
-    :initarg       :images
-    :initform      nil
-    :reader        launch-images
-    :type          list
-    :documentation "The namestrings of the images to put in the composer at start.")
    (demo-p
     :initarg       :demo-p
     :initform      nil
@@ -139,7 +124,7 @@ It is NIL if no text was given or after the text was sent."))
 
 (-> launch--open-command () clingon:command)
 (defun launch--open-command ()
-  "Return the open sub-command of aui. This sub-command opens a channel in a window."
+  "Return the open command for selecting a channel in the window."
   (clingon:make-command
    :name        "open"
    :description "open a channel in a window, or pick one"
@@ -148,22 +133,22 @@ It is NIL if no text was given or after the text was sent."))
 
 (-> launch-command () clingon:command)
 (defun launch-command ()
-  "Return the command line of aui.
-It is the top-level command of Autolith with the window options and with a new open sub-command."
+  "Return the AUI command with Autolith's session options and subcommands."
   (let ((autolith (autolith::main--top-level-command)))
     (clingon:make-command
-     :name         "aui"
-     :description  "a graphical client for Autolith"
-     :long-description
-     "aui has the same options and sub-commands as autolith. A channel that
-autolith would open in a terminal is opened in a window. All other
-sub-commands work as under autolith."
-     :version      (world-autolith-version)
-     :options      (append (autolith::main--session-options) (launch--window-options))
-     :sub-commands (cons (launch--open-command)
-                         (remove "open" (clingon:command-sub-commands autolith)
-                                 :key #'clingon:command-name :test #'string=))
-     :handler      #'identity)))
+     :name             "aui"
+     :description      "a graphical client for Autolith"
+     :long-description "Open a channel in a window. Run other Autolith subcommands in the terminal."
+     :version          (world-autolith-version)
+     ;; Older releases still advertise these retired startup options.
+     :options          (append (remove-if (lambda (option)
+                                           (member (clingon:option-key option) '(:images :detached)))
+                                         (autolith::main--session-options))
+                               (launch--window-options))
+     :sub-commands     (cons (launch--open-command)
+                             (remove "open" (clingon:command-sub-commands autolith)
+                                     :key #'clingon:command-name :test #'string=))
+     :handler          #'identity)))
 
 (-> launch--parse-size ((or null string)) (or null cons))
 (defun launch--parse-size (text)
@@ -182,14 +167,14 @@ Return NIL if TEXT does not contain a valid size."
 
 (-> launch--windowless-p (clingon:command) boolean)
 (defun launch--windowless-p (command)
-  "Return T if autolith runs COMMAND without a window.
+  "Return T if Autolith runs COMMAND without a window.
 
-These commands are all sub-commands other than open, unattended starts,
+These commands are sub-commands other than open, unattended starts,
 rescue sessions and the internal starts of Autolith."
   (and (or (not (member (clingon:command-name command) '("aui" "open") :test #'string=))
            (some (lambda (key)
                    (clingon:getopt* command key))
-                 '(:detached :pristine :localgroup-handoff :simulate-crash)))
+                 '(:pristine :localgroup-handoff :simulate-crash)))
        t))
 
 (-> launch--become-autolith (list) null)
@@ -268,8 +253,6 @@ The options are read in the same way as in the session start of Autolith."
      :channel    (and open-id (not demo-p)
                       (autolith::main-resolve-conversation configuration open-id))
      :pick-p     (and open-p (null open-id))
-     :images     (mapcar #'namestring
-                         (autolith::main--image-pathnames (clingon:getopt* command ':images)))
      :demo-p     demo-p
      :shot       (clingon:getopt* command ':shot)
      :shot-after shot-after

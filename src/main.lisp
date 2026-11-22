@@ -2,31 +2,10 @@
 
 ;;;; -- Main --
 
-;;; Startup and the event loop. The interface runs on the thread that calls
-;;; MAIN. On macOS, this must be the first thread of the process. Client
-;;; threads only post events and wake the interface thread.
+;;; On macOS, run the event loop on the first thread of the process.
 
 (defparameter *tick-seconds* 0.12
   "The interval in seconds between two animation and polling ticks.")
-
-(-> main--picture (workbench string) null)
-(defun main--picture (workbench path)
-  "Write a picture of the window of WORKBENCH to PATH.
-
-The picture is a PNG if PATH ends in png and an image tool is installed. Otherwise, it is a PPM."
-  (let* ((png-p (string-equal (or (pathname-type path) "") "png"))
-         (ppm   (if png-p (format nil "~A.ppm" path) path)))
-    (lightfast:capture-window (workbench-window workbench) ppm)
-    (when png-p
-      (handler-case
-          (progn
-            (uiop:run-program (if (uiop:os-macosx-p)
-                                  (list "sips" "-s" "format" "png" ppm "--out" path)
-                                  (list "magick" ppm path)))
-            (delete-file ppm))
-        (error ()
-          (format *error-output* "No image tool converted the picture; it is at ~A.~%" ppm)))))
-  nil)
 
 (-> main--settle (workbench real) null)
 (defun main--settle (workbench seconds)
@@ -41,9 +20,7 @@ The picture is a PNG if PATH ends in png and an image tool is installed. Otherwi
 
 (-> main--start (workbench) null)
 (defun main--start (workbench)
-  "Open the view requested by the launch of WORKBENCH.
-
-The view is the demonstration, a named channel, the channel list, or the channel of the directory."
+  "Open the channel or demo specified by the launch options of WORKBENCH."
   (let ((launch (workbench-launch workbench)))
     (cond
       ((launch-demo-p launch)
@@ -59,16 +36,12 @@ The view is the demonstration, a named channel, the channel list, or the channel
        (if (launch-pick-p launch)
            (setf (workbench-sidebar-shown-p workbench) t
                  (workbench-drawer-open-p workbench)   t)
-           (workbench-open workbench
-                           :channel (launch-channel launch)
-                           :images  (launch-images launch)))))
+           (workbench-open workbench :channel (launch-channel launch)))))
     (when (launch-draft launch)
       (setf (composer-text workbench) (launch-draft launch)))
     (case (launch-view launch)
-      (:commands
-       (workbench-show-overlay workbench ':commands))
-      (:settings
-       (workbench-show-overlay workbench ':settings))
+      ((:commands :settings)
+       (workbench-show-overlay workbench (launch-view launch)))
       (:agenda
        (panel-show-agenda workbench))
       (:memories
@@ -109,7 +82,6 @@ The view is the demonstration, a named channel, the channel list, or the channel
   (lightfast:load-library)
   (lightfast:enable-thread-wakeups)
   (theme-install)
-  ;; Preferences are not saved for a picture or a demonstration.
   (unless (or (launch-demo-p launch) (launch-shot launch))
     (setf *preferences-pathname* (preferences-default-pathname)))
   (let* ((queue     (make-ui-queue :wakeup #'lightfast:awake))
@@ -129,13 +101,11 @@ The view is the demonstration, a named channel, the channel list, or the channel
                                    (incf (stage-phase stage))
                                    (stage-redraw stage)))))
                            :repeat t)
-    ;; A window with a size and a picture path is not shown. Draw it once
-    ;; offscreen and return.
     (when (and (launch-shot launch) (launch-size launch))
       (unless (launch-demo-p launch)
         (main--settle workbench (launch-shot-after launch)))
       (window-arrange workbench)
-      (main--picture workbench (launch-shot launch))
+      (save-window-picture (workbench-window workbench) (launch-shot launch))
       (workbench-close workbench)
       (return-from run-interface nil))
     (when (launch-shot launch)
@@ -144,7 +114,7 @@ The view is the demonstration, a named channel, the channel list, or the channel
                                (window-arrange workbench)
                                (stage-flush (workbench-stage workbench))
                                (lightfast:wait 0.3)
-                               (main--picture workbench (launch-shot launch))
+                               (save-window-picture (workbench-window workbench) (launch-shot launch))
                                (workbench-close workbench)
                                (lightfast:quit))))
     (setf *stage-failure-function*
@@ -153,7 +123,7 @@ The view is the demonstration, a named channel, the channel list, or the channel
             (workbench-redraw workbench)))
     (lightfast:run-with-idle
      (lambda ()
-       (with-stage-guard ("Applying what the channel said")
+       (with-stage-guard ("Reading channel events")
          (workbench-drain workbench))
        (with-stage-guard ("Laying out the window")
          (when (stage-dirty-p (workbench-stage workbench))
@@ -165,15 +135,11 @@ The view is the demonstration, a named channel, the channel list, or the channel
   nil)
 
 (defparameter *nursery-megabytes* 8
-  "The number of megabytes allocated between two garbage collections.
-
-The default of SBCL is a twentieth of the maximum heap, which is about two
-hundred megabytes here. Most allocations of the window are short-lived, so a
-smaller value gives a smaller process.")
+  "The allocation threshold in megabytes between garbage collections. Most window allocations are short-lived.")
 
 (-> main--keep-small () null)
 (defun main--keep-small ()
-  "Collect garbage often, so that the process uses little more memory than it needs."
+  "Set the SBCL garbage collection threshold to *NURSERY-MEGABYTES*."
   (setf (sb-ext:bytes-consed-between-gcs) (* *nursery-megabytes* 1024 1024))
   nil)
 
@@ -204,10 +170,7 @@ smaller value gives a smaller process.")
 
 (-> save-image (string) null)
 (defun save-image (pathname)
-  "Save this process as an executable at PATHNAME that starts aui, and exit.
-
-The executable contains the client code of Autolith and AUI. All command line
-arguments are passed to aui, and none to the Lisp runtime."
+  "Save AUI as an executable at PATHNAME. Pass all runtime arguments to AUI."
   (ensure-directories-exist pathname)
   (sb-ext:save-lisp-and-die pathname
                             :toplevel             #'image-toplevel

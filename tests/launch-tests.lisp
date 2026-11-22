@@ -18,12 +18,11 @@
     (fiveam:is (not (launch-pick-p launch)))
     (fiveam:is (null (launch-channel launch)))))
 
-(fiveam:test autolith's-options-reach-the-world
+(fiveam:test pass-launch-options-to-the-world
   (let* ((launch (launch-parse '("--demo" "--permissions" "sandbox" "--model" "some-model" "--immutable")))
          (world  (launch-world launch)))
     (fiveam:is (eq ':sandboxed (world-permission-mode world)))
     (fiveam:is (world-immutable-p world))
-    ;; The options from the command line are sent to the server in the same form as from a terminal.
     (fiveam:is (equal "some-model" (getf (world-launch world) :model)))
     (fiveam:is (eq ':sandboxed (getf (world-launch world) :permission-mode)))
     (fiveam:is (getf (world-launch world) :immutable-p))))
@@ -45,28 +44,24 @@
   (fiveam:is (null (launch--parse-size "0x600")))
   (fiveam:is (null (launch--parse-size nil))))
 
-(fiveam:test the-command-keeps-autolith's-sub-commands
+(fiveam:test include-autolith-subcommands-once
   (let ((names (mapcar #'clingon:command-name (clingon:command-sub-commands (launch-command)))))
     (fiveam:is (member "open" names :test #'string=))
     (fiveam:is (member "status" names :test #'string=))
     (fiveam:is (member "auth" names :test #'string=))
     (fiveam:is (= 1 (count "open" names :test #'string=)))))
 
-(fiveam:test what-has-no-window-is-autolith's
+(fiveam:test distinguish-windowless-commands
   (fiveam:is (launch--windowless-p (launch--read '("models"))))
   (fiveam:is (launch--windowless-p (launch--read '("status"))))
-  (fiveam:is (launch--windowless-p (launch--read '("--detached"))))
-  (fiveam:is (launch--windowless-p (launch--read '("open" "--detached"))))
   (fiveam:is (launch--windowless-p (launch--read '("--pristine"))))
   (fiveam:is (not (launch--windowless-p (launch--read '("--demo")))))
   (fiveam:is (not (launch--windowless-p (launch--read '("open")))))
   (fiveam:is (not (launch--windowless-p (launch--read '("--model" "some-model"))))))
 
-(fiveam:test a-window's-options-are-refused-where-there-is-none
+(fiveam:test reject-window-options-for-windowless-commands
   (fiveam:signals client-error
-    (launch-parse '("--size" "800x600" "models")))
-  (fiveam:signals client-error
-    (launch-parse '("-C" "/tmp" "--detached"))))
+    (launch-parse '("--size" "800x600" "models"))))
 
 (fiveam:test the-autolith-program-is-the-one-built-against
   (fiveam:is (probe-file (installation-program))))

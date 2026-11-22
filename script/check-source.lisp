@@ -1,11 +1,6 @@
-;;;; -- Source Checks --
+;;;; -- Source checks --
 
-;;; Check the project's source with cheque, the Lambda Symbolics source checker.
-;;; Arguments are for CHEQUE:MAIN.
-;;;
-;;; cheque, Mallet, and their dependencies are development tools.
-;;; Unlike most dependencies, cheque automatically updates to the HEAD
-;;; of its default branch: new installs refresh it once and later checks at most hourly.
+;;; Install the checker tools and run cheque with the command-line arguments.
 ;;;
 ;;; Usage: sbcl --script script/check-source.lisp [--fix] [--no-warnings] [--no-parinfer]
 
@@ -14,19 +9,19 @@
 (require :sb-md5)
 
 (defparameter *check-floating-tools* '("cheque")
-  "The development tools that track master branch instead of using a locked version")
+  "Development tools that track their default branch.")
 
 (defparameter *check-refresh-seconds* 3600
-  "Timeout before we try to refresh master-branch-tracking devtools (cheque)")
+  "Seconds between refreshes of floating development tools.")
 
 (defun check--tool-files (root)
-  "Return the files in the checks/ directory of ROOT. The files define the development tools."
+  "Return the development-tool files under ROOT/checks/."
   (sort (uiop:directory-files (merge-pathnames "checks/" root))
         #'string<
         :key #'file-namestring))
 
 (defun check--tool-root (root)
-  "Return the directory of the cached qlot project for the current files in the checks/ directory of ROOT."
+  "Return the cache directory for ROOT's current tool files."
   (let ((digest (sb-md5:md5sum-string
                  (with-output-to-string (stream)
                    (dolist (file (check--tool-files root))
@@ -38,9 +33,9 @@
     (uiop:xdg-cache-home "cheque/tools/" (format nil "~(~{~2,'0x~}~)/" (coerce digest 'list)))))
 
 (defun check--run-qlot (tools &rest projects)
-  "Install the qlot project TOOLS, or update its PROJECTS, in a child SBCL; return T on success.
+  "Install TOOLS or update PROJECTS in a child SBCL process.
 
-The child loads qlot from Quicklisp with the default ASDF configuration."
+The child loads qlot from Quicklisp with its default ASDF configuration."
   (let ((form `(progn
                  (load (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))
                  (funcall (intern "QUICKLOAD" "QL") :qlot :silent t)
@@ -59,9 +54,9 @@ The child loads qlot from Quicklisp with the default ASDF configuration."
                                           :ignore-error-status t)))))
 
 (defun check--tools-complete-p (tools)
-  "Return T when every Git tool the qlfile of TOOLS names has an installed release.
+  "Return whether every Git tool in TOOLS/qlfile has been installed.
 
-qlot, because it sucks, can report success after a network failure left a dist out."
+qlot can report success after a network failure leaves a distribution absent."
   (every (lambda (line)
            (let ((words (uiop:split-string line :separator " ")))
              (or (not (equal (first words) "git"))
@@ -71,13 +66,12 @@ qlot, because it sucks, can report success after a network failure left a dist o
          (uiop:read-file-lines (merge-pathnames "qlfile" tools))))
 
 (defun check--touch (file)
-  "Create or rewrite FILE, so that the write date of FILE is the current time."
+  "Rewrite FILE so its modification time is current."
   (with-open-file (stream file :direction ':output :if-exists ':supersede)
     (write-line (file-namestring file) stream)))
 
 (defun check--ensure-tools (root)
-  "Install ROOT's development tools if they are not installed yet,
-refresh master-tracking tools if applicable, and return the setup file."
+  "Install the tools for ROOT, refresh floating tools when needed, and return setup.lisp."
   (let* ((tools     (check--tool-root root))
          (installed (merge-pathnames "installed" tools))
          (refreshed (merge-pathnames "refreshed" tools)))

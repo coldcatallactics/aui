@@ -370,9 +370,12 @@ Signal a CLIENT-ERROR if no server runs or if the request fails."
   (let ((entry (world--entry world)))
     (unless entry
       (error 'client-error :message "No world server is running."))
-    (handler-case (rest (autolith::localgroup-query-record entry operation arguments))
-      (autolith::autolith-error (condition)
-        (error 'client-error :message (condition-report condition))))))
+    (let ((query (if (fboundp 'autolith::world-terminal-query-record)
+                     'autolith::world-terminal-query-record
+                     'autolith::localgroup-query-record)))
+      (handler-case (rest (funcall query entry operation arguments))
+        (autolith::autolith-error (condition)
+          (error 'client-error :message (condition-report condition)))))))
 
 (-> world-tell (world string string) list)
 (defun world-tell (world channel text)

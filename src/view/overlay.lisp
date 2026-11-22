@@ -2,12 +2,6 @@
 
 ;;;; -- Overlays --
 
-;;; The views drawn over the window. They are the list of commands, the
-;;; settings, pickers for one choice among many, prompts for one line of text,
-;;; panels with information about the channel, and the small menus that open at
-;;; a chip or a button. A picker or a prompt opened from the settings returns to
-;;; the settings.
-
 (defstruct choice
   "One entry of a menu or a picker. LABEL is the name of the entry, and DETAIL is a short description. VALUE is passed on if the entry is chosen. CURRENT-P is true for the entry in force. Choices without a value are dividers."
   (label     ""  :type string)

@@ -2,12 +2,6 @@
 
 ;;;; -- Activity --
 
-;;; The list of jobs that run beside the conversation. These are the child
-;;; agents, commands, evaluations and model calls started by the agent that
-;;; have not finished yet. The jobs are grouped by kind under a heading, and
-;;; only kinds with running jobs are listed. A person cancels a job with the
-;;; cross at the end of the row or copies the cancel call from the menu.
-
 (defparameter *activity-row-height* 24
   "The height of one job row in the activity list.")
 

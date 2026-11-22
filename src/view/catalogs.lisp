@@ -2,10 +2,6 @@
 
 ;;;; -- Catalogs --
 
-;;; The list of commands and the list of settings of a channel, each shown in
-;;; an overlay. Commands are found by typing. Settings are shown with the
-;;; current value, which can be changed in place. These overlays replace the
-;;; pickers and the settings page of the terminal.
 
 ;;;; -- Commands --
 

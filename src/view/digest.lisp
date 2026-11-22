@@ -2,13 +2,6 @@
 
 ;;;; -- Digest --
 
-;;; The digest is a summary of a conversation, and it is shown beside the
-;;; conversation. It contains the plan of the agent, the files that the agent
-;;; changed, linked or named, and the messages sent to the agent. All three are
-;;; read from the transcript. The digest is read again only if an entry arrives
-;;; or if the agent starts or stops working. The file names in each answer are
-;;; cached.
-
 (defparameter *file-changing-tools* '("resource.edit")
   "A list of the tools that change the file named by the uri argument.")
 

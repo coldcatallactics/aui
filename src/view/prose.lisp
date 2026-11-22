@@ -2,10 +2,6 @@
 
 ;;;; -- Prose --
 
-;;; The typography of Markdown nodes, which gives the blocks of an answer.
-;;; Emphasis is set in a bold or italic face. Code among prose is set in the
-;;; typewriter face in blue. Links are underlined and blue.
-
 (defparameter *prose-paragraph-gap* 12
   "The space between two paragraphs of an answer.")
 

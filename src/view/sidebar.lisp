@@ -2,15 +2,6 @@
 
 ;;;; -- Sidebar --
 
-;;; The list of the channels of the world at the left of the window. Home comes
-;;; first. Below home come the groups with their channels, and child channels
-;;; are below their parents. A group is a repository with all its worktrees, or
-;;; a folder outside any repository. The tree and the groups come from the
-;;; sidebar model of Autolith, which is also used by the terminal. The current
-;;; channel is inverted, and a working agent has a green dot. Unread counts are
-;;; small inverted badges at the right. The buttons for a new channel and for
-;;; deleting the shown channel are at the bottom of the list.
-
 (defparameter *sidebar-width* 292
   "The width of the docked channel list.")
 

@@ -2,10 +2,6 @@
 
 ;;;; -- Links and Files --
 
-;;; The targets of links in the conversation, and the files named by an agent.
-;;; Links to pages are opened in the browser. Links to local files are resolved
-;;; from the folder of the channel and opened in the default program for the
-;;; file. A file link can be a file URL, a path, or a path with a line number.
 
 ;;;; -- Link Targets --
 

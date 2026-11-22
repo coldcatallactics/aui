@@ -2,13 +2,6 @@
 
 ;;;; -- Completion --
 
-;;; Completions for commands and mentions in the composer. The commands of the
-;;; channel are offered for a draft that begins with an opening parenthesis.
-;;; The participants of the world are offered for a word that
-;;; begins with @. The list of completions is drawn above the composer. The
-;;; person moves in it with Up and Down, takes the highlighted entry with Tab,
-;;; and closes it with Escape.
-
 (defparameter *completion-rows* 7
   "The number of completions shown at once.")
 

@@ -2,14 +2,6 @@
 
 ;;;; -- Composer --
 
-;;; The composer, in which the person writes messages. It is a native text
-;;; editor in a hairline frame. The model, the reasoning effort and the
-;;; permission mode of the channel are drawn as chips beneath it, and the send
-;;; button is drawn at the right. The person sends with Enter and breaks the
-;;; line with Shift+Enter. While the agent works, the person steers the running
-;;; turn with Enter and queues a follow-up with Tab. The send button is then
-;;; replaced by the stop button.
-
 (defparameter *composer-line-height* 29
   "The height of a line of text in the composer.")
 

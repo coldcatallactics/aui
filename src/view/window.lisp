@@ -2,11 +2,6 @@
 
 ;;;; -- Window --
 
-;;; The window. This file contains the layout of the panes, the native fields
-;;; over the stage, and the handling of keys. In wide windows, the channel list
-;;; is docked beside the conversation. In narrow windows, the channel list is a
-;;; drawer over the conversation, as in the terminal.
-
 (defparameter *window-default-size* '(1180 . 820)
   "The default size of the window, as (WIDTH . HEIGHT). It is used if no size is given on the command line.")
 

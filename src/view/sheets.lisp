@@ -2,10 +2,6 @@
 
 ;;;; -- Sheets --
 
-;;; The content of the smaller overlays. It consists of the rows of pickers and
-;;; menus, the note, field and buttons of prompts, and the scrolled blocks of
-;;; panels and boards.
-
 (-> sheet-paint-scrollbar
     (stage &key (:x integer) (:y integer) (:height integer) (:content integer) (:scroll integer)) null)
 (defun sheet-paint-scrollbar (stage &key (x 0) (y 0) (height 0) (content 0) (scroll 0))

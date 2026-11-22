@@ -2,13 +2,6 @@
 
 ;;;; -- Document View --
 
-;;; The transcript as a scrolling column of blocks. Only the entries near the
-;;; view are typeset. They are typeset again if the revision of the entry or the
-;;; width of the column changes. Other entries have the height they last had,
-;;; or an estimate. Entries far from the view lose their blocks and keep their
-;;; height. A person selects text across entries with a drag, and the selection
-;;; is copied at the end of the drag.
-
 (defparameter *document-measure* 760
   "The maximum width of the reading column in FLTK units. It is about seventy characters of the body face.")
 

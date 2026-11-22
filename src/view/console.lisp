@@ -2,14 +2,6 @@
 
 ;;;; -- Console --
 
-;;; The console is the column at the right of the conversation in a wide
-;;; window. Under the activity list, the console has a part for the goal of the
-;;; channel, the plan of the agent, the child channels, the files and the
-;;; messages sent to the agent. The goal and the child channels come from
-;;; Autolith. The other parts are read from the conversation. Empty parts are
-;;; left out. A click on the name of a part hides or shows the part, and the
-;;; hidden parts are saved as a preference.
-
 (defparameter *console-sections*
   '((:goal . "Goal") (:plan . "Plan") (:children . "Children") (:files . "Files") (:messages . "Messages"))
   "A list of the console parts as (KEY . NAME), in the order of drawing.")

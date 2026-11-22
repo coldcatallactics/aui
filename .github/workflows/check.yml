@@ -5,20 +5,15 @@ on:
   pull_request:
   workflow_dispatch:
 
-# The result of an older run is not needed after a newer push.
 concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # The Autolith release that AUI is checked against. AUI loads the client code
-  # of Autolith, so the two are updated together.
-  AUTOLITH_REF: v0.67.58
+  AUTOLITH_REF: v0.67.66
+  AUTOLITH_SOURCE_REF: 8f0fa413ceadf93742494f996b7ab5987b82e5af
 
 jobs:
-  # Autolith is installed from a release by the Autolith installer, and AUI is
-  # built from source against it. People who do not develop Autolith have this
-  # setup.
   macos-release:
     name: macOS arm64, Autolith from a release
     runs-on: macos-15
@@ -40,8 +35,6 @@ jobs:
           brew install fltk
           fltk-config --version
 
-      # Run the Autolith installer with the release to install. The release is
-      # downloaded from the place where it is published.
       - name: Install the Autolith release
         env:
           AUTOLITH_RELEASE_BASE_URL: https://github.com/lambda-symbolics/autolith/releases/download
@@ -101,6 +94,9 @@ jobs:
     name: macOS arm64, Autolith from source
     runs-on: macos-15
     timeout-minutes: 75
+    env:
+      AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
+      AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
     steps:
       - uses: actions/checkout@v5
         with:
@@ -109,7 +105,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           repository: lambda-symbolics/autolith
-          ref: ${{ env.AUTOLITH_REF }}
+          ref: ${{ env.AUTOLITH_SOURCE_REF }}
           path: autolith
 
       - uses: actions/checkout@v5
@@ -124,9 +120,7 @@ jobs:
           sbcl --version
           fltk-config --version
 
-      # Nothing is cached between runs. If compiled files are restored from an
-      # earlier run, the TLS library of Autolith is bound to the wrong OpenSSL
-      # symbols.
+      # Recompile against the OpenSSL libraries on this runner.
       - name: Install Quicklisp
         run: |
           curl --fail --location --retry 3 --output quicklisp.lisp https://beta.quicklisp.org/quicklisp.lisp
@@ -139,35 +133,23 @@ jobs:
           ./bin/autolith --version
 
       - name: Build AUI
-        env:
-          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
-          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
         run: |
           cd aui
           script/build
           ls -la build/aui
 
       - name: Run the tests
-        env:
-          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
-          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
         run: |
           cd aui
           script/check --suite aui
 
       - name: Exercise the interface
-        env:
-          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
-          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
         run: |
           cd aui
           script/exercise
           script/exercise-unslop
 
       - name: Photograph the demonstration
-        env:
-          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
-          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
         run: |
           cd aui
           mkdir -p pictures
@@ -182,8 +164,6 @@ jobs:
       - name: Exercise live turns
         timeout-minutes: 25
         env:
-          AUI_AUTOLITH_ROOT: ${{ github.workspace }}/autolith
-          AUI_LIGHTFAST_ROOT: ${{ github.workspace }}/lightfast
           AUI_EXERCISE_SHOTS: ${{ github.workspace }}/aui/pictures/live
           AUI_EXERCISE_KEEP: ${{ github.workspace }}/aui/pictures/live-world
         run: |

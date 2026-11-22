@@ -201,9 +201,9 @@ connection is released here."
   nil)
 
 (-> session--open-served (session &key (:channel (or null string)) (:directory (or null string))
-                                      (:new-p boolean) (:images list) (:launch list))
+                                      (:new-p boolean) (:launch list))
     null)
-(defun session--open-served (session &key channel directory new-p images launch)
+(defun session--open-served (session &key channel directory new-p launch)
   "Open the channel in the running world server and attach SESSION to it.
 Post an event for each step of the opening."
   (let ((world (session-world session)))
@@ -223,18 +223,12 @@ Post an event for each step of the opening."
                                     :permission-mode (world-permission-mode world)
                                     :immutable-p     (world-immutable-p world)
                                     :launch          launch
-                                    :images          images
-                                    ;; Progress is shown in the window. This
-                                    ;; skips the boot screen and the first-run
-                                    ;; tour of the terminal, because they wait
-                                    ;; for a key.
                                     :switch-p        t))))
   nil)
 
-(-> session--open (session &key (:channel (or null string)) (:directory (or null string)) (:new-p boolean)
-                               (:images list) (:launch list))
-    null)
-(defun session--open (session &key channel directory new-p images launch)
+(-> session--open (session &key (:channel (or null string)) (:directory (or null string))
+                               (:new-p boolean) (:launch list)) null)
+(defun session--open (session &key channel directory new-p launch)
   "Start the world server if no server runs. Open the channel, attach SESSION to it and
 deliver the newest history. Post an event for each step and for a failure."
   (let ((world (session-world session)))
@@ -246,11 +240,17 @@ deliver the newest history. Post an event for each step and for a failure."
                            :state  ':opening
                            :detail (list 0 "starting the world server"))
             (world-start-server world))
+          ;; Retry in the same folder if the lost channel never acquired a history.
+          (when (and channel new-p
+                     (not (autolith::conversation-storage-active-pathname
+                           (autolith::conversation-pathname-for-id (world-configuration world) channel)))
+                     (not (find channel (getf (world-request world ':channels) :channels)
+                                :test #'equal :key (lambda (row) (getf (rest row) :session-id)))))
+            (setf channel nil))
           (session--open-served session
                                 :channel   channel
                                 :directory directory
-                                :new-p     new-p
-                                :images    images
+                                :new-p     (and (null channel) new-p)
                                 :launch    launch))
       (error (condition)
         (session--mark-closed session)
@@ -283,13 +283,12 @@ deliver the newest history. Post an event for each step and for a failure."
   nil)
 
 (-> session-open
-    (world ui-queue &key (:generation integer) (:channel (or null string)) (:directory (or null string))
-                         (:new-p boolean) (:images list))
+    (world ui-queue &key (:generation integer) (:channel (or null string)) (:directory (or null string)) (:new-p boolean))
     session)
-(defun session-open (world queue &key (generation 0) channel directory new-p images)
+(defun session-open (world queue &key (generation 0) channel directory new-p)
   "Start to attach to CHANNEL and return the session immediately.
-If CHANNEL is NIL, attach to the latest channel for DIRECTORY, or to a new
-channel if NEW-P is true.
+If CHANNEL is NIL, attach to the latest channel for DIRECTORY. With NEW-P,
+create a channel in DIRECTORY if CHANNEL is missing or NIL.
 
 ATTACHMENT-EVENTs are posted for the opening, and then for the attachment or
 for the failure. The attachment event contains the status of the channel. A
@@ -304,7 +303,6 @@ HISTORY-EVENT is posted after a successful attachment."
                                        :channel   channel
                                        :directory directory
                                        :new-p     new-p
-                                       :images    images
                                        :launch    launch)))
     (setf (session--worker session)
           (bordeaux-threads:make-thread (lambda () (session--work session)) :name "AUI session"))

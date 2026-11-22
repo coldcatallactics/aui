@@ -2,13 +2,6 @@
 
 ;;;; -- Workbench --
 
-;;; The state of the window and the interaction with the client layer. The
-;;; state contains the channel shown, the last state reported by the channel
-;;; and the requests that wait for an answer by the person. The functions here
-;;; apply the events posted by client threads to that state. The panes in the
-;;; other files of this directory only read the state and call the functions
-;;; here. All of this runs on the interface thread.
-
 (defclass workbench ()
   ((launch
     :initarg       :launch
@@ -42,6 +35,11 @@
     :initform      nil
     :accessor      workbench-session
     :documentation "The attachment to the channel shown, or NIL.")
+   (open-request
+    :initform      nil
+    :accessor      workbench--open-request
+    :type          list
+    :documentation "The channel selection to retry if opening fails.")
    (transcript
     :initform      (make-transcript)
     :accessor      workbench-transcript
@@ -400,17 +398,17 @@ goal comes from the newest goal record seen in the history and in live events."
           (workbench-notice workbench)        nil))
   nil)
 
-(-> workbench-open (workbench &key (:channel (or null string)) (:directory (or null string)) (:new-p boolean)
-                                   (:images list))
+(-> workbench-open (workbench &key (:channel (or null string)) (:directory (or null string)) (:new-p boolean))
     null)
-(defun workbench-open (workbench &key channel directory new-p images)
-  "Leave the channel shown and attach to CHANNEL. Without CHANNEL, attach to the latest channel for DIRECTORY, or to a new channel if NEW-P is true."
+(defun workbench-open (workbench &rest selection &key channel directory new-p)
+  "Open CHANNEL, or select the latest channel in DIRECTORY. With NEW-P create a channel if CHANNEL does not exist."
   (let ((old (workbench-session workbench)))
     (when old
       (session-close old)))
   (incf (workbench-generation workbench))
   (workbench--reset-channel workbench)
   (setf (workbench-attachment workbench) ':opening
+        (workbench--open-request workbench) selection
         (workbench-overlay workbench)    nil)
   (unless (workbench-demo-p workbench)
     (setf (workbench-session workbench)
@@ -420,10 +418,17 @@ goal comes from the newest goal record seen in the history and in live events."
                         :directory  (or directory
                                         (and (null channel)
                                              (world-working-directory (workbench-world workbench))))
-                        :new-p      new-p
-                        :images     images)))
+                         :new-p     new-p)))
   (workbench-redraw workbench)
   nil)
+
+(-> workbench-retry (workbench) null)
+(defun workbench-retry (workbench)
+  "Reconnect a closed channel in its folder, or repeat a failed open request."
+  (if (eq (workbench-attachment workbench) ':closed)
+      (workbench-open workbench :channel (workbench-channel workbench)
+                      :directory (workbench-directory workbench) :new-p t)
+      (apply #'workbench-open workbench (workbench--open-request workbench))))
 
 (-> workbench-run-aside (workbench t function) null)
 (defun workbench-run-aside (workbench request function)

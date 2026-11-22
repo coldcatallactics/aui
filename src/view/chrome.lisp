@@ -2,11 +2,6 @@
 
 ;;;; -- Chrome --
 
-;;; The parts of the window around the conversation. They are the header with
-;;; the name of the channel, the status line under the composer, the approval
-;;; card, the list of pending messages, and the empty view that is shown if
-;;; there is no conversation.
-
 (defparameter *header-height* 62
   "The height of the header above the conversation.")
 
@@ -65,18 +60,18 @@
                           (workbench-run-aside workbench (list ':sign-in name)
                                                (lambda ()
                                                  (world-sign-in world name :key (string-trim " " key))))))
-                      :note "Paste the key. It is checked and saved in the key store of Autolith on this machine."))
+                      :note "paste the key; Autolith checks and stores it on this machine."))
       (:browser
        (workbench-show-panel
         workbench (format nil "Sign in to ~A" name)
-        (panel--empty "The sign-in page is open in your browser. Finish signing in there."))
+           (panel--empty "finish signing in in your browser"))
        (workbench-run-aside workbench (list ':sign-in name)
                             (lambda ()
                               (world-sign-in world name))))
       ((nil)
        (workbench-show-panel
         workbench (format nil "Sign in to ~A" name)
-        (panel--empty (format nil "Run autolith auth ~A in a terminal to sign in to this provider." name))))))
+          (panel--empty (format nil "run autolith auth ~A in a terminal to sign in" name))))))
   nil)
 
 (-> chrome--sign-in (workbench) null)
@@ -611,7 +606,7 @@ conversation."
                        :height    36
                        :primary-p t
                        :action    (lambda ()
-                                    (workbench-open workbench :channel (workbench-channel workbench))))))
+                                     (workbench-retry workbench)))))
       (:none
        (let ((below (chrome--paint-centered "Autolith" (text-style ':display) :x left :y top :width column)))
          (setf below (chrome--paint-centered "Pick a channel, or start a new one." (text-style ':body :face ':serif-italic)

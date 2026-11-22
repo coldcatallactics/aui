@@ -1,12 +1,6 @@
-;;;; -- Live Exercise --
+;;;; -- Live exercise --
 
-;;; Drive real turns through a world server without a screen and without an
-;;; account. The model is a script in this process. Requests to the model use
-;;; the Chat Completions protocol on a local port. The world server is the real
-;;; server of Autolith, started for a temporary world created by
-;;; script/exercise-live. The window gets the same keys and clicks as from a
-;;; person: send, queue, approve a command, stop, steer, run a command, and
-;;; reopen the channel from its history.
+;;; Drive real turns through a temporary world and scripted model.
 ;;;
 ;;; Usage: script/exercise-live
 
@@ -19,7 +13,7 @@
 
 (defparameter *mock-title*
   "{\"title\": \"A short title\", \"agent_name\": \"bridge-builder\"}"
-  "The answer of the mock model to a request for the title of a channel and the name of the agent.")
+  "Mock channel title response.")
 
 (defparameter *mock-answer*
   "## What I found
@@ -44,22 +38,22 @@ The bridge builds on both systems now. Three things changed:
 
 That is all of it.
 "
-  "The answer of the mock model to a question. It contains every kind of Markdown typeset by the window.")
+  "Mock Markdown response.")
 
 (-> mock--octets (string) (simple-array (unsigned-byte 8) (*)))
 (defun mock--octets (string)
-  "Return STRING encoded as UTF-8."
+  "Encode STRING as UTF-8."
   (sb-ext:string-to-octets string :external-format ':utf-8))
 
 (-> mock--pieces (string integer) list)
 (defun mock--pieces (text size)
-  "Return TEXT cut into pieces of SIZE characters."
+  "Split TEXT into pieces of SIZE characters."
   (loop for start from 0 below (length text) by size
         collect (subseq text start (min (length text) (+ start size)))))
 
 (-> mock--read-request (stream) (values string string))
 (defun mock--read-request (stream)
-  "Return the method and the body of the HTTP request on STREAM."
+  "Read an HTTP method and body from STREAM."
   (let ((header (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer t)))
     (loop for octet = (read-byte stream nil nil)
           while octet
@@ -83,14 +77,14 @@ That is all of it.
 
 (-> mock--send (stream string) null)
 (defun mock--send (stream string)
-  "Write STRING to STREAM and flush the stream."
+  "Write STRING to STREAM."
   (write-sequence (mock--octets string) stream)
   (finish-output stream)
   nil)
 
 (-> mock--send-json (stream t) null)
 (defun mock--send-json (stream value)
-  "Send the JSON VALUE as the answer to the request on STREAM."
+  "Send JSON VALUE on STREAM."
   (let ((body (mock--octets (autolith::json-encode value))))
     (mock--send stream (format nil "HTTP/1.1 200 OK~C~CContent-Type: application/json~C~CContent-Length: ~D~C~CConnection: close~C~C~C~C"
                                #\Return #\Newline #\Return #\Newline (length body)
@@ -101,7 +95,7 @@ That is all of it.
 
 (-> mock--send-event (stream string) null)
 (defun mock--send-event (stream data)
-  "Send DATA on STREAM as one server-sent event in one chunk of a chunked answer."
+  "Send DATA as one chunked server-sent event."
   (let ((octets (mock--octets (format nil "data: ~A~C~C" data #\Newline #\Newline))))
     (mock--send stream (format nil "~X~C~C" (length octets) #\Return #\Newline))
     (write-sequence octets stream)
@@ -110,7 +104,7 @@ That is all of it.
 
 (-> mock--chunk (t &key (:finish (or null string))) string)
 (defun mock--chunk (delta &key finish)
-  "Return a streamed completion chunk that contains DELTA. If FINISH is given, it is the finish reason."
+  "Build a streamed completion chunk for DELTA."
   (autolith::json-encode
    (autolith::json-object
     "id"      "chatcmpl-mock"
@@ -122,7 +116,7 @@ That is all of it.
 
 (-> mock--text (t) string)
 (defun mock--text (content)
-  "Return the text of the message content CONTENT. CONTENT is a string or an array of parts."
+  "Extract text from CONTENT."
   (cond
     ((stringp content)
      content)
@@ -136,7 +130,7 @@ That is all of it.
 
 (-> mock--spoken (t) list)
 (defun mock--spoken (request)
-  "Return the messages of REQUEST without the messages that contain temporary context."
+  "Return request messages without temporary context."
   (let ((messages (autolith::json-get request "messages")))
     (remove-if (lambda (message)
                  (let ((text (mock--text (autolith::json-get message "content"))))
@@ -369,10 +363,11 @@ not be changed by the exercise."
   (let ((directory (uiop:getenv "AUI_EXERCISE_SHOTS")))
     (when (and directory (plusp (length directory)))
       (window-arrange workbench)
-      (main--picture workbench
-                     (uiop:native-namestring
-                      (merge-pathnames (format nil "~A.png" name)
-                                       (uiop:ensure-directory-pathname directory))))))
+      (save-window-picture
+       (workbench-window workbench)
+       (uiop:native-namestring
+        (merge-pathnames (format nil "~A.png" name)
+                         (uiop:ensure-directory-pathname directory))))))
   nil)
 
 (-> exercise-live--idle-p (workbench) boolean)
@@ -381,6 +376,31 @@ not be changed by the exercise."
   (and (not (workbench-working-p workbench))
        (null (workbench-approval workbench))
        (null (workbench-pending workbench))))
+
+(-> exercise-live--goal-met-p (workbench) boolean)
+(defun exercise-live--goal-met-p (workbench)
+  "Check the terminal status of the mock goal on mission and legacy servers."
+  (let ((goal (workbench-goal workbench)))
+    (eq (getf goal :status) (if (eq (getf goal :kind) ':mission) ':verified ':complete))))
+
+(-> exercise-live--current-p (workbench) boolean)
+(defun exercise-live--current-p (workbench)
+  "Check that the attached channel has a selected sidebar row."
+  (and (workbench-attached-p workbench)
+       (some (lambda (row)
+               (and (equal (workbench-channel workbench) (getf row :id)) (getf row :current-p)))
+             (sidebar-entries workbench))))
+
+(-> exercise-live--kill-server (workbench string) null)
+(defun exercise-live--kill-server (workbench root)
+  "Kill the mock server after locating its process lease inside ROOT."
+  (let* ((world (workbench-world workbench))
+         (pid   (getf (nthcdr 2 (world--entry world)) :pid))
+         (lease (autolith::world-server-lock-pathname (world-configuration world))))
+    (assert (and (integerp pid) (> pid 1)
+                 (uiop:string-prefix-p (format nil "~A/" root) (namestring (truename lease)))))
+    (uiop:run-program (list "kill" "-KILL" (princ-to-string pid))))
+  nil)
 
 (-> exercise-live-run () integer)
 (defun exercise-live-run ()
@@ -591,7 +611,7 @@ not be changed by the exercise."
                               (exercise-live--until
                                workbench
                                (lambda ()
-                                 (and (eq ':complete (getf (workbench-goal workbench) :status))
+                                 (and (exercise-live--goal-met-p workbench)
                                       (exercise-live--idle-p workbench)))
                                :seconds 180))
              ;; From Autolith 0.67.57 on, the state of the channel contains the goal.
@@ -604,10 +624,11 @@ not be changed by the exercise."
                                            (portable-get (portable-get state "goal") "objective")))))
              (stage-resize (workbench-stage workbench) 1500 900)
              (exercise--draw workbench)
-             (exercise-expect "the console contains the goal and buttons to change or clear it"
+             (exercise-expect "the completed goal can be cleared, but only a legacy goal can be edited"
                               (and (exercise--region workbench '(:console-section :goal))
-                                   (exercise--region workbench '(:console-goal :update))
-                                   (exercise--region workbench '(:console-goal :clear))))
+                                  (eq (null (exercise--region workbench '(:console-goal :update)))
+                                      (eq (getf (workbench-goal workbench) :kind) ':mission))
+                                  (exercise--region workbench '(:console-goal :clear))))
              (exercise-live--picture workbench "live-goal")
              (stage-resize (workbench-stage workbench) 1200 800)
              (exercise--draw workbench)
@@ -632,7 +653,7 @@ not be changed by the exercise."
                (exercise-expect "the goal is read from the history of the channel"
                                 (and (equal "Keep the bridge building."
                                             (getf (workbench-goal workbench) :objective))
-                                     (eq ':complete (getf (workbench-goal workbench) :status))))
+                                     (exercise-live--goal-met-p workbench)))
                (workbench-goal-request workbench ':clear)
                (exercise-expect "a goal cleared from the window is removed"
                                 (exercise-live--until workbench
@@ -640,6 +661,24 @@ not be changed by the exercise."
                                                         (null (workbench-goal workbench)))
                                                       :seconds 30)))
              (exercise-expect "no failure was reported" (null (workbench-notice workbench)))
+             (let ((channel (workbench-channel workbench)))
+               (workbench-stop-server workbench)
+               (exercise-expect "the attachment closes when the server stops"
+                                (exercise-live--until workbench
+                                                      (lambda ()
+                                                        (and (eq (workbench-attachment workbench) ':closed)
+                                                             (not (world-served-p (workbench-world workbench)))))
+                                                      :seconds 90))
+               (exercise--draw workbench)
+               (exercise-expect "Try again is available after shutdown" (exercise--click workbench ':retry))
+               (exercise-expect "the reopened channel is current in the sidebar after restart"
+                                (exercise-live--until
+                                 workbench
+                                 (lambda ()
+                                  (and (equal (workbench-channel workbench) channel)
+                                       (exercise-live--current-p workbench)))
+                                 :seconds 120))
+               (exercise-live--picture workbench "live-restart"))
              ;; Deleting the channel closes it and removes it from the world.
              (let ((channel (workbench-channel workbench)))
                (workbench-delete-channel workbench channel)
@@ -654,6 +693,25 @@ not be changed by the exercise."
                                                            (getf entry :id))
                                                    :test #'equal))))
                                  :seconds 60)))
+             (workbench-open workbench :directory directory :new-p t)
+             (exercise-expect "a new channel is selected before its first turn"
+                              (exercise-live--until workbench (lambda () (exercise-live--current-p workbench))
+                                                    :seconds 90))
+             (let ((channel (workbench-channel workbench)))
+               (exercise-live--kill-server workbench root)
+               (exercise-expect "the unsaved channel closes when the server dies"
+                                (exercise-live--until workbench (lambda () (eq (workbench-attachment workbench) ':closed))
+                                                      :seconds 90))
+               (exercise--draw workbench)
+               (exercise-expect "Try again opens a fresh channel in the same folder with a selected row"
+                                (and (exercise--click workbench ':retry)
+                                     (exercise-live--until workbench
+                                                           (lambda ()
+                                                             (and (exercise-live--current-p workbench)
+                                                                  (not (equal channel (workbench-channel workbench)))
+                                                                  (equal directory (workbench-directory workbench))))
+                                                           :seconds 120)))
+               (exercise-live--picture workbench "live-restart-unsaved"))
              ;; The world server was started only for this exercise. It is stopped from the window.
              (workbench-stop-server workbench)
              (exercise-expect "the world server is stopped from the window"

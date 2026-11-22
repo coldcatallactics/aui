@@ -2,12 +2,7 @@
 
 ;;;; -- Stage --
 
-;;; The single drawing surface of a window. Everything in the window is drawn
-;;; here by AUI. The only FLTK widgets are the text fields that a person types
-;;; into. They lie on top of the stage. Panes declare the regions that respond
-;;; to the pointer while they draw. Only the regions of the last drawing are
-;;; kept. Clicks, drags and wheel steps are passed to the region under the
-;;; pointer.
+;;; The window's drawing surface. Pointer regions are rebuilt after each draw.
 
 (defstruct region
   "A rectangle of the stage that responds to the pointer."
@@ -174,14 +169,10 @@ order."
     boolean)
 (defun stage-region (stage identifier
                      &key (x 0) (y 0) (width 0) (height 0) action menu wheel drag (cursor ':default) tooltip)
-  "Declare the box as the region IDENTIFIER of STAGE. Returns T if the pointer is over the region.
+    "Declare a pointer region in STAGE and return whether the pointer is inside it.
 
-Regions respond to the pointer. ACTION is called with no arguments on a
-click. MENU is called with no arguments on a secondary click. WHEEL is
-called with the vertical and the horizontal steps. DRAG is called with
-:START, :MOVE or :END and with the position of the pointer. Regions
-declared later lie above earlier regions. If a region has an ACTION and
-CURSOR is :DEFAULT, the cursor is the hand."
+ACTION handles clicks, MENU secondary clicks, WHEEL scrolls, and DRAG pointer motion.
+Later regions are on top; an actionable default-cursor region uses a hand cursor."
   (destructuring-bind (x y width height) (clip--within (list x y width height) *clip*)
     ;; Regions that lie outside the clip are left out.
     (when (or (null *clip*) (and (plusp width) (plusp height)))

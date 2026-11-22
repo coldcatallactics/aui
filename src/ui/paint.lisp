@@ -2,10 +2,7 @@
 
 ;;;; -- Painting --
 
-;;; Functions for drawing in the colors and faces of the theme. They are only
-;;; valid inside the draw callback of the stage. If no color is given, ink is
-;;; used on paper and paper is used on ink. An inverted block is drawn with
-;;; one fill, and everything inside it is inverted too.
+;;; Theme-aware drawing helpers, valid during a stage draw callback.
 
 (defvar *on-ink-p* nil
   "True if the current ground is inverted and filled with ink.")

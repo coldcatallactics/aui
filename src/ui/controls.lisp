@@ -2,10 +2,7 @@
 
 ;;;; -- Controls --
 
-;;; The controls drawn by AUI: buttons, chips, badges and window frames. They
-;;; are drawn on the stage that is being painted, and a region is declared for
-;;; each control. As in Interlisp Paper, controls are inverted under the
-;;; pointer. Primary controls are inverted until the pointer is over them.
+;;; Stage controls: buttons, chips, badges, and window frames.
 
 (-> paint-button
     (stage t string

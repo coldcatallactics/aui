@@ -2,11 +2,7 @@
 
 ;;;; -- Paragraphs --
 
-;;; Styled text broken into lines. Runs of styled text are broken at word
-;;; boundaries to fit a width. The positions of the fragments are kept, so
-;;; that a point can be mapped back to a character and a range of characters
-;;; can be drawn as selected. All text in the transcript is set in paragraphs
-;;; inside blocks.
+;;; Styled text laid out into selectable lines.
 
 (defstruct (span (:constructor %make-span (text style link)))
   "A run of a paragraph. TEXT is set in STYLE, and LINK is opened if the run is clicked."
@@ -33,12 +29,9 @@
 
 (-> text-clean (string) string)
 (defun text-clean (text)
-  "Return TEXT as a terminal shows it.
+  "Return TEXT as terminal output: strip controls, expand tabs, and apply carriage returns.
 
-Escape sequences for color and movement are removed. Text after a carriage
-return is written over the line. Tabs are expanded to the next multiple of
-eight columns. Other control characters are removed. TEXT is returned
-unchanged if it contains none of these."
+TEXT is returned unchanged when it contains no controls."
   (if (not (find-if (lambda (character)
                       (and (< (char-code character) 32) (char/= character #\Newline)))
                     text))
@@ -181,9 +174,8 @@ unchanged if it contains none of these."
 
 (-> paragraph--tokens (paragraph) list)
 (defun paragraph--tokens (paragraph)
-  "Return the text of PARAGRAPH as a list of tokens (KIND TEXT SPAN START). KIND is :WORD, :SPACE or :BREAK.
-
-If the paragraph wraps :ANYWHERE, each character is a word."
+    "Return PARAGRAPH as (KIND TEXT SPAN START) tokens. KIND is :WORD, :SPACE, or :BREAK.
+With :ANYWHERE wrapping, each character is a word."
   (let ((tokens   nil)
         (offset   0)
         (anywhere (eq (paragraph-wrap paragraph) ':anywhere)))
@@ -230,7 +222,7 @@ If the paragraph wraps :ANYWHERE, each character is a word."
 
 (-> paragraph-layout (paragraph integer) integer)
 (defun paragraph-layout (paragraph width)
-  "Break PARAGRAPH into lines that fit WIDTH and return the height of PARAGRAPH. If WIDTH is the width of the last layout, the last layout is kept."
+  "Lay out PARAGRAPH within WIDTH and return its height. Reuse the layout when WIDTH is unchanged."
   (unless (= width (paragraph-width paragraph))
     (let* ((base        (paragraph-style paragraph))
            (hanging     (paragraph-hanging paragraph))

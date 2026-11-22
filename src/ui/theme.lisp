@@ -2,14 +2,7 @@
 
 ;;;; -- Theme --
 
-;;; The colors and faces of AUI. The look follows Interlisp Paper and the
-;;; Autolith site. There is one paper ground and black ink. Content is set in
-;;; a serif, and the interface is set in a typewriter face. Selection is shown
-;;; by inversion, and dither is the only tone between paper and ink. Lines are
-;;; hairlines, and corners are square. Accent inks are used for kinds of
-;;; things, as in the terminal: green for what is alive or went well, red for
-;;; what failed, amber for tools and warnings, blue for code, links and the
-;;; step in hand, and plum for defining words in code.
+;;; Colors and faces for the Interlisp Paper-inspired interface.
 
 (defparameter *paper* '(255 254 250)
   "The color of the ground.")

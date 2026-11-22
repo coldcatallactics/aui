@@ -2,12 +2,7 @@
 
 ;;;; -- Blocks --
 
-;;; The parts of a stacked document. There are blocks for paragraphs, framed
-;;; code, tables, rows that open and close, boxes around other blocks, images
-;;; and rules. A block is first laid out to a width. The height of the block
-;;; depends on the width. Then the block is painted at a position. The text of
-;;; a block is available as leaves, which are paragraphs and their offsets.
-;;; Leaves are used to select text across blocks.
+;;; Flow blocks are laid out, painted, and exposed as selectable paragraph leaves.
 
 (defvar *paint-stage* nil
   "The stage that is being painted. Blocks declare their pointer regions on this stage.")

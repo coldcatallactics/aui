@@ -1,9 +1,6 @@
-;;;; -- Interface Exercise --
+;;;; -- Interface exercise --
 
-;;; Drive the demonstration as a person would, but without a screen. The window
-;;; is drawn offscreen. Clicks, scrolls, drags and keys are given to the stage as
-;;; FLTK events, and the result of each event is checked. The exercise needs a
-;;; display to measure text, so it is separate from the tests.
+;;; Drive the demonstration offscreen and check the result of each input.
 ;;;
 ;;; Usage: script/exercise
 

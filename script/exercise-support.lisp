@@ -1,13 +1,9 @@
-;;;; -- Exercise Support --
-
-;;; The code shared by the exercises. It contains the counted expectations and
-;;; the functions used to draw a window offscreen and to send clicks to the
-;;; window in the same way as FLTK.
+;;;; -- Exercise support --
 
 (in-package #:aui)
 
 (defvar *exercise-failures* 0
-  "The number of failed expectations of the exercise.")
+  "This is the number of failed expectations.")
 
 (defmacro exercise-expect (description form)
   "Evaluate FORM and print DESCRIPTION as passed or failed."
@@ -19,7 +15,7 @@
 
 (-> exercise--draw (workbench) null)
 (defun exercise--draw (workbench)
-  "Draw the window of WORKBENCH offscreen. The regions of the stage are then updated to the current state."
+  "Draw WORKBENCH and refresh its regions."
   (window-arrange workbench)
   (lightfast:capture-window (workbench-window workbench)
                             (uiop:native-namestring
@@ -28,12 +24,12 @@
 
 (-> exercise--region (workbench t) (or null region))
 (defun exercise--region (workbench identifier)
-  "Return the region declared as IDENTIFIER by the last drawing, or NIL."
+  "Find IDENTIFIER in WORKBENCH's latest drawing."
   (stage--find-region (workbench-stage workbench) identifier))
 
 (-> exercise--click (workbench t) boolean)
 (defun exercise--click (workbench identifier)
-  "Click in the middle of the region IDENTIFIER. Returns T if the region exists, and NIL otherwise."
+  "Click the center of IDENTIFIER, if it exists."
   (let ((region (exercise--region workbench identifier))
         (stage  (workbench-stage workbench)))
     (when region
@@ -47,7 +43,7 @@
 
 (-> exercise--finish () null)
 (defun exercise--finish ()
-  "Print the result of the exercise and exit with a status that matches the result."
+  "Print the result and exit with its status."
   (format t "~&~:[The interface exercise passed.~;~:*~D expectation~:P failed.~]~%"
           (and (plusp *exercise-failures*) *exercise-failures*))
   (finish-output)

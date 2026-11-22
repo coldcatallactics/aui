@@ -1,11 +1,7 @@
 ;;;; -- AUI Systems --
 
-;;; The toolkit contains the faces, the stage, paragraphs, blocks, controls
-;;; and the preferences of a window. It does not use Autolith. AUI and
-;;; unslop are two programs built on the toolkit.
-
 (asdf:defsystem #:aui/toolkit
-  :description "The toolkit used to draw the windows of AUI, built on Lightfast."
+  :description "Shared drawing and input controls for AUI and Unslop."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:lightfast
@@ -25,13 +21,14 @@
       :components
       ((:file "theme")
        (:file "paint")
+       (:file "picture")
        (:file "stage")
        (:file "paragraph")
        (:file "blocks")
        (:file "controls")))))))
 
 (asdf:defsystem #:aui
-  :description "A native graphical client for Autolith, built on Lightfast and FLTK."
+  :description "A native graphical client for Autolith."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:aui/toolkit
@@ -86,11 +83,8 @@
      (:file "main"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:aui/tests))))
 
-;;; Unslop is a second program built on the toolkit. It shows the words of a
-;;; Common Lisp checkout. It does not use Autolith.
-
 (asdf:defsystem #:aui/unslop
-  :description "A program for editing the comments, strings and docstrings of a Common Lisp checkout."
+  :description "An editor for prose in Common Lisp source files."
   :author      "Lambda Symbolics"
   :license     "MIT"
   :depends-on  (#:aui/toolkit
@@ -113,7 +107,7 @@
        (:file "unslop")))))))
 
 (asdf:defsystem #:aui/test-support
-  :description "The AUI test suite and the function used to run it."
+  :description "FiveAM suites and test runner for AUI and Unslop."
   :depends-on  (#:aui/toolkit
                 #:fiveam)
   :serial      t

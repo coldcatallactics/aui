@@ -1,18 +1,14 @@
-;;;; -- Unslop Exercise --
+;;;; -- Unslop exercise --
 
-;;; Drive the unslop window offscreen in a temporary checkout: open a file,
-;;; write in a passage, wait for the save, empty a comment, mark a file as
-;;; completed, hide it and change a file from outside. The file on disk is
-;;; checked after each step.
+;;; Drive the unslop window offscreen and check each file operation.
 
 (in-package #:aui)
 
 (defvar *unslop-exercise-failures* 0
-  "The number of failed expectations of the exercise.")
+  "Failed expectation count.")
 
 (defmacro unslop-expect (description form)
-  "Evaluate FORM and print DESCRIPTION as passed or failed. An error in FORM counts as a failure.
-Returns the value of FORM, or NIL after an error."
+  "Evaluate FORM, report DESCRIPTION, and count failures."
   `(let ((held-p (handler-case ,form
                    (error (condition)
                      (format t "~&        ~A~%" condition)
@@ -34,21 +30,21 @@ Returns the value of FORM, or NIL after an error."
             ""
             "(defparameter *limit* 10"
             "  \"How many.\")"))
-  "The text of the source file used by the exercise.")
+  "Exercise source text.")
 
 (defun unslop-exercise--write (pathname text)
-  "Write TEXT to the file at PATHNAME."
+  "Write TEXT to PATHNAME."
   (ensure-directories-exist pathname)
   (with-open-file (stream pathname :direction ':output :if-exists ':supersede :external-format ':utf-8)
     (write-string text stream))
   pathname)
 
 (defun unslop-exercise--read (pathname)
-  "Return the contents of the file at PATHNAME."
+  "Read PATHNAME as UTF-8 text."
   (uiop:read-file-string pathname :external-format ':utf-8))
 
 (defun unslop-exercise--git (directory &rest arguments)
-  "Run Git with ARGUMENTS in DIRECTORY. Returns the output of Git."
+  "Run Git with ARGUMENTS in DIRECTORY."
   (uiop:run-program (append (list "git" "-C" (uiop:native-namestring directory)
                                   "-c" "user.name=Test" "-c" "user.email=test@example.invalid"
                                   "-c" "commit.gpgsign=false" "-c" "init.defaultBranch=main")
@@ -56,7 +52,7 @@ Returns the value of FORM, or NIL after an error."
                     :input nil :output ':string :error-output nil :ignore-error-status t))
 
 (defun unslop-exercise--draw (desk)
-  "Draw the window of DESK offscreen. The regions of the stage are then updated to the current state."
+  "Draw DESK and refresh its regions."
   (unslop-arrange desk)
   (lightfast:capture-window (desk-window desk)
                             (uiop:native-namestring
@@ -64,11 +60,11 @@ Returns the value of FORM, or NIL after an error."
   nil)
 
 (defun unslop-exercise--region (desk identifier)
-  "Return the region declared as IDENTIFIER by the last drawing, or NIL."
+  "Find IDENTIFIER in DESK's latest drawing."
   (stage--find-region (desk-stage desk) identifier))
 
 (defun unslop-exercise--click (desk identifier)
-  "Click in the middle of the region IDENTIFIER. Returns T if the region exists, and NIL otherwise."
+  "Click the center of IDENTIFIER, if it exists."
   (unslop-exercise--draw desk)
   (let ((region (unslop-exercise--region desk identifier))
         (stage  (desk-stage desk)))
@@ -83,13 +79,13 @@ Returns the value of FORM, or NIL after an error."
       t)))
 
 (defun unslop-exercise--type (desk text)
-  "Put TEXT into the editor as if it had been typed."
+  "Put TEXT in the editor."
   (setf (lightfast:value (desk-editor desk)) text)
   (desk-note-typing desk)
   nil)
 
 (defun unslop-exercise--settle (desk seconds)
-  "For SECONDS, run the timers and take up the results of background work."
+  "Run timers and collect background work for SECONDS."
   (let ((deadline (+ (get-internal-real-time) (round (* seconds internal-time-units-per-second)))))
     (loop while (< (get-internal-real-time) deadline)
           do (lightfast:wait 0.05)
@@ -98,11 +94,11 @@ Returns the value of FORM, or NIL after an error."
   nil)
 
 (defun unslop-exercise--key (desk code &key (state 0))
-  "Press the key with CODE and the modifiers STATE in the editor."
+  "Send CODE with STATE to the editor."
   (unslop--editor-key desk (make-key-event :code code :state state)))
 
 (defun unslop-exercise--passage (desk text)
-  "Return the numbers (DEFINITION . PASSAGE) of the passage whose text is TEXT in the open file, or NIL."
+  "Find TEXT in the open file."
   (loop for definition in (proof-definitions (desk-proof desk))
         for definition-index from 0
         do (let ((index (position text (definition-passages definition) :key #'passage-text :test #'string=)))
@@ -180,7 +176,7 @@ Returns the value of FORM, or NIL after an error."
                                             (unslop-exercise--git work "rev-list" "--count" "HEAD")))))
              (when shots
                (unslop-exercise--draw desk)
-               (unslop--picture desk (format nil "~A/unslop-editing.png" shots)))
+               (save-window-picture (desk-window desk) (format nil "~A/unslop-editing.png" shots)))
              ;; Pressing Tab moves to the next passage. An empty comment is removed.
              (unslop-exercise--key desk #xff09)
              (unslop-expect "pressing Tab moves to the next passage"
@@ -205,7 +201,7 @@ Returns the value of FORM, or NIL after an error."
                                    (desk-removal desk)
                                    (unslop-exercise--region desk ':restore-comment))))
              (when shots
-               (unslop--picture desk (format nil "~A/unslop-deleted.png" shots)))
+                (save-window-picture (desk-window desk) (format nil "~A/unslop-deleted.png" shots)))
              (unslop-exercise--click desk ':restore-comment)
              (unslop-expect "clicking Undo restores the comment"
                             (and (search "name)) ; behind" (unslop-exercise--read greet))
@@ -218,7 +214,7 @@ Returns the value of FORM, or NIL after an error."
                  (unslop-exercise--type desk "Above, half typed")
                  (when shots
                    (unslop-exercise--draw desk)
-                   (unslop--picture desk (format nil "~A/unslop-comment.png" shots)))
+                   (save-window-picture (desk-window desk) (format nil "~A/unslop-comment.png" shots)))
                  (unslop-exercise--key desk (first control-d) :state (second control-d))
                  (unslop-expect "pressing Ctrl+D deletes the comment in the editor and moves to the next text"
                                 (and (null (search "Above" (unslop-exercise--read greet)))
@@ -250,7 +246,7 @@ Returns the value of FORM, or NIL after an error."
                                  (null (unslop-exercise--region desk '(:passage 1 0)))
                                  (unslop-exercise--region desk '(:passage 2 0))))
              (when shots
-               (unslop--picture desk (format nil "~A/unslop-sections.png" shots)))
+                (save-window-picture (desk-window desk) (format nil "~A/unslop-sections.png" shots)))
              (unslop-exercise--click desk '(:section 1))
              (unslop-expect "clicking the heading unfolds the section"
                             (unslop-exercise--region desk '(:passage 1 0)))
@@ -370,7 +366,7 @@ Returns the value of FORM, or NIL after an error."
                                  (unslop-exercise--region desk '(:shelf-folder "src/"))
                                  (null (unslop-exercise--region desk '(:shelf-file "src/other.lisp")))))
              (when shots
-               (unslop--picture desk (format nil "~A/unslop-folded.png" shots)))
+                (save-window-picture (desk-window desk) (format nil "~A/unslop-folded.png" shots)))
              (setf (desk-filter desk) "oth")
              (unslop-exercise--draw desk)
              (unslop-expect "if the list is filtered by name, the matching files in a folded folder are shown"
@@ -395,7 +391,7 @@ Returns the value of FORM, or NIL after an error."
              (when shots
                (desk-open-file desk "greet.lisp")
                (unslop-exercise--draw desk)
-               (unslop--picture desk (format nil "~A/unslop-end.png" shots)))
+               (save-window-picture (desk-window desk) (format nil "~A/unslop-end.png" shots)))
              (unslop-expect "nothing is staged in Git, and there is no new commit"
                             (and (string= "" (unslop-exercise--git work "diff" "--cached" "--name-only"))
                                  (string= (format nil "1~%")

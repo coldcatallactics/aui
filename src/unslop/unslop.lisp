@@ -2,11 +2,6 @@
 
 ;;;; -- Unslop --
 
-;;; The unslop window and the start of the program. The window shows the source
-;;; files of a Common Lisp checkout at the left side and the words of one file at
-;;; the right side, for rewriting in place. Typed text is written to the file when
-;;; the typing stops. The only files that are changed are the file being written
-;;; in and the ledger outside the checkout. Nothing is committed or staged.
 
 (defparameter *unslop-default-size* '(1320 . 880)
   "The width and height of the window if the command line does not give a size.")
@@ -15,7 +10,7 @@
   "The minimum width and height of the window.")
 
 (defstruct unslop-launch
-  "The options from the command line. DIRECTORY is the folder of the checkout. SIZE is the width and height of the window, or NIL. SHOT is the file for a picture of the window, or NIL. FILE is the name of the file to open at the start, or NIL."
+  "Command-line options. DIRECTORY is the checkout, SIZE is the window size, SHOT is an optional screenshot, and FILE is the initial file."
   (directory nil)
   (size      nil :type (or null cons))
   (shot      nil :type (or null string))
@@ -36,7 +31,7 @@ when you stop typing. Nothing is committed.
 
 (-> unslop--parse-size (string) cons)
 (defun unslop--parse-size (text)
-  "Return the size in TEXT, such as 1200x800, as a pair of width and height. Signal a PROOF-ERROR if TEXT is not a valid size."
+  "Return the WIDTHxHEIGHT size in TEXT, or signal a usage proof error."
   (let* ((cross  (position #\x text :test #'char-equal))
          (width  (and cross (parse-integer text :end cross :junk-allowed t)))
          (height (and cross (parse-integer text :start (1+ cross) :junk-allowed t))))
@@ -48,7 +43,7 @@ when you stop typing. Nothing is committed.
 
 (-> unslop-parse (list) (or null unslop-launch))
 (defun unslop-parse (arguments)
-  "Return the launch options from the command line ARGUMENTS. If the arguments ask for help, print the usage and return NIL. Signal a PROOF-ERROR for unknown arguments."
+  "Return launch options parsed from ARGUMENTS, or NIL after printing help."
   (let ((launch (make-unslop-launch)))
     (loop while arguments
           do (let ((argument (pop arguments)))
@@ -390,22 +385,6 @@ when you stop typing. Nothing is committed.
 
 ;;;; -- Running --
 
-(-> unslop--picture (desk string) null)
-(defun unslop--picture (desk path)
-  "Write a picture of the window of DESK to PATH. The picture is a PNG if PATH ends in png and an image tool is available, or else a PPM."
-  (let* ((png-p (string-equal (or (pathname-type path) "") "png"))
-         (ppm   (if png-p (format nil "~A.ppm" path) path)))
-    (lightfast:capture-window (desk-window desk) ppm)
-    (when png-p
-      (handler-case
-          (progn
-            (uiop:run-program (if (uiop:os-macosx-p)
-                                  (list "sips" "-s" "format" "png" ppm "--out" path)
-                                  (list "magick" ppm path)))
-            (delete-file ppm))
-        (error ()
-          (format *error-output* "No image tool converted the picture; it is at ~A.~%" ppm)))))
-  nil)
 
 (-> unslop-run (unslop-launch) null)
 (defun unslop-run (launch)
@@ -434,36 +413,36 @@ when you stop typing. Nothing is committed.
     (unslop-arrange desk)
     (cond
       (unseen
-       (unslop--picture desk (unslop-launch-shot launch)))
-      (t
-       (setf *stage-failure-function*
-             (lambda (report)
-               (setf (desk-notice desk) report)
-               (desk-redraw desk)))
-       (lightfast:add-timeout *refresh-seconds*
-                              (lambda ()
-                                (with-stage-guard ("Looking at the checkout")
-                                  (desk-check-disk desk)
-                                  (desk-look desk)))
-                              :repeat t)
-       (when (unslop-launch-shot launch)
-         (lightfast:add-timeout 1.0
-                                (lambda ()
-                                  (unslop-arrange desk)
-                                  (stage-flush (desk-stage desk))
-                                  (lightfast:wait 0.3)
-                                  (unslop--picture desk (unslop-launch-shot launch))
-                                  (lightfast:quit))))
-       (lightfast:run-with-idle
-        (lambda ()
-          (with-stage-guard ("Taking up what was found")
-            (desk-take-up desk))
-          (with-stage-guard ("Laying out the window")
-            (when (stage-dirty-p (desk-stage desk))
-              (unslop-arrange desk))
-            (stage-flush (desk-stage desk)))))
-       (desk-leave desk))))
-  nil)
+         (save-window-picture (desk-window desk) (unslop-launch-shot launch))
+       (t
+        (setf *stage-failure-function*
+              (lambda (report)
+                (setf (desk-notice desk) report)
+                (desk-redraw desk)))
+        (lightfast:add-timeout *refresh-seconds*
+                               (lambda ()
+                                 (with-stage-guard ("Looking at the checkout")
+                                   (desk-check-disk desk)
+                                   (desk-look desk)))
+                               :repeat t)
+        (when (unslop-launch-shot launch)
+          (lightfast:add-timeout 1.0
+                                 (lambda ()
+                                   (unslop-arrange desk)
+                                   (stage-flush (desk-stage desk))
+                                   (lightfast:wait 0.3)
+                                   (save-window-picture (desk-window desk) (unslop-launch-shot launch))
+                                   (lightfast:quit))))
+        (lightfast:run-with-idle
+         (lambda ()
+           (with-stage-guard ("Taking up what was found")
+             (desk-take-up desk))
+           (with-stage-guard ("Laying out the window")
+             (when (stage-dirty-p (desk-stage desk))
+               (unslop-arrange desk))
+             (stage-flush (desk-stage desk)))))
+        (desk-leave desk))))
+    nil))
 
 (-> unslop-main (&optional list) null)
 (defun unslop-main (&optional (arguments (uiop:command-line-arguments)))

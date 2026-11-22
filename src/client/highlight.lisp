@@ -1,11 +1,5 @@
 (in-package #:aui)
 
-;;;; -- Highlighting --
-
-;;; Source is colored by the highlighter of the Autolith terminal, so forms,
-;;; commands and edits look the same as in the terminal. The result is plain
-;;; data of roles and text. The ink of each role is chosen by the theme.
-
 (defvar *highlight-library-sought-p* nil
   "True if this process has already looked for the native highlighter library of a release.")
 
@@ -33,54 +27,21 @@ If LANGUAGE is NIL, use the file type of PATHNAME instead."
                 (member (pathname-type (pathname pathname)) *lisp-file-types* :test #'equal)))
        t))
 
-(-> highlight--nest (list string) list)
-(defun highlight--nest (parts source)
-  "Return PARTS with each parenthesis split off under the role of the nesting depth.
-PARTS is a list of (ROLE . TEXT) for the Lisp SOURCE.
-
-The roles of the depths are :SYNTAX-PARENTHESIS-1 to :SYNTAX-PARENTHESIS-6.
-The roles repeat for deeper levels. If PARTS do not match SOURCE character for
-character, return PARTS unchanged."
-  (let ((roles (autolith::syntax--lisp-parenthesis-roles source)))
-    (if (/= (length roles) (reduce #'+ parts :key (lambda (part) (length (rest part)))))
-        parts
-        (let ((offset 0)
-              (nested nil))
-          (loop for (role . text) in parts
-                do (loop with start = 0
-                         while (< start (length text))
-                         do (let* ((own (or (aref roles (+ offset start)) role))
-                                   (end (loop for index from (1+ start) below (length text)
-                                              unless (eq own (or (aref roles (+ offset index)) role))
-                                                do (return index)
-                                              finally (return (length text)))))
-                              (push (cons own (subseq text start end)) nested)
-                              (setf start end)))
-                   (incf offset (length text)))
-          (nreverse nested)))))
-
 (-> source-highlight (string &key (:language (or null string)) (:pathname (or null string))) list)
 (defun source-highlight (source &key language pathname)
-  "Return SOURCE as a list of (ROLE . TEXT), or NIL if the language of SOURCE is unknown.
-
-LANGUAGE is the name of the language in a code fence, such as lisp or bash.
-Otherwise, the language is chosen from the file name PATHNAME. The roles are
-:PLAIN and the syntax roles of the terminal, such as :SYNTAX-KEYWORD,
-:SYNTAX-FUNCTION, :SYNTAX-STRING, :SYNTAX-NUMBER and :SYNTAX-COMMENT. In Lisp,
-each parenthesis has the role of the nesting depth, so both parentheses of a
-pair have the same color."
+  "Return (ROLE . TEXT) spans for SOURCE, or NIL if highlighting is unavailable.
+Use LANGUAGE for a fenced block or infer it from PATHNAME. Color Lisp parentheses by depth."
   (highlight--seek-library)
   (handler-case
       (let* ((found (and language
                          (autolith::language-find (string-downcase language) :errorp nil)))
-             (parts (and (or found pathname)
-                         (autolith::highlight-spans source
-                                                    :language      found
-                                                    :pathname      pathname
-                                                    :span-function #'cons))))
-        (if (and parts (highlight--lisp-p language pathname))
-            (highlight--nest parts source)
-            parts))
+             (spans (and (or found pathname)
+                         (autolith::syntax--highlight-spans
+                          source :language found :pathname pathname
+                          :rainbow-parentheses-p (highlight--lisp-p language pathname)))))
+        (mapcar (lambda (span)
+                  (cons (autolith::terminal-span-style span) (autolith::terminal-span-text span)))
+                spans))
     (error ()
       nil)))
 

@@ -1002,7 +1002,8 @@ A reading for a channel other than the channel shown is dropped."
            ;; The structured setter refuses strings for choices with keyword
            ;; values. The settings command reads the value as it is spelled, so
            ;; retry with that command.
-           ((and (stringp choice) (not again-p) (workbench-session workbench))
+           ((and (stringp choice) (not again-p) (workbench-session workbench)
+                 (not (session-native-command "_autolith/set-setting")))
             (session-operation (workbench-session workbench) "_autolith/invoke"
                                :params  (portable-object
                                          "operation" "settings"
@@ -1045,7 +1046,7 @@ A reading for a channel other than the channel shown is dropped."
        (workbench-refresh workbench "_autolith/models" "_autolith/state"))
       ((and (consp request) (eq (first request) ':panel))
        (panel-take-output workbench (second request)
-                          (or (and ok-p (portable-string (portable-get value "text")))
+                          (or (and ok-p (panel-output-text workbench (third request) value))
                               (result-event-report event)
                               "The channel had nothing to report.")))
       ((and (consp request) (eq (first request) ':submit))

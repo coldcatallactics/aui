@@ -412,6 +412,72 @@ MODE is :ASK, :AUTO, :SANDBOXED or :FULL-ACCESS."
                     (values ':ok (session--call session ':mode (list :value mode)))))
   nil)
 
+(-> session--portable-value (t) t)
+(defun session--portable-value (value)
+  "Convert an ACP reply to the object and array forms used by the views."
+  (typecase value
+    (hash-table
+     (cons ':object (loop for key being the hash-keys of value using (hash-value item)
+                          append (list key (session--portable-value item)))))
+    (string
+     value)
+    (vector
+     (cons ':array (map 'list #'session--portable-value value)))
+    (t
+     (if (argo:json-false-p value) ':false value))))
+
+(-> session--native-arguments (session keyword list) list)
+(defun session--native-arguments (session command params)
+  "Return arguments for a native channel COMMAND from the request PARAMS."
+  (ecase command
+    ((:client-state :operations :models :settings :jobs)
+     nil)
+    (:job-cancel
+     (list (portable-get params "jobId")))
+    (:invoke
+     (let ((name  (portable-get params "operation"))
+           (input (portable-get (portable-get params "arguments") "input")))
+       (list name
+             (when input
+               ;; The picker displays labels, but native commands take typed choices.
+               (let* ((catalog (getf (session--call session ':operations nil) :result))
+                      (row     (find name (getf (getf catalog :value) :items)
+                                     :test #'equal :key (lambda (item) (getf item :name))))
+                      (match   (member input (getf row :choices) :test #'string-equal :key #'princ-to-string)))
+                 (unless match
+                   (error 'client-error :message (format nil "~A no longer offers ~A." name input)))
+                 (list (first match)))))))
+    (:set-setting
+     (let* ((name          (portable-get params "name"))
+            (value         (portable-get params "value"))
+            (configuration (world-configuration (session-world session)))
+            (setting       (find name (autolith::configuration-setting-list configuration)
+                                 :test #'string-equal :key #'autolith::setting-name)))
+       (list (intern (string-upcase name) :keyword)
+             (cond ((and setting (stringp value))
+                    (autolith::setting-parse setting value configuration))
+                   ((eq value ':false)
+                    nil)
+                   (t
+                    value)))))))
+
+(-> session-native-command (string) (or null keyword))
+(defun session-native-command (method)
+  "Return METHOD's channel command on servers with native operations."
+  (let ((command (second (assoc method autolith::*acp-extension-methods* :test #'equal))))
+    (and (keywordp command) command)))
+
+(-> session--operation-result (session string list) list)
+(defun session--operation-result (session method params)
+  "Call the native channel command, or the release protocol's :OPERATION wrapper."
+  (let ((command (session-native-command method)))
+    (if command
+        (let ((result (getf (session--call session command (session--native-arguments session command params)) :result)))
+          (list :outcome (getf result :outcome) :report (getf result :report)
+                :value (when (eq (getf result :outcome) ':ok)
+                         (session--portable-value (autolith::acp-extension-value (getf result :value))))))
+        (getf (session--call session ':operation (list :method method :params params)) :result))))
+
 (-> session-operation (session string &key (:params list) (:request t)) null)
 (defun session-operation (session method &key (params (portable-object)) (request method))
   "Run the client operation METHOD, such as _autolith/settings, with the portable object PARAMS.
@@ -420,8 +486,7 @@ Post a RESULT-EVENT that contains REQUEST and the typed outcome of the operation
   (session--spawn
    session request
    (lambda ()
-     (let* ((reply   (session--call session ':operation (list :method method :params params)))
-            (result  (getf reply :result))
+     (let* ((result  (session--operation-result session method params))
             (outcome (getf result :outcome)))
        (values (if (member outcome '(:ok :condition :busy :unsupported :cancelled)) outcome ':condition)
                (getf result :value)

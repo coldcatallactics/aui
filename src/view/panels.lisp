@@ -2,10 +2,6 @@
 
 ;;;; -- Panels --
 
-;;; Panels and boards with information about the channel and the workspace.
-;;; They show the agenda, the plan, the memories and the output of commands
-;;; that only report something.
-
 (-> panel--line (string &key (:style text-style) (:margin-bottom integer)) text-block)
 (defun panel--line (text &key (style (text-style ':meta)) (margin-bottom 10))
   "Return a block of TEXT in STYLE. The default STYLE is the small style of the interface."
@@ -219,12 +215,35 @@ of a thing. Empty tabs contain a short note."
     (cond
       ((and session (workbench-attached-p workbench))
        (workbench-show-panel workbench title nil)
-       (session-operation session "_autolith/invoke"
+       (session-operation session (cond ((equal operation "status")
+                                         "_autolith/state")
+                                        ((equal operation "tasks")
+                                         "_autolith/jobs")
+                                        (t
+                                         "_autolith/invoke"))
                           :params  (portable-object "operation" operation)
-                          :request (list ':panel title)))
+                          :request (list ':panel title operation)))
       (t
        (workbench-show-panel workbench title (panel--empty "Not attached to a channel yet.")))))
   nil)
+
+(-> panel-output-text (workbench string list) (or null string))
+(defun panel-output-text (workbench operation value)
+  "Format a channel snapshot, a list of jobs, or a command's report for its panel."
+  (cond ((equal operation "status")
+         (format nil "Channel: ~A~%Folder: ~A~%Model: ~A~%State: ~A"
+                 (workbench-channel workbench) (workbench-directory workbench)
+                 (or (workbench-model workbench) "unknown")
+                 (if (workbench-working-p workbench) "working" "idle")))
+        ((equal operation "tasks")
+         (let ((jobs (portable-items (portable-get value "items"))))
+           (if jobs
+               (format nil "~{~A~^~%~}" (loop for job in jobs collect
+                                          (format nil "~A  ~A  ~A" (portable-get job "id")
+                                                  (portable-get job "state") (or (portable-get job "summary") ""))))
+               "No jobs.")))
+        (t
+         (or (portable-string (portable-get value "text")) (portable-string (portable-get value "result"))))))
 
 (-> panel-take-output (workbench string string) null)
 (defun panel-take-output (workbench title text)

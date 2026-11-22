@@ -2,19 +2,12 @@
 
 ;;;; -- Checkout --
 
-;;; A checkout is a folder of Lisp source that a person works through. A checkout
-;;; has a list of source files and a list of the files that differ from the last
-;;; commit. In a Git checkout, both lists come from Git. Files ignored by Git are
-;;; not listed, and files count as edited until they are committed. Git is only
-;;; asked for information. Nothing here adds, commits or changes anything. A folder
-;;; that is not a Git checkout is walked, and the content of each file is recorded
-;;; in the ledger when the file is first seen.
 
 (defparameter *source-types* '("lisp" "asd" "cl" "lsp")
   "The file types of Lisp source files.")
 
 (defstruct checkout
-  "A folder of Lisp source. ROOT is the folder. GIT-P is true if the folder is in a Git checkout. PREFIX is the path from the top of the repository to the folder. FILES are the source files as names relative to the root, folder by folder."
+  "A Lisp source folder. ROOT is its pathname; PREFIX is its repository-relative path; FILES are names relative to ROOT."
   (root   nil)
   (git-p  nil :type boolean)
   (prefix ""  :type string)
@@ -22,7 +15,7 @@
 
 (-> checkout--git (pathname list) (values string boolean))
 (defun checkout--git (root arguments)
-  "Run Git with ARGUMENTS in the folder ROOT. Return the output and T if Git exited successfully."
+  "Run Git with ARGUMENTS in ROOT. Return its output and whether it succeeded."
   (handler-case
       (multiple-value-bind (output complaint code)
           (uiop:run-program (list* "git" "-C" (uiop:native-namestring root) arguments)
@@ -65,7 +58,7 @@
 
 (-> checkout--tracked (pathname) (or (eql :walk) list))
 (defun checkout--tracked (directory)
-  "Return the source files of the Git repository at DIRECTORY that are tracked or would be added by Git, as names relative to DIRECTORY. Return :WALK if DIRECTORY is not a repository or if Git fails."
+  "Return source files tracked by Git or eligible to be added. Return :WALK when DIRECTORY is not a repository or Git fails."
   (if (checkout--repository-p directory)
       (multiple-value-bind (output ok-p)
           (checkout--git directory '("ls-files" "-z" "--cached" "--others" "--exclude-standard"))
@@ -76,7 +69,7 @@
 
 (-> checkout--walk (pathname) list)
 (defun checkout--walk (root)
-  "Return the source files under ROOT as names relative to ROOT. Folders whose names start with a dot are left out, and so are the folders in *WALK-IGNORED-FOLDERS*. In a Git repository under ROOT, only the files that are tracked or would be added by Git are returned. Files ignored by Git are left out."
+  "Return source files under ROOT, excluding hidden and ignored folders."
   (let ((names  nil)
         (prefix (length (uiop:native-namestring root))))
     (uiop:collect-sub*directories

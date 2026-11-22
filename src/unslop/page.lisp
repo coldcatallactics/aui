@@ -2,14 +2,6 @@
 
 ;;;; -- Page --
 
-;;; The page is the open file at the right side of the window, shown only by its
-;;; words. Each definition has a heading with the operator and the name as they are
-;;; written in the source. Under the heading are the passages of the definition in
-;;; the order of the file: comments, docstrings and other strings, each with its
-;;; kind in the margin. A person clicks a passage to put the editor over it, and
-;;; clicks the cross next to a comment to delete the comment. All text is set in the
-;;; typewriter face, because line breaks are kept as typed, and in this face the
-;;; length of a line is visible.
 
 (defparameter *page-header-height* 74
   "The height of the band above the page, which contains the file name.")
@@ -33,7 +25,7 @@
   "The space above and below the words of a passage.")
 
 (defstruct page-row
-  "One row of the page, which is either the heading of a definition or one passage. KIND is the kind of the row. DEFINITION and PASSAGE are the numbers of the definition and the passage. TOP is the position in the page, and HEIGHT is the height of the row. PARAGRAPH is the paragraph of the words of a passage."
+  "A page row, either a definition heading or a passage. TOP and HEIGHT give its position; PARAGRAPH holds passage layout."
   (kind       ':passage :type keyword)
   (definition 0         :type fixnum)
   (passage    0         :type fixnum)
@@ -59,7 +51,7 @@
 
 (-> page--paragraph (desk string integer &key (:typed-p boolean)) paragraph)
 (defun page--paragraph (desk text width &key typed-p)
-  "Return the paragraph of TEXT laid out to WIDTH. The paragraphs of the texts of the open file are kept. If TYPED-P is true, TEXT is the text in the editor, and only the paragraph of the last such text is kept."
+  "Return the laid-out paragraph for TEXT. Cache file passages; keep only the current editor text separately."
   (let ((layouts (desk-layouts desk)))
     (unless (= width (desk-layout-width desk))
       (clrhash layouts)
@@ -84,12 +76,7 @@
 
 (-> page-rows (desk integer) (values list integer))
 (defun page-rows (desk width)
-  "Return the rows of the page of the open file for words set to WIDTH, and the total height of the rows.
-
-Only the passages of the kinds that the person wants to see have rows. A
-definition without such passages has no heading. A folded definition only has
-the heading, and a hidden definition has no rows. The row of the passage being
-written in has the height of the text in the editor."
+  "Return the rows of the open file laid out to WIDTH. Hidden definitions have no rows; folded definitions have only headings; the focused passage uses the editor's height."
   (let ((proof (desk-proof desk))
         (kinds (desk-kinds))
         (focus (desk-focus desk))

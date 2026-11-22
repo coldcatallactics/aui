@@ -2,11 +2,6 @@
 
 ;;;; -- Lexer --
 
-;;; A lexer for Lisp source. The source is cut into the pieces that matter for an
-;;; edit of its words: parentheses, strings, comments, and atoms for everything else.
-;;; Only characters are looked at. No symbols are interned, so files that a Lisp
-;;; reader would refuse can be read too. Each piece has a start and an end in the
-;;; text, so that an edited string or comment can be put back in place.
 
 (define-condition proof-error (error)
   ((message
@@ -25,7 +20,7 @@
   (:documentation "The error signalled if the texts of a source file cannot be read, or if an edit to the file cannot be written."))
 
 (defstruct lexeme
-  "One piece of Lisp source. KIND is the kind of the piece. START and END are the positions where the piece starts and ends in the text. The kinds are the keywords OPEN, CLOSE, STRING, COMMENT for a comment to the end of a line, BLOCK for a comment between bars, PREFIX for a quote and similar marks, and ATOM."
+  "A piece of Lisp source, with its KIND and character range. Kinds include OPEN, CLOSE, STRING, COMMENT, BLOCK, PREFIX, and ATOM."
   (kind  ':atom :type keyword)
   (start 0      :type fixnum)
   (end   0      :type fixnum))
@@ -45,10 +40,7 @@
 
 (-> lex--atom-end (simple-string fixnum) fixnum)
 (defun lex--atom-end (text start)
-  "Return the end of the atom in TEXT that starts at START.
-
-The character after a backslash belongs to the atom. Everything between two bars
-also belongs to the atom."
+  "Return the end of the atom in TEXT starting at START. Escaped characters and bar-delimited names are part of the atom."
   (let ((length (length text))
         (index  start))
     (declare (type fixnum length index))
@@ -70,7 +62,7 @@ also belongs to the atom."
 
 (-> lex--string-end (simple-string fixnum) fixnum)
 (defun lex--string-end (text start)
-  "Return the end of the string in TEXT whose opening quote is at START. The end is the position after the closing quote. Signal a PROOF-ERROR if the string does not close."
+  "Return the end of the string in TEXT starting at START, or signal a proof error if it does not close."
   (let ((length (length text))
         (index  (1+ start)))
     (declare (type fixnum length index))
@@ -90,7 +82,7 @@ also belongs to the atom."
 
 (-> lex--block-end (simple-string fixnum) fixnum)
 (defun lex--block-end (text start)
-  "Return the end of the block comment in TEXT that opens at START. The end is the position after the closing bar and sharp sign. Block comments can be nested. Signal a PROOF-ERROR if the comment does not close."
+  "Return the end of the nested block comment starting at START, or signal a proof error if it does not close."
   (let ((length (length text))
         (index  (+ start 2))
         (depth  1))

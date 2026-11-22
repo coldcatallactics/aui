@@ -2,17 +2,6 @@
 
 ;;;; -- Ledger --
 
-;;; The ledger is a file with the decisions that a person made about files. The
-;;; ledger is kept outside all checkouts, so that checkouts only contain source. A
-;;; file marked completed is recorded by its whole path, together with the digest
-;;; of the file content at that moment. The file counts as completed as long as
-;;; the content has the same digest. Files that are changed later are open again.
-;;; The folders folded in the list of files are also recorded here.
-;;;
-;;; There is one ledger for all folders. Marks made while the home folder is open
-;;; are also present while a checkout inside the home folder is open, and the
-;;; other way round. The file is read again before each write, so that two windows
-;;; do not undo the marks of each other.
 
 (defvar *ledger-directory* nil
   "The folder of the ledger, or NIL for the state folder of the person.")
@@ -21,7 +10,7 @@
   "The file name of the ledger. All other files in the folder of the ledger are older ledgers of single folders. Each of them is imported once.")
 
 (defstruct ledger
-  "The state recorded in the ledger. FILE is the ledger file. ROOT is the folder open in this window, with the closing slash. COMPLETED is a hash table from the whole paths of the files marked completed to the digests at that moment. BASELINE is a hash table from the whole paths of files to the digests when the files were first seen. BASELINE is only kept for files that are not in a Git checkout. FOLDS are the whole paths of the folders folded in the list of files. IMPORTED are the names of the older ledgers that were imported. SECTIONS is a hash table from the whole path of each file to the digests of the completed definitions in the file."
+  "Ledger state. COMPLETED and BASELINE map paths to digests; FOLDS and IMPORTED are path lists; SECTIONS maps paths to completed-definition digests."
   (file      nil)
   (root      ""  :type string)
   (completed (make-hash-table :test #'equal) :type hash-table)
@@ -32,7 +21,7 @@
 
 (-> ledger-directory () pathname)
 (defun ledger-directory ()
-  "Return the folder of the ledger. This is *LEDGER-DIRECTORY* if it is set, or else the unslop folder in the state folder of the person."
+  "Return the configured ledger folder, or the unslop folder under the user's state folder."
   (or *ledger-directory*
       (let ((state (uiop:getenvp "XDG_STATE_HOME")))
         (merge-pathnames "unslop/"
@@ -52,7 +41,7 @@
 
 (-> ledger--read-file (pathname) (values list boolean))
 (defun ledger--read-file (pathname)
-  "Return the property list in the file at PATHNAME, and T if the file could be read. A missing file is read as an empty list. A file that does not contain a property list cannot be read."
+  "Read PATHNAME as a ledger property list. Missing files count as empty; malformed files are unreadable."
   (if (not (probe-file pathname))
       (values nil t)
       (handler-case
@@ -68,7 +57,7 @@
 
 (-> ledger--table (t) hash-table)
 (defun ledger--table (pairs)
-  "Return a hash table of PAIRS, which is a list of (NAME . DIGEST) as in a ledger file. Other elements of the list are left out."
+  "Return valid NAME/DIGEST pairs from PAIRS as a hash table."
   (let ((table (make-hash-table :test #'equal)))
     (when (listp pairs)
       (dolist (pair pairs)
@@ -98,7 +87,7 @@
 
 (-> ledger--import (ledger) boolean)
 (defun ledger--import (ledger)
-  "Add to LEDGER the entries from the older ledgers of single folders that LEDGER does not have yet. Return T if there was such a ledger. Each older ledger is imported once and left where it is."
+  "Import each unimported single-folder ledger into LEDGER."
   (let ((found nil))
     (dolist (file (uiop:directory-files (ledger-directory) "*.sexp"))
       (let ((name (file-namestring file)))
@@ -135,7 +124,7 @@
 
 (-> ledger--write (ledger) boolean)
 (defun ledger--write (ledger)
-  "Write LEDGER to the ledger file and return T if the write succeeded. The content is first written to a new file next to the ledger file. The new file is then renamed over the ledger file."
+  "Write LEDGER atomically and return whether the write succeeded."
   (let* ((pathname (ledger-file ledger))
          (beside   (make-pathname :type "new" :defaults pathname)))
     (handler-case
@@ -161,10 +150,7 @@
 
 (-> ledger--change (ledger function) boolean)
 (defun ledger--change (ledger change)
-  "Read the ledger file of LEDGER again, call CHANGE with no arguments, and write LEDGER to the file. Changes written by other windows in the meantime are kept. Return T if the file was written.
-
-If the file exists and cannot be read, the file is not overwritten. The change
-is then only kept in LEDGER."
+  "Reload LEDGER, apply CHANGE, and write it back without discarding changes made by another window."
   (multiple-value-bind (plist read-p) (ledger--read-file (ledger-file ledger))
     (when read-p
       (ledger--take ledger plist))

@@ -2,12 +2,6 @@
 
 ;;;; -- Desk --
 
-;;; The desk is the state and the actions of the unslop window: the checkout and the
-;;; ledger, the open file, the passage being written in, and the timer of the next
-;;; save. The panes in the other files of this directory read this state and call
-;;; the actions here. Everything runs on the interface thread, except the look at
-;;; the checkout. The checkout is looked at every few seconds on a separate thread,
-;;; and the result is taken up on the interface thread.
 
 (defparameter *autosave-seconds* 0.7
   "The delay in seconds between the last keystroke and the write of the typed text to the file.")
@@ -19,7 +13,7 @@
   "The kinds of passages, in the order in which their switches are shown.")
 
 (defstruct removal
-  "A comment deleted from the open file. BEFORE and AFTER are the proofs of the file before and after the deletion. LINE is the first line of the comment."
+  "A deleted comment, with proofs before and after deletion and its first line."
   (before nil :type (or null proof))
   (after  nil :type (or null proof))
   (line   0   :type integer))

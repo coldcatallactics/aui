@@ -2,18 +2,9 @@
 
 ;;;; -- Proof --
 
-;;; A proof is one source file read for its words. A proof contains the text of
-;;; the file and the definitions of the file in order. A definition is a top-level
-;;; form that has words in it, or a run of comments outside any form. A definition
-;;; contains passages. A passage is one stretch of words that a person reads: a
-;;; comment, a docstring or another string.
-;;;
-;;; Each passage has its place in the text and the way it is written there. Changed
-;;; words can then be written back in the same place, behind the same semicolons or
-;;; between the same quotes.
 
 (defstruct passage
-  "One stretch of words in a source file. A passage has a kind, a shape, the start and the end of the source, the words themselves, and the first and the last line. A comment also has the semicolons, the separator between the semicolons and the words, the margin before the semicolons on the later lines, and a flag that is true if the comment is alone on its lines."
+  "A source passage with its kind, shape, character range, text, and line range. Comments also retain their prefix, separator, margin, and whether they occupy whole lines."
   (kind      ':comment :type (member :comment :docstring :string))
   (shape     ':line    :type (member :line :block :string))
   (start     0         :type fixnum)
@@ -27,14 +18,14 @@
   (alone-p   t         :type boolean))
 
 (defstruct definition
-  "One top-level form that contains words. OPERATOR and NAME are the operator and the name of the form. LINE is the first line of the form. PASSAGES are the passages of the form in the order of the file. A run of comments outside any form is a definition with an empty operator."
+  "A top-level form with passages. A comment run outside forms has an empty operator."
   (operator ""  :type string)
   (name     ""  :type string)
   (line     1   :type fixnum)
   (passages nil :type list))
 
 (defstruct proof
-  "One source file read for its words. PATHNAME and TEXT are the file and the text of the file. DIGEST is the digest of the file content. DEFINITIONS are the definitions of the file. SKELETON is the code of the file without the words. If the file cannot be read this way, PROBLEM is a description of the reason and there are no definitions."
+  "A source file and its parsed definitions, skeleton, digest, and read problem if parsing failed."
   (pathname    nil)
   (text        ""  :type string)
   (digest      ""  :type string)
@@ -57,8 +48,7 @@
 
 (-> octets-digest ((simple-array (unsigned-byte 8) (*))) string)
 (defun octets-digest (octets)
-  "Return a short digest of OCTETS. The digest consists of the FNV-1a sum and the
-count of the octets."
+    "Return the FNV-1a digest and byte count of OCTETS."
   (let ((sum #xcbf29ce484222325))
     (declare (type (unsigned-byte 64) sum))
     (loop for octet across octets

@@ -2,13 +2,6 @@
 
 ;;;; -- Shelf --
 
-;;; The shelf is the list of source files of the checkout at the left side of the
-;;; window. The list is a tree of the folders that contain the files. Each folder is
-;;; above its contents, with its own files first. A click on a folder folds or
-;;; unfolds it. Each file has a box, which is checked if the file is completed. The
-;;; word edited is shown after the name if the file differs from the last commit.
-;;; A person can narrow the list by name in the field above the list, and hide the
-;;; completed files with the switch at the bottom.
 
 (defparameter *shelf-share* 3/10
   "The share of the window width that is used by the list of files.")
@@ -41,13 +34,13 @@
                    (desk-files desk))))
 
 (defstruct shelf-folder
-  "A folder of the checkout in the tree of files. PATH is the path relative to the root with the closing slash, or empty for the root. FILES are the names of the files in the folder, and FOLDERS are the folders inside it."
+  "A folder in the checkout tree. PATH is relative to the root; FILES and FOLDERS contain its children."
   (path    ""  :type string)
   (files   nil :type list)
   (folders nil :type list))
 
 (defstruct shelf-row
-  "One row of the list of files. KIND is a folder or a file. NAME is the name relative to the root of the checkout. LABEL is the shown text, and DEPTH is the depth in the tree. A folder also has FOLDED-P, the number of FILES in it and below it, and the number of these files that are COMPLETED."
+  "A file-list row. Folders also record whether they are folded and their file counts."
   (kind      ':file :type keyword)
   (name      ""     :type string)
   (label     ""     :type string)
@@ -58,13 +51,13 @@
 
 (-> shelf-width (integer) integer)
 (defun shelf-width (width)
-  "Return the width of the list of files in a window of width WIDTH. The list takes *SHELF-SHARE* of the window, and at least *SHELF-LEAST-WIDTH*. In a narrow window, the list takes at most two fifths."
+  "Return the file-list width for a window of WIDTH."
   (min (max *shelf-least-width* (round (* width *shelf-share*)))
        (floor (* width 2) 5)))
 
 (-> shelf--tree (list) shelf-folder)
 (defun shelf--tree (names)
-  "Return the root of the tree of folders that contain the files NAMES. The files and folders in each folder are in the order of NAMES."
+  "Return the folder tree containing NAMES, preserving their order."
   (let ((root  (make-shelf-folder))
         (table (make-hash-table :test #'equal)))
     (setf (gethash "" table) root)
@@ -88,11 +81,7 @@
 
 (-> shelf-rows (desk) list)
 (defun shelf-rows (desk)
-  "Return the rows of the list in order, as SHELF-ROWs. The files at the root come first. Then each folder comes before its contents, with its own files first.
-
-A folder is listed if it contains a listed file at any depth. The contents of
-a folded folder are left out. A folder that only contains one other folder
-shares one row with it, so a chain of such folders is one row."
+  "Return file-list rows in display order. Folders with one nested folder share a row with it."
   (let ((listed    (make-hash-table :test #'equal))
         (folding-p (shelf-folding-p desk)))
     (dolist (name (shelf-names desk))

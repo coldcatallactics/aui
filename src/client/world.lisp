@@ -344,7 +344,8 @@ contains the last line written by the command."
     (multiple-value-bind (code said) (world--run-autolith world "start")
       (unless (or (eql code 0) (world-served-p world))
         (error 'client-error
-               :message (format nil "The world server did not start~:[.~;: ~:*~A~]" said)))))
+                 :message (format nil "Could not start the world server with ~A (exit ~A)~:[: no diagnostic output~;: ~:*~A~]"
+                                  (installation-program) code said)))))
   nil)
 
 (-> world-stop-server (world) null)

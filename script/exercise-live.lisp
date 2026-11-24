@@ -679,6 +679,17 @@ not be changed by the exercise."
                                        (exercise-live--current-p workbench)))
                                  :seconds 120))
                (exercise-live--picture workbench "live-restart"))
+             ;; Open another channel through the server, without changing this window's session.
+             (let* ((world (workbench-world workbench))
+                    (peer  (autolith::world-client-open (world-configuration world) :directory directory
+                                                        :new-p t :attach-expected-p nil)))
+               (exercise-expect "a channel opened elsewhere appears beside the current channel after reconnect"
+                                (exercise-live--until workbench
+                                                      (lambda ()
+                                                        (and (exercise-live--current-p workbench)
+                                                             (find peer (sidebar-entries workbench) :test #'equal
+                                                                   :key                                   (lambda (row) (getf row :id)))))
+                                                      :seconds 60)))
              ;; Deleting the channel closes it and removes it from the world.
              (let ((channel (workbench-channel workbench)))
                (workbench-delete-channel workbench channel)

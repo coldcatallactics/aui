@@ -11,7 +11,7 @@ concurrency:
 
 env:
   AUTOLITH_REF: v0.67.66
-  AUTOLITH_SOURCE_REF: 8f0fa413ceadf93742494f996b7ab5987b82e5af
+  AUTOLITH_SOURCE_REF: a4c75aa251dc70eedbf3022f8646b3811291d87c
 
 jobs:
   macos-release:

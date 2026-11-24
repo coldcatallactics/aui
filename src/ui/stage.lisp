@@ -360,10 +360,12 @@ Later regions are on top; an actionable default-cursor region uses a hand cursor
 
 (-> key-event-character (key-event) (or null character))
 (defun key-event-character (event)
-  "Return the character that EVENT typed, or NIL when it typed no single character.
+    "Return the character that EVENT typed, or NIL when it typed no single character.
 
 A shifted character arrives with the key of the unshifted key, so the typed
-text is the character that was entered: `(` reports the key of `9`."
+text is the character that was entered: `(` reports the key of `9`. Named keys
+such as Return and Tab also carry one character of text and are returned here;
+callers that handle them check the key first."
   (let ((text (key-event-text event)))
     (and (= (length text) 1) (char text 0))))
 

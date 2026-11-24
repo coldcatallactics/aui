@@ -301,14 +301,16 @@ the editor replaces, takes no step."
   "Insert TEXT at INDEX in the composer and put the caret after it."
   (let ((editor (workbench-editor workbench))
         (source (composer-text workbench)))
-    (when editor
-      (lightfast:text-replace editor
-                              (composer--octets source index)
-                              (composer--octets source index)
-                              text)
-      (setf (lightfast:text-insert-position editor)
-            (composer--octets (composer-text workbench) (+ index (length text))))
-      (workbench-redraw workbench)))
+      (when editor
+        ;; Typing leaves the history recall, as it does in the line editor of the terminal.
+        (setf (workbench-history-index workbench) nil)
+        (lightfast:text-replace editor
+                                (composer--octets source index)
+                                (composer--octets source index)
+                                text)
+        (setf (lightfast:text-insert-position editor)
+              (composer--octets (composer-text workbench) (+ index (length text))))
+        (workbench-redraw workbench)))
   nil)
 
 (-> composer--pair-braces (workbench integer character) null)
@@ -346,9 +348,10 @@ the editor replaces, takes no step."
 
 A typed brace pairs with its close brace or steps over a brace that is already
 under the caret, and backspace removes an empty pair, as the line editor of the
-terminal does. Ctrl-K is only used if there is text after the caret on the line.
-At the end of a line, Ctrl-K is left unused, so that it can open the list of
-commands."
+terminal does. A selection is replaced by the editor, and a key that types
+several characters is inserted as typed, so neither pairs. Ctrl-K is only used
+if there is text after the caret on the line. At the end of a line, Ctrl-K is
+left unused, so that it can open the list of commands."
     (let* ((key         (key-event-key event))
            (character   (or (key-event-character event) key))
            (control-p   (key-event-control-p event))
@@ -367,9 +370,9 @@ commands."
          (caret       (and (or control-p alt-p brace-p backspace-p)
                            (workbench-editor workbench)
                            (composer--caret workbench)))
-         (line        (and caret (1+ (or (position #\Newline text :end caret :from-end t) -1))))
-         (line-end    (and caret (or (position #\Newline text :start caret) (length text))))
-         (selected-p  (and caret (or brace-p backspace-p) (composer--selected-p workbench)))
+           (line        (and caret (1+ (or (position #\Newline text :end caret :from-end t) -1))))
+           (line-end    (and caret (or (position #\Newline text :start caret) (length text))))
+           (selected-p  (and caret (or brace-p backspace-p) (composer--selected-p workbench)))
            (step        (and brace-p
                              caret
                              (composer--brace-step text caret character :selected-p selected-p)))

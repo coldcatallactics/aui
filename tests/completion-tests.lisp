@@ -23,3 +23,8 @@
   (fiveam:is (null (completion--command-prefix "" 0)))
   (fiveam:is (null (completion--command-prefix "hello" 5)))
   (fiveam:is (null (completion--command-prefix "foo (m)" 7))))
+
+(fiveam:test the-pair-under-the-caret-is-part-of-what-is-typed
+  (fiveam:is (string= "()" (completion--typed-text "()" 1)))
+  (fiveam:is (string= "(model)" (completion--typed-text "(model)" 6)))
+  (fiveam:is (string= "hello @na" (completion--typed-text "hello @na world" 9))))

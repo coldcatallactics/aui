@@ -36,6 +36,28 @@ inserts after an open paren does not end the command."
                (not (find #\) word)))
       (subseq word 1))))
 
+(-> completion--caret (workbench) integer)
+(defun completion--caret (workbench)
+  "Return the caret of the composer as a character index, or the end of the draft when there is no editor."
+  (or (and (workbench-editor workbench) (composer--caret workbench))
+      (length (composer-text workbench))))
+
+(-> completion--typed-text (string integer) string)
+(defun completion--typed-text (text caret)
+  "Return what the person has typed in TEXT with the caret at CARET.
+
+The close brace under the caret belongs to the pair that the composer inserts
+after an open brace, so it is part of the typed text."
+  (let ((head (subseq text 0 caret)))
+    (multiple-value-bind (word start) (completion--word head)
+      (declare (ignore word))
+      (let ((opener (and (< start (length head)) (char head start))))
+        (if (and opener
+                 (< caret (length text))
+                 (eql (char text caret) (composer--closing-brace opener)))
+            (subseq text 0 (1+ caret))
+            head)))))
+
 (-> completion--commands (workbench string) list)
 (defun completion--commands (workbench prefix)
   "Return the completions for the commands whose names begin with PREFIX. Each completion is a Lisp form."
@@ -79,17 +101,15 @@ inserts after an open paren does not end the command."
 
 Only the text before the caret is completed, so the pair of parens that the
 composer inserts is complete as soon as it is empty."
-  (multiple-value-bind (word start) (completion--word (subseq text 0 caret))
-    (let ((prefix (completion--command-prefix text caret)))
-      (cond
-        ((zerop (length word))
-         nil)
-        (prefix
-         (completion--commands workbench prefix))
-        ((and (char= (char word 0) #\@) (not (find #\/ word)))
-         (completion--participants workbench (subseq word 1)))
-        (t
-         nil)))))
+  (let ((prefix (completion--command-prefix text caret)))
+    (if prefix
+        (completion--commands workbench prefix)
+        (multiple-value-bind (word start) (completion--word (subseq text 0 caret))
+          (declare (ignore start))
+          (when (and (plusp (length word))
+                     (char= (char word 0) #\@)
+                     (not (find #\/ word)))
+            (completion--participants workbench (subseq word 1)))))))
 
 (defvar *completion-offer* nil
   "The last completions and their inputs, as a list (TEXT CARET OPERATIONS PARTICIPANTS . CANDIDATES).")
@@ -115,30 +135,33 @@ composer inserts is complete as soon as it is empty."
 (defun completion-current (workbench)
   "Return the completions for the current draft, or NIL if the list was closed for this draft."
   (let* ((text  (composer-text workbench))
-         (caret (or (and (workbench-editor workbench) (composer--caret workbench))
-                    (length text))))
-    (if (equal text (workbench-completion-dismissed workbench))
+         (caret (completion--caret workbench)))
+    (if (equal (list text caret) (workbench-completion-dismissed workbench))
         nil
         (let ((candidates (completion--offer workbench text caret)))
-          ;; Offer nothing if the only completion is the draft itself.
+          ;; Offer nothing if the only completion is the text that is already typed.
           (if (and candidates
                    (null (rest candidates))
                    (string= (string-right-trim " " (completion-text (first candidates)))
-                            (string-right-trim " " (subseq text 0 caret))))
+                            (string-right-trim " " (completion--typed-text text caret))))
               nil
               candidates)))))
 
 (-> completion-accept (workbench completion) null)
 (defun completion-accept (workbench completion)
-  "Replace the word that is typed with the text of COMPLETION."
-  (let* ((text  (composer-text workbench))
-         (caret (or (and (workbench-editor workbench) (composer--caret workbench))
-                    (length text))))
+  "Replace the word that is typed with the text of COMPLETION.
+
+The text after the caret is kept, except for the close brace of an empty pair,
+which the accepted text replaces."
+  (let* ((text     (composer-text workbench))
+         (caret    (completion--caret workbench))
+         (typed    (completion--typed-text text caret))
+         (inserted (completion-text completion)))
     (multiple-value-bind (word start) (completion--word (subseq text 0 caret))
       (declare (ignore word))
       (setf (composer-text workbench)
-            (concatenate 'string (subseq text 0 start) (completion-text completion)))
-      (composer-caret-to-end workbench)))
+            (concatenate 'string (subseq text 0 start) inserted (subseq text (length typed))))
+      (composer--move workbench (+ start (length inserted)))))
   (setf (workbench-completion-index workbench) 0)
   nil)
 
@@ -164,7 +187,8 @@ composer inserts is complete as soon as it is empty."
                             (nth (min (workbench-completion-index workbench) (1- count)) candidates))
          t)
         (:escape
-         (setf (workbench-completion-dismissed workbench) (composer-text workbench))
+         (setf (workbench-completion-dismissed workbench)
+               (list (composer-text workbench) (completion--caret workbench)))
          (workbench-redraw workbench)
          t)
         (otherwise

@@ -91,3 +91,8 @@
                                (uiop:native-namestring (merge-pathnames "bin/autolith" checkout)))))
       (uiop:delete-directory-tree root :validate (lambda (directory)
                                                    (search "aui-installation-" (namestring directory)))))))
+
+(fiveam:test switching-autolith-installations-rebuilds-the-saved-image
+  (fiveam:is (zerop (nth-value 2 (uiop:run-program
+                                  (list "bash" (namestring (asdf:system-relative-pathname ':aui "tests/launcher.sh")))
+                                  :ignore-error-status t)))))

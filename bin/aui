@@ -20,31 +20,33 @@ if [[ -x "$image" && -f "$failed" && "$failed" -nt "$image" ]]; then
   IFS= read -r tried < "$failed" || true
 fi
 
+# A live client restarts the server with the launcher captured in its image.
+# Never fall back to an image for another installation or source revision.
+# shellcheck source=../script/autolith.sh
+source "$root/script/autolith.sh"
+built=
+if [[ -r "$root/build/autolith" ]]; then
+  IFS= read -r built < "$root/build/autolith" || true
+fi
+mismatch=false
+if [[ -n "$autolith_identity" && "$autolith_identity" != "$built" ]]; then mismatch=true; fi
 stale=false
 if [[ ! -x "$image" ]]; then
   stale=true
 elif [[ -n $(find "$root/src" "$root/aui.asd" "$lightfast/src" "$lightfast/native" -newer "$reference" -print 2>/dev/null | head -n 1) ]]; then
   stale=true
-elif [[ -z ${AUI_AUTOLITH_ROOT:-} ]]; then
-  # Files from a newly installed release can predate the image.
-  # shellcheck source=../script/autolith.sh
-  source "$root/script/autolith.sh"
-  built=
-  if [[ -r "$root/build/autolith" ]]; then
-    IFS= read -r built < "$root/build/autolith" || true
-  fi
-  if [[ -n "$autolith_identity" && "$autolith_identity" != "$built" && "$autolith_identity" != "$tried" ]]; then
-    stale=true
-  fi
+elif [[ $mismatch == true && "$autolith_identity" != "$tried" ]]; then
+  stale=true
 fi
 if [[ $stale == true ]]; then
   echo "Building AUI..." >&2
   if ! "$root/script/build" >&2; then
-    if [[ -x "$image" ]]; then
-      echo "Build failed. Starting the previous image." >&2
-    else
-      exit 1
-    fi
+    if [[ ! -x "$image" || $mismatch == true ]]; then exit 1; fi
+    echo "Build failed. Starting the previous image." >&2
   fi
+fi
+if [[ $stale == false && $mismatch == true ]]; then
+  echo "The last AUI build for $autolith_identity failed. See $root/build/build.log." >&2
+  exit 1
 fi
 exec "$image" "$@"

@@ -60,4 +60,9 @@ if [[ -n "$autolith_source" ]]; then
     IFS= read -r autolith_version < "$autolith_source/VERSION" || true
   fi
   autolith_identity="$autolith_source $autolith_version"
+  if [[ -z "$autolith_release" && -e "$autolith_source/.git" ]]; then
+    if autolith_commit=$(git -C "$autolith_source" rev-parse --verify HEAD 2>/dev/null); then
+      autolith_identity+=" $autolith_commit"
+    fi
+  fi
 fi
